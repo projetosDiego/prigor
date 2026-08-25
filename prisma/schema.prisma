@@ -1,0 +1,565 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  SELLER
+}
+
+enum PipelineStage {
+  NOVO
+  QUALIFICADO
+  ATRIBUIDO
+  ABORDADO
+  CONTATO_REALIZADO
+  INTERESSADO
+  REUNIAO
+  AMOSTRA
+  NEGOCIACAO
+  NOVO_REVENDEDOR
+  PERDIDO
+}
+
+enum LossReason {
+  SEM_INTERESSE
+  PRECO
+  JA_POSSUI_FORNECEDOR
+  PRODUZ_INTERNAMENTE
+  NAO_TRABALHA_COM_SOBREMESAS
+  BAIXO_MOVIMENTO
+  ESTABELECIMENTO_FECHADO
+  CONTATO_INVALIDO
+  RESPONSAVEL_NAO_ENCONTRADO
+  OUTRO
+}
+
+enum ActivityType {
+  VISIT
+  WHATSAPP
+  PHONE
+  MEETING
+  SAMPLE
+  NOTE
+  STATUS_CHANGE
+  ASSIGNMENT
+}
+
+enum MeetingStatus {
+  AGENDADA
+  REALIZADA
+  CANCELADA
+  NAO_COMPARECEU
+}
+
+enum SampleResult {
+  GOSTOU
+  INTERESSADO
+  PENSANDO
+  NAO_GOSTOU
+  SEM_INTERESSE
+}
+
+enum ProductType {
+  venda
+  insumo
+}
+
+enum StockMovementType {
+  baixa_insumo
+  entrada_recheio
+  entrada_produto
+  saida_venda
+}
+
+enum TransactionType {
+  receita
+  despesa
+}
+
+enum TransactionStatus {
+  pendente
+  pago
+  atrasado
+  cancelado
+}
+
+enum OrderStatus {
+  novo
+  confirmado
+  em_producao
+  entregue
+  faturado
+  cancelado
+}
+
+enum PaymentMethod {
+  dinheiro
+  pix
+  debito
+  credito
+  boleto
+  transferencia
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String   @map("nome")
+  email        String   @unique
+  phone        String?  @map("telefone")
+  passwordHash String   @map("senha_hash")
+  role         Role     @default(SELLER)
+  active       Boolean  @default(true) @map("ativo")
+  createdAt    DateTime @default(now()) @map("criado_em")
+  updatedAt    DateTime @default(now()) @updatedAt
+  username     String?  @unique
+  isAdmin      Boolean  @default(false) @map("is_admin")
+
+  seller       Seller?
+  auditLogs    AuditLog[]
+
+  @@map("usuarios")
+}
+
+model Seller {
+  id            String   @id @default(uuid())
+  userId        String   @unique @map("usuario_id")
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String   @map("nome")
+  phone         String?  @map("telefone")
+  email         String?  @map("email")
+  active        Boolean  @default(true) @map("ativo")
+  startDate     DateTime @default(now()) @map("criado_em")
+  goal          Int      @default(0) @map("meta")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
+  commissionPct Float    @default(0.0) @map("comissao_pct")
+  notes         String?  @map("observacoes")
+
+  neighborhoods Neighborhood[]
+  leads         Lead[]
+  customers     Customer[]
+  activities    Activity[]
+  meetings      Meeting[]
+  samples       Sample[]
+  pedidos       Pedido[]
+
+  @@map("vendedores")
+}
+
+model Region {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  neighborhoods Neighborhood[]
+  leads         Lead[]
+  customers     Customer[]
+
+  @@map("regioes")
+}
+
+model Neighborhood {
+  id        String   @id @default(uuid())
+  name      String
+  city      String   @default("Rio de Janeiro")
+  state     String   @default("RJ")
+  regionId  String   @map("region_id")
+  region    Region   @relation(fields: [regionId], references: [id], onDelete: Cascade)
+  sellerId  String?  @map("seller_id")
+  seller    Seller?  @relation(fields: [sellerId], references: [id], onDelete: SetNull)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  leads     Lead[]
+  customers Customer[]
+
+  @@unique([name, city, state])
+  @@map("bairros")
+}
+
+model Customer {
+  id             String   @id @default(uuid())
+  legalName      String?  @map("nome")
+  tradeName      String   @map("apelido")
+  cnpj           String?  @unique @map("cnpj")
+  cpf            String?  @map("cpf")
+  phone          String?  @map("telefone")
+  mobile         String?  @map("celular")
+  email          String?  @map("email")
+  address        String   @map("endereco")
+  number         String?  @map("numero")
+  complement     String?  @map("complemento")
+  neighborhood   String   @map("bairro")
+  city           String   @map("cidade")
+  state          String   @map("uf")
+  zipCode        String?  @map("cep")
+  latitude       Float    @map("latitude")
+  longitude      Float    @map("longitude")
+  category       String   @map("categoria")
+  sellerId       String?  @map("vendedor_id")
+  seller         Seller?  @relation(fields: [sellerId], references: [id], onDelete: SetNull)
+  regionId       String?  @map("regiao_id")
+  region         Region?  @relation(fields: [regionId], references: [id], onDelete: SetNull)
+  neighborhoodId String?  @map("bairro_id")
+  neighborhoodRel Neighborhood? @relation(fields: [neighborhoodId], references: [id], onDelete: SetNull)
+  status         String   @default("ATIVO") @map("status")
+  notes          String?  @map("observacoes")
+  googlePlaceId  String?  @unique @map("google_place_id")
+  createdAt      DateTime @default(now()) @map("criado_em")
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  // Campos exclusivos do ERP
+  externalCode   String?  @map("codigo_externo")
+  listType       String?  @map("tipo_lista")
+  gender         String?  @map("sexo")
+  document       String?  @map("documento")
+  rg             String?  @map("rg")
+  ufRg           String?  @map("uf_rg")
+  ie             String?  @map("ie")
+  ieIndicator    String?  @map("ie_indicador")
+  website        String?  @map("site")
+  birthDate      DateTime? @map("data_nascimento")
+  isRevendedor   Boolean  @default(false) @map("is_revendedor")
+  active         Boolean  @default(true) @map("ativo")
+
+  leadsConverted Lead[]   @relation("ConvertedCustomer")
+  activities     Activity[]
+  pedidos        Pedido[]
+
+  @@map("clientes")
+}
+
+model Lead {
+  id                  String         @id @default(uuid())
+  tradeName           String         @map("nome_fantasia")
+  legalName           String?        @map("razao_social")
+  cnpj                String?        @unique
+  phone               String?
+  mobile              String?
+  email               String?
+  address             String
+  number              String?
+  complement          String?
+  neighborhood        String
+  city                String
+  state               String
+  zipCode             String?
+  latitude            Float
+  longitude           Float
+  category            String
+  googlePlaceId       String?        @unique @map("google_place_id")
+  score               Int            @default(0)
+  scoreBreakdown      Json?          @map("score_detalhes")
+  sellerId            String?        @map("vendedor_id")
+  seller              Seller?        @relation(fields: [sellerId], references: [id], onDelete: SetNull)
+  regionId            String?        @map("regiao_id")
+  region              Region?        @relation(fields: [regionId], references: [id], onDelete: SetNull)
+  neighborhoodId      String?        @map("bairro_id")
+  neighborhoodRel     Neighborhood?  @relation(fields: [neighborhoodId], references: [id], onDelete: SetNull)
+  pipelineStage       PipelineStage  @default(NOVO) @map("etapa_funil")
+  source              String         @default("AUTOMATIC") @map("origem")
+  priority            String         @default("MEDIA") @map("prioridade")
+  status              String         @default("ATIVO")
+  lossReason          LossReason?    @map("motivo_perda")
+  lossNotes           String?        @map("observacoes_perda")
+  firstContactAt      DateTime?      @map("primeiro_contato_em")
+  convertedCustomerId String?        @map("cliente_convertido_id")
+  convertedCustomer   Customer?      @relation("ConvertedCustomer", fields: [convertedCustomerId], references: [id], onDelete: SetNull)
+  createdAt           DateTime       @default(now()) @map("criado_em")
+  updatedAt           DateTime       @default(now()) @updatedAt
+
+  activities          Activity[]
+  meetings            Meeting[]
+  samples             Sample[]
+
+  @@map("leads")
+}
+
+model Activity {
+  id          String       @id @default(uuid())
+  leadId      String?      @map("lead_id")
+  lead        Lead?        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  customerId  String?      @map("cliente_id")
+  customer    Customer?    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  sellerId    String?      @map("vendedor_id")
+  seller      Seller?      @relation(fields: [sellerId], references: [id], onDelete: SetNull)
+  type        ActivityType @map("tipo")
+  description String       @map("descricao")
+  date        DateTime     @default(now()) @map("data_atividade")
+  latitude    Float?
+  longitude   Float?
+  result      String?      @map("resultado")
+  createdAt   DateTime     @default(now()) @map("criado_em")
+
+  @@map("atividades")
+}
+
+model Meeting {
+  id          String        @id @default(uuid())
+  leadId      String        @map("lead_id")
+  lead        Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  sellerId    String        @map("vendedor_id")
+  seller      Seller        @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  date        DateTime      @map("data_reuniao")
+  location    String?       @map("local")
+  observation String?       @map("observacao")
+  status      MeetingStatus @default(AGENDADA)
+  createdAt   DateTime      @default(now()) @map("criado_em")
+  updatedAt   DateTime      @default(now()) @updatedAt
+
+  @@map("reunioes")
+}
+
+model Sample {
+  id          String       @id @default(uuid())
+  leadId      String       @map("lead_id")
+  lead        Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  sellerId    String       @map("vendedor_id")
+  seller      Seller       @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  date        DateTime     @default(now()) @map("data_entrega")
+  product     String       @default("Brownie Recheado 7x5") @map("produto")
+  quantity    Int          @default(1) @map("quantidade")
+  flavors     String?      @map("sabores")
+  observation String?      @map("observacao")
+  result      SampleResult? @map("resultado")
+  createdAt   DateTime     @default(now()) @map("criado_em")
+  updatedAt   DateTime     @updatedAt
+
+  @@map("amostras")
+}
+
+model ScoreSettings {
+  id                  String   @id @default(uuid())
+  categoryWeight      Int      @default(25) @map("peso_categoria")
+  compatibilityWeight Int      @default(20) @map("peso_compatibilidade")
+  commercialWeight    Int      @default(15) @map("peso_potencial")
+  regionWeight        Int      @default(15) @map("peso_regiao")
+  digitalWeight       Int      @default(10) @map("peso_digital")
+  nearbyWeight        Int      @default(10) @map("peso_proximidade")
+  dataQualityWeight   Int      @default(5) @map("peso_qualidade_dados")
+  createdAt           DateTime @default(now()) @map("criado_em")
+  updatedAt           DateTime @default(now()) @updatedAt
+
+  @@map("score_config")
+}
+
+model ScoreHistory {
+  id          String   @id @default(uuid())
+  weights     Json     @map("pesos")
+  updatedBy   String   @map("atualizado_por")
+  reason      String?  @map("motivo")
+  createdAt   DateTime @default(now()) @map("criado_em")
+
+  @@map("score_historico")
+}
+
+model ProspectingRun {
+  id             String    @id @default(uuid())
+  startedAt      DateTime  @default(now()) @map("iniciado_em")
+  finishedAt     DateTime? @map("finalizado_em")
+  regionId       String?   @map("regiao_id")
+  neighborhoodId String?   @map("bairro_id")
+  category       String?   @map("categoria")
+  query          String?   @map("busca")
+  resultsFound   Int       @default(0) @map("resultados_encontrados")
+  newLeads       Int       @default(0) @map("novos_leads")
+  duplicates     Int       @default(0) @map("duplicados")
+  existingCust   Int       @default(0) @map("clientes_existentes")
+  errors         String?   @map("erros")
+  estimatedCost  Float     @default(0.0) @map("custo_estimado")
+  status         String    @default("RUNNING")
+
+  @@map("prospeccao_execucao")
+}
+
+model ApiUsage {
+  id            String   @id @default(uuid())
+  date          DateTime @default(now()) @map("data_uso")
+  service       String   @map("servico")
+  endpoint      String   @map("endpoint")
+  callCount     Int      @default(1) @map("quantidade_chamadas")
+  estimatedCost Float    @default(0.0) @map("custo_estimado")
+  region        String?  @map("regiao")
+  executionId   String?  @map("execucao_id")
+
+  @@map("api_consumo")
+}
+
+model SystemSettings {
+  id               String   @id @default(uuid())
+  dailyCostLimit   Float    @default(10.0) @map("limite_custo_diario")
+  monthlyCostLimit Float    @default(150.0) @map("limite_custo_mensal")
+  currentDailyCost Float    @default(0.0) @map("custo_diario_atual")
+  currentMonthlyCost Float  @default(0.0) @map("custo_mensal_atual")
+  apiPaused        Boolean  @default(false) @map("api_pausada")
+  nearbyRadiusKm   Int      @default(5) @map("raio_proximidade_km")
+  whatsappTemplate String   @default("Olá! Tudo bem? Sou {vendedor}, da Doces Prigor...") @map("template_whatsapp")
+  updatedAt        DateTime @default(now()) @updatedAt @map("atualizado_em")
+
+  @@map("config_sistema")
+}
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  userId       String?  @map("usuario_id")
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action       String   @map("acao")
+  entity       String   @map("entidade")
+  entityId     String?  @map("entidade_id")
+  oldValue     Json?    @map("valor_antigo")
+  newValue     Json?    @map("valor_novo")
+  createdAt    DateTime @default(now()) @map("criado_em")
+
+  @@map("logs_auditoria")
+}
+
+// ==========================================
+// NOVOS MODELOS INCORPORADOS DO ERP
+// ==========================================
+
+model Product {
+  id               String               @id @default(uuid())
+  sku              String?              @unique @map("sku")
+  barCode          String?              @map("codigo_barras")
+  internalCode     String?              @map("codigo_interno")
+  name             String               @map("nome")
+  storeName        String?              @map("nome_loja")
+  description      String?              @map("descricao")
+  storeDescription String?              @map("descricao_loja")
+  category         String?              @map("categoria")
+  subcategory      String?              @map("subcategoria")
+  brand            String?              @map("marca")
+  model            String?              @map("modelo")
+  type             ProductType          @default(venda) @map("tipo")
+  unit             String               @default("un") @map("unidade")
+  salePrice        Float                @default(0.0) @map("preco_venda")
+  wholesalePrice   Float                @default(0.0) @map("preco_atacado")
+  minWholesaleQty  Float                @default(0.0) @map("qtd_min_atacado")
+  priceFrom        Float                @default(0.0) @map("preco_de")
+  priceTo          Float                @default(0.0) @map("preco_por")
+  cost             Float                @default(0.0) @map("custo")
+  stock            Float                @default(0.0) @map("estoque")
+  minStock         Float                @default(0.0) @map("estoque_minimo")
+  trackStock       Boolean              @default(true) @map("movimenta_estoque")
+  ncm              String?              @map("ncm")
+  cfop             String?              @map("cfop")
+  origin           String?              @map("origem")
+  cest             String?              @map("cest")
+  weightKg         Float                @default(0.0) @map("peso_kg")
+  heightCm         Float                @default(0.0) @map("altura_cm")
+  widthCm          Float                @default(0.0) @map("largura_cm")
+  depthCm          Float                @default(0.0) @map("profundidade_cm")
+  tags             String?              @map("tags")
+  warranty         String?              @map("garantia")
+  includedItems    String?              @map("itens_inclusos")
+  specifications   String?              @map("especificacoes")
+  image            String?              @map("imagem")
+  commissionPct    Float?               @map("comissao_pct")
+  active           Boolean              @default(true) @map("ativo")
+  createdAt        DateTime             @default(now()) @map("criado_em")
+
+  ingredients      RecipeIngredient[]   @relation("ProductFinal")
+  usedInRecipes    RecipeIngredient[]   @relation("Ingredient")
+  orderItems       PedidoItem[]
+  stockMovements   StockMovement[]
+
+  @@map("produtos")
+}
+
+model RecipeIngredient {
+  id             String   @id @default(uuid())
+  productFinalId String   @map("produto_final_id")
+  productFinal   Product  @relation("ProductFinal", fields: [productFinalId], references: [id], onDelete: Cascade)
+  ingredientId   String   @map("insumo_id")
+  ingredient     Product  @relation("Ingredient", fields: [ingredientId], references: [id], onDelete: Cascade)
+  quantity       Float    @map("quantidade")
+  observation    String?  @map("observacao")
+
+  @@map("receita_ingredientes")
+}
+
+model Pedido {
+  id             String         @id @default(uuid())
+  numero         Int            @unique @map("numero")
+  customerId     String         @map("cliente_id")
+  customer       Customer       @relation(fields: [customerId], references: [id])
+  sellerId       String?        @map("vendedor_id")
+  seller         Seller?        @relation(fields: [sellerId], references: [id])
+  status         OrderStatus    @default(novo) @map("status")
+  paymentMethod  PaymentMethod? @default(pix) @map("forma_pagamento")
+  orderDate      DateTime       @default(now()) @map("data_pedido")
+  deliveryDate   DateTime?      @map("data_entrega")
+  billingDate    DateTime?      @map("data_faturamento")
+  dueDate        DateTime?      @map("data_vencimento")
+  discount       Float          @default(0.0) @map("desconto")
+  shipping       Float          @default(0.0) @map("frete")
+  otherCosts     Float          @default(0.0) @map("outros_custos")
+  subtotal       Float          @default(0.0) @map("subtotal")
+  total          Float          @default(0.0) @map("total")
+  commissionVal  Float          @default(0.0) @map("comissao_valor")
+  notes          String?        @map("observacoes")
+  createdAt      DateTime       @default(now()) @map("criado_em")
+  updatedAt      DateTime       @default(now()) @updatedAt @map("atualizado_em")
+
+  itens          PedidoItem[]
+  transactions   FinancialTransaction[]
+
+  @@map("pedidos")
+}
+
+model PedidoItem {
+  id             String   @id @default(uuid())
+  orderId        String   @map("pedido_id")
+  order          Pedido   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId      String   @map("produto_id")
+  product        Product  @relation(fields: [productId], references: [id])
+  quantity       Float    @map("quantidade")
+  unitPrice      Float    @map("preco_unitario")
+  discountItem   Float    @default(0.0) @map("desconto_item")
+  subtotal       Float    @default(0.0) @map("subtotal")
+
+  @@map("pedido_itens")
+}
+
+model StockMovement {
+  id           String            @id @default(uuid())
+  productId    String            @map("produto_id")
+  product      Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  type         StockMovementType @map("tipo")
+  quantity     Float             @map("quantidade")
+  stockBefore  Float             @map("estoque_antes")
+  stockAfter   Float             @map("estoque_depois")
+  observation  String?           @map("observacao")
+  createdAt    DateTime          @default(now()) @map("criado_em")
+
+  @@map("movimentacoes_estoque")
+}
+
+model FinancialTransaction {
+  id             String            @id @default(uuid())
+  type           TransactionType   @map("tipo")
+  description    String            @map("descricao")
+  category       String?           @map("categoria")
+  value          Float             @map("valor")
+  issueDate      DateTime          @default(now()) @map("data_lancamento")
+  dueDate        DateTime?         @map("data_vencimento")
+  paymentDate    DateTime?         @map("data_pagamento")
+  status         TransactionStatus @default(pendente) @map("status")
+  orderId        String?           @map("pedido_id")
+  order          Pedido?           @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  notes          String?           @map("observacoes")
+  createdAt      DateTime          @default(now()) @map("criado_em")
+
+  @@map("lancamentos")
+}
