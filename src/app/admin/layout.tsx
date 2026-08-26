@@ -17,7 +17,8 @@ import {
   Scale,
   FileText,
   DollarSign,
-  Truck
+  Truck,
+  Upload
 } from 'lucide-react';
 import LogoutButton from '@/components/shared/LogoutButton';
 
@@ -75,6 +76,11 @@ export default async function AdminLayout({
               <span>Bairros & Regiões</span>
             </Link>
 
+            <Link href="/admin/map" className="flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold hover:bg-stone-800 hover:text-white transition-all">
+              <Map className="h-4 w-4 text-amber-755" />
+              <span>Mapa de Revendas</span>
+            </Link>
+
             <Link href="/admin/prospecting" className="flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold hover:bg-stone-800 hover:text-white transition-all">
               <Compass className="h-4 w-4 text-amber-755" />
               <span>Pesquisa & Prospecção</span>
@@ -128,6 +134,11 @@ export default async function AdminLayout({
             <Link href="/admin/api-usage" className="flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold hover:bg-stone-800 hover:text-white transition-all">
               <Activity className="h-4 w-4 text-amber-755" />
               <span>Consumo da API</span>
+            </Link>
+
+            <Link href="/admin/import" className="flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold hover:bg-stone-800 hover:text-white transition-all">
+              <Upload className="h-4 w-4 text-amber-755" />
+              <span>Importar Planilhas</span>
             </Link>
           </div>
         </nav>

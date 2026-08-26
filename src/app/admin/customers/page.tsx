@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { 
   Users, 
   Upload, 
@@ -11,7 +12,9 @@ import {
   FileText,
   MapPin,
   Coffee,
-  CheckCircle2
+  CheckCircle2,
+  Plus,
+  X
 } from 'lucide-react';
 
 interface Customer {
@@ -41,9 +44,26 @@ interface ImportPreviewRow {
   message: string;
 }
 
+const formatPhone = (value: string) => {
+  if (!value) return value;
+  const phone = value.replace(/\D/g, '');
+  const len = phone.length;
+  if (len <= 2) {
+    return phone.length > 0 ? `(${phone}` : '';
+  }
+  if (len <= 6) {
+    return `(${phone.substring(0, 2)}) ${phone.substring(2)}`;
+  }
+  if (len <= 10) {
+    return `(${phone.substring(0, 2)}) ${phone.substring(2, 6)}-${phone.substring(6)}`;
+  }
+  return `(${phone.substring(0, 2)}) ${phone.substring(2, 7)}-${phone.substring(7, 11)}`;
+};
+
 export default function AdminCustomersPage() {
   const [activeTab, setActiveTab] = useState<'list' | 'import'>('list');
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [sellers, setSellers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,9 +75,38 @@ export default function AdminCustomersPage() {
   const [importLoading, setImportLoading] = useState(false);
   const [importSummary, setImportSummary] = useState<any>(null);
 
+  // Estados do Modal de Cadastro Individual
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [formTradeName, setFormTradeName] = useState('');
+  const [formLegalName, setFormLegalName] = useState('');
+  const [formCnpj, setFormCnpj] = useState('');
+  const [formPhone, setFormPhone] = useState('');
+  const [formAddress, setFormAddress] = useState('');
+  const [formNumber, setFormNumber] = useState('');
+  const [formComplement, setFormComplement] = useState('');
+  const [formNeighborhood, setFormNeighborhood] = useState('');
+  const [formZipCode, setFormZipCode] = useState('');
+  const [formCategory, setFormCategory] = useState('padarias');
+  const [formSellerId, setFormSellerId] = useState('');
+  const [formIsRevendedor, setFormIsRevendedor] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [cnpjLoading, setCnpjLoading] = useState(false);
+  const [cepLoading, setCepLoading] = useState(false);
+
   useEffect(() => {
     loadCustomers();
+    loadSellers();
   }, []);
+
+  const loadSellers = async () => {
+    try {
+      const res = await fetch('/api/sellers');
+      const data = await res.json();
+      if (res.ok) setSellers(data.sellers || []);
+    } catch (err) {
+      console.error('Erro ao buscar vendedores:', err);
+    }
+  };
 
   const loadCustomers = async () => {
     try {
@@ -154,6 +203,123 @@ export default function AdminCustomersPage() {
     }
   };
 
+  const handleQueryCNPJ = async () => {
+    const cleanCnpj = formCnpj.replace(/\D/g, '');
+    if (cleanCnpj.length !== 14) {
+      alert('Digite um CNPJ válido com 14 dígitos para buscar.');
+      return;
+    }
+
+    setCnpjLoading(true);
+    try {
+      const res = await fetch(`/api/tools/cnpj?cnpj=${cleanCnpj}`);
+      if (!res.ok) throw new Error('CNPJ não encontrado ou indisponível.');
+      const data = await res.json();
+
+      setFormTradeName(data.nome_fantasia || data.razao_social || '');
+      setFormLegalName(data.razao_social || '');
+      setFormPhone(formatPhone(data.ddd_telefone_1 || ''));
+      setFormAddress(data.logradouro || '');
+      setFormNumber(data.numero || '');
+      setFormComplement(data.complemento || '');
+      setFormNeighborhood(data.bairro || '');
+      setFormZipCode(data.cep || '');
+      alert('Dados cadastrais preenchidos a partir da Receita Federal!');
+    } catch (err: any) {
+      alert('Erro ao buscar CNPJ: ' + err.message);
+    } finally {
+      setCnpjLoading(false);
+    }
+  };
+
+  const handleQueryCEP = async () => {
+    const cleanCep = formZipCode.replace(/\D/g, '');
+    if (cleanCep.length !== 8) {
+      alert('Digite um CEP válido com 8 dígitos para buscar.');
+      return;
+    }
+
+    setCepLoading(true);
+    try {
+      const res = await fetch(`/api/tools/cep?cep=${cleanCep}`);
+      if (!res.ok) throw new Error('CEP não encontrado ou indisponível.');
+      const data = await res.json();
+
+      setFormAddress(data.street || '');
+      setFormNeighborhood(data.neighborhood || '');
+      alert('Endereço do CEP carregado!');
+    } catch (err: any) {
+      alert('Erro ao consultar CEP: ' + err.message);
+    } finally {
+      setCepLoading(false);
+    }
+  };
+
+  const handleSaveCustomer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formTradeName || !formAddress || !formNeighborhood) {
+      alert('Por favor, preencha todos os campos obrigatórios (*).');
+      return;
+    }
+
+    setSaving(true);
+    const payload = {
+      tradeName: formTradeName,
+      legalName: formLegalName || formTradeName,
+      cnpj: formCnpj.replace(/\D/g, '') || undefined,
+      phone: formPhone || undefined,
+      address: formAddress,
+      number: formNumber || 'S/N',
+      complement: formComplement || undefined,
+      neighborhood: formNeighborhood,
+      city: 'Rio de Janeiro',
+      state: 'RJ',
+      zipCode: formZipCode.replace(/\D/g, '') || undefined,
+      latitude: -22.9068, // Fábrica default
+      longitude: -43.1729,
+      category: formCategory,
+      sellerId: formSellerId || undefined,
+      isRevendedor: formIsRevendedor,
+      status: 'ATIVO'
+    };
+
+    try {
+      const res = await fetch('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Erro ao cadastrar cliente.');
+      }
+
+      alert('🎉 Ponto de revenda cadastrado com sucesso!');
+      
+      // Limpa formulário e fecha modal
+      setFormTradeName('');
+      setFormLegalName('');
+      setFormCnpj('');
+      setFormPhone('');
+      setFormAddress('');
+      setFormNumber('');
+      setFormComplement('');
+      setFormNeighborhood('');
+      setFormZipCode('');
+      setFormSellerId('');
+      setIsCreateModalOpen(false);
+
+      // Recarrega lista
+      await loadCustomers();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // Exemplo de template JSON para ajudar o administrador
   const templateJson = `[
   {
@@ -176,9 +342,30 @@ export default function AdminCustomersPage() {
   return (
     <div className="space-y-6">
       {/* Cabeçalho */}
-      <div>
-        <h2 className="text-2xl font-black text-stone-900 tracking-tight">Pontos de Revenda (Clientes)</h2>
-        <p className="text-xs text-stone-500 font-medium">Controle de clientes homologados e importação de bases de vendas legadas</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-black text-stone-900 tracking-tight flex items-center gap-2">
+            <Users className="h-6 w-6 text-amber-700" />
+            Pontos de Revenda (Clientes)
+          </h2>
+          <p className="text-xs text-stone-500 font-medium">Controle de clientes homologados e importação de bases de vendas legadas</p>
+        </div>
+        <div className="flex items-center gap-2.5">
+          <Link 
+            href="/admin/import"
+            className="rounded-lg border border-stone-250 bg-white hover:bg-stone-50 px-3.5 py-2 text-stone-700 font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+          >
+            <Upload className="h-4 w-4 text-stone-500" />
+            Importar Planilha Excel
+          </Link>
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            className="rounded-lg bg-amber-700 px-4 py-2 text-white font-bold text-xs hover:bg-amber-800 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+          >
+            <Plus className="h-4 w-4" />
+            Novo Ponto de Revenda
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -403,6 +590,225 @@ export default function AdminCustomersPage() {
                 Nenhum preview gerado. Cole os dados na caixa ao lado e clique em "Carregar Preview".
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Cadastro de Novo Ponto de Revenda (Cliente) */}
+      {isCreateModalOpen && (
+        <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-lg max-h-[92vh] overflow-hidden flex flex-col animate-scaleIn">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100 shrink-0 bg-stone-50/50">
+              <div>
+                <h3 className="font-extrabold text-stone-950 text-sm">Cadastrar Novo Ponto de Revenda</h3>
+                <p className="text-[10px] text-stone-400 font-semibold uppercase mt-0.5">Homologação Individual de Clientes</p>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setIsCreateModalOpen(false)} 
+                className="p-1 hover:bg-stone-100 rounded-lg text-stone-400 hover:text-stone-600 transition-all cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCustomer} className="p-5 space-y-4 overflow-y-auto flex-1 text-xs font-semibold text-stone-700">
+              
+              {/* CNPJ + Busca Automática */}
+              <div className="grid grid-cols-3 gap-2 items-end bg-stone-50/50 border border-stone-200 p-3 rounded-xl">
+                <div className="col-span-2">
+                  <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">CNPJ (Opcional - Recomendado)</label>
+                  <input 
+                    type="text"
+                    placeholder="Sem pontuação"
+                    value={formCnpj}
+                    onChange={(e) => setFormCnpj(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-stone-200 bg-white focus:outline-none"
+                  />
+                </div>
+                <button 
+                  type="button"
+                  onClick={handleQueryCNPJ}
+                  disabled={cnpjLoading}
+                  className="rounded-lg bg-stone-950 hover:bg-stone-850 text-white font-bold py-2 text-center cursor-pointer transition-all h-9 flex items-center justify-center text-[10px] disabled:opacity-50"
+                >
+                  {cnpjLoading ? <Loader2 className="h-4 w-4 animate-spin text-white" /> : 'Consultar CNPJ'}
+                </button>
+              </div>
+
+              {/* Informações Básicas */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">Nome Fantasia *</label>
+                  <input 
+                    type="text"
+                    required
+                    placeholder="Ex: Padaria da Esquina"
+                    value={formTradeName}
+                    onChange={(e) => setFormTradeName(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50/50 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">Razão Social</label>
+                  <input 
+                    type="text"
+                    placeholder="Ex: Panificadora Silva Ltda"
+                    value={formLegalName}
+                    onChange={(e) => setFormLegalName(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50/50 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">Telefone / WhatsApp</label>
+                  <input 
+                    type="text"
+                    placeholder="(21) 99999-9999"
+                    value={formPhone}
+                    onChange={(e) => setFormPhone(formatPhone(e.target.value))}
+                    className="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50/50 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">Perfil Comercial</label>
+                  <select 
+                    value={formIsRevendedor ? 'true' : 'false'}
+                    onChange={(e) => setFormIsRevendedor(e.target.value === 'true')}
+                    className="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50/50 focus:outline-none text-stone-850"
+                  >
+                    <option value="true">Revendedor (Atacado)</option>
+                    <option value="false">Consumidor (Varejo)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Endereço & CEP */}
+              <div className="border-t border-stone-100 pt-3 space-y-3">
+                <span className="text-[10px] font-black text-amber-700 uppercase tracking-widest block">Endereço de Entrega</span>
+
+                <div className="grid grid-cols-3 gap-2 items-end">
+                  <div className="col-span-2">
+                    <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">CEP</label>
+                    <input 
+                      type="text"
+                      placeholder="Sem traço"
+                      value={formZipCode}
+                      onChange={(e) => setFormZipCode(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50/50 focus:outline-none"
+                    />
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={handleQueryCEP}
+                    disabled={cepLoading}
+                    className="rounded-lg border border-amber-250 bg-amber-700/5 hover:bg-amber-700/10 text-amber-800 font-bold py-2 text-center cursor-pointer transition-all h-9 flex items-center justify-center text-[10px] disabled:opacity-50"
+                  >
+                    {cepLoading ? <Loader2 className="h-4 w-4 animate-spin text-amber-700" /> : 'Consultar CEP'}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-2">
+                    <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">Endereço de Entrega *</label>
+                    <input 
+                      type="text"
+                      required
+                      placeholder="Av, Rua, etc."
+                      value={formAddress}
+                      onChange={(e) => setFormAddress(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50/50 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">Número</label>
+                    <input 
+                      type="text"
+                      placeholder="Ex: 123"
+                      value={formNumber}
+                      onChange={(e) => setFormNumber(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50/50 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">Bairro *</label>
+                    <input 
+                      type="text"
+                      required
+                      placeholder="Ex: São Cristóvão"
+                      value={formNeighborhood}
+                      onChange={(e) => setFormNeighborhood(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50/50 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">Ponto de Referência / Complemento</label>
+                    <input 
+                      type="text"
+                      placeholder="Ex: Próximo ao mercado"
+                      value={formComplement}
+                      onChange={(e) => setFormComplement(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50/50 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Relações Comerciais */}
+              <div className="border-t border-stone-100 pt-3 grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">Categoria de Revenda</label>
+                  <select 
+                    value={formCategory}
+                    onChange={(e) => setFormCategory(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50/50 focus:outline-none text-stone-850"
+                  >
+                    <option value="padarias">Padarias</option>
+                    <option value="cafeterias">Cafeterias</option>
+                    <option value="confeitarias">Confeitarias</option>
+                    <option value="lanchonetes">Lanchonetes</option>
+                    <option value="açaiterias">Açaiterias</option>
+                    <option value="conveniências">Conveniências</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">Vendedor Vinculado (Carteira)</label>
+                  <select 
+                    value={formSellerId}
+                    onChange={(e) => setFormSellerId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50/50 focus:outline-none text-stone-850"
+                  >
+                    <option value="">Nenhum (Carteira Livre)</option>
+                    {sellers.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Botões */}
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-stone-100 shrink-0">
+                <button 
+                  type="button" 
+                  onClick={() => setIsCreateModalOpen(false)}
+                  className="rounded-lg border border-stone-250 hover:bg-stone-50 px-4 py-2 font-bold cursor-pointer transition-all text-xs"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit"
+                  disabled={saving || !formTradeName || !formAddress || !formNeighborhood}
+                  className="rounded-lg bg-amber-700 hover:bg-amber-800 px-4 py-2 text-white font-bold cursor-pointer transition-all shadow-xs disabled:opacity-50 text-xs"
+                >
+                  {saving ? 'Cadastrando...' : 'Homologar Cliente'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

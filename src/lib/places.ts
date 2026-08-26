@@ -3,6 +3,20 @@ import { calculateHaversineDistance } from './geocoding';
 import { calculateLeadScore } from './scoring';
 import { PipelineStage, ScoreSettings } from '@prisma/client';
 
+/**
+ * O modo simulado precisa ser LIGADO DE PROPOSITO. Sem esta flag, qualquer
+ * falta de chave ou erro da API interrompe a prospeccao em vez de gravar
+ * estabelecimentos ficticios no banco como se fossem leads reais.
+ */
+export const MOCK_PERMITIDO = process.env.ALLOW_MOCK_PLACES === 'true';
+
+/** Prefixo que marca no proprio nome do lead que ele veio do simulador. */
+export const PREFIXO_MOCK = '[SIMULADO] ';
+
+function avisoMock(motivo: string): string {
+  return `[Prospeccao][MODO SIMULADO] ${motivo}. Os leads gerados sao ficticios e vem marcados com "${PREFIXO_MOCK.trim()}".`;
+}
+
 export interface ProspectedPlace {
   googlePlaceId: string;
   tradeName: string;
@@ -51,7 +65,7 @@ function generateMockPlaces(
 
   for (let i = 0; i < count; i++) {
     const est = establishments[(i + query.length + category.length) % establishments.length];
-    const tradeName = `${est.name} ${neighborhoodName} ${est.suffix}`;
+    const tradeName = `${PREFIXO_MOCK}${est.name} ${neighborhoodName} ${est.suffix}`;
     
     // Pequeno offset nas coordenadas ao redor do centro do bairro
     const latOffset = (Math.random() - 0.5) * 0.015;
@@ -101,7 +115,14 @@ export async function searchGooglePlaces(
   const isMockKey = !apiKey || apiKey.includes('MockKey') || apiKey === '';
 
   if (isMockKey) {
-    // Gerar dados simulados
+    if (!MOCK_PERMITIDO) {
+      throw new Error(
+        'GOOGLE_MAPS_API_KEY nao configurada. A prospeccao foi interrompida para nao ' +
+        'gravar leads ficticios no banco. Configure a chave no .env, ou defina ' +
+        'ALLOW_MOCK_PLACES=true se voce quer mesmo rodar em modo simulado.'
+      );
+    }
+    console.warn(avisoMock('GOOGLE_MAPS_API_KEY ausente ou de desenvolvimento'));
     const places = generateMockPlaces(query, category, neighborhoodName, centerLat, centerLng, limit);
     return {
       places,
@@ -168,9 +189,18 @@ export async function searchGooglePlaces(
       apiCostUsd,
       serviceType: 'GOOGLE_API',
     };
-  } catch (error) {
-    console.error('Falha na requisição da Google Places API, usando fallback Mock:', error);
-    // Em caso de falha física da API, usa mock de fallback para não quebrar a aplicação comercial
+  } catch (error: any) {
+    if (!MOCK_PERMITIDO) {
+      // Sem fallback silencioso: um erro da API nao pode virar lead ficticio
+      // gravado no banco como se fosse real.
+      console.error('Falha na requisicao da Google Places API:', error);
+      throw new Error(
+        `Falha ao consultar o Google Places: ${error?.message || error}. ` +
+        'Nenhum lead foi gravado. Defina ALLOW_MOCK_PLACES=true se quiser ' +
+        'usar dados simulados quando a API falhar.'
+      );
+    }
+    console.warn(avisoMock(`falha na Google Places API (${error?.message || error})`));
     const places = generateMockPlaces(query, category, neighborhoodName, centerLat, centerLng, limit);
     return {
       places,
@@ -422,7 +452,12 @@ export async function runProspectingEngine(params: {
         duplicates: duplicatesCount,
         existingCust: existingCustCount,
         estimatedCost: searchResult.apiCostUsd,
-        status: 'SUCCESS',
+        // Deixa registrado na execucao se os leads vieram do simulador,
+        // para nunca confundir dado ficticio com prospeccao real.
+        status: searchResult.serviceType === 'MOCK' ? 'SUCCESS_SIMULADO' : 'SUCCESS',
+        errors: searchResult.serviceType === 'MOCK'
+          ? 'MODO SIMULADO: leads gerados sem consultar o Google Places.'
+          : null,
       },
     });
 

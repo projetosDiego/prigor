@@ -1,10 +1,12 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { 
   Package, 
   Plus, 
   Search, 
+  Upload, 
   Edit, 
   Trash2, 
   AlertTriangle, 
@@ -281,13 +283,22 @@ export default function ProductsPage() {
           </h2>
           <p className="text-xs text-stone-500 font-medium">Cardápio de revenda, precificação e margem de contribuição</p>
         </div>
-        <button 
-          onClick={handleOpenCreateModal}
-          className="rounded-lg bg-amber-700 px-4 py-2 text-white font-bold text-xs hover:bg-amber-800 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
-        >
-          <Plus className="h-4 w-4" />
-          Novo Produto
-        </button>
+        <div className="flex items-center gap-2.5">
+          <Link 
+            href="/admin/import"
+            className="rounded-lg border border-stone-250 bg-white hover:bg-stone-50 px-3.5 py-2 text-stone-700 font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+          >
+            <Upload className="h-4 w-4 text-stone-500" />
+            Importar Planilha
+          </Link>
+          <button 
+            onClick={handleOpenCreateModal}
+            className="rounded-lg bg-amber-700 px-4 py-2 text-white font-bold text-xs hover:bg-amber-800 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+          >
+            <Plus className="h-4 w-4" />
+            Novo Produto
+          </button>
+        </div>
       </div>
 
       {/* Filtros */}
