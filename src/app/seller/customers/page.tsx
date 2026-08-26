@@ -1,19 +1,17 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { 
   Users, 
-  Plus, 
   Search, 
   X, 
   Loader2, 
-  RefreshCw, 
   UserPlus, 
   Phone, 
-  MapPin, 
   Building2, 
   Navigation
 } from 'lucide-react';
+import { responseErrorMessage } from '@/lib/errors';
 
 const formatPhone = (value: string) => {
   if (!value) return value;
@@ -31,16 +29,45 @@ const formatPhone = (value: string) => {
   return `(${phone.substring(0, 2)}) ${phone.substring(2, 7)}-${phone.substring(7, 11)}`;
 };
 
+/** Cliente devolvido por `GET /api/customers` (recorte de CustomerDTO). */
 interface Cliente {
   id: string;
-  nome: string;
-  is_revendedor: boolean;
-  cnpj?: string;
-  cpf?: string;
-  phone?: string;
-  endereco?: string;
+  tradeName: string;
+  legalName: string | null;
+  isReseller: boolean;
+  cnpj: string | null;
+  cpf: string | null;
+  phone: string | null;
+  mobile: string | null;
+  address: string | null;
+  neighborhood: string | null;
+  city: string | null;
+}
+
+/** Envelope de paginação usado por todas as listagens da API. */
+interface Paginated<T> {
+  data: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
+
+
+/** Resposta da consulta de CNPJ (BrasilAPI, via `/api/tools/cnpj`). */
+interface RespostaCnpj {
+  nome_fantasia?: string;
+  razao_social?: string;
+  ddd_telefone_1?: string;
+  email?: string;
+  logradouro?: string;
+  numero?: string;
+  complemento?: string;
   bairro?: string;
-  city?: string;
+  municipio?: string;
+  uf?: string;
+  cep?: string;
 }
 
 export default function SellerCustomersPage() {
@@ -71,24 +98,28 @@ export default function SellerCustomersPage() {
   // Estados de busca
   const [searchTerm, setSearchTerm] = useState('');
 
-  useEffect(() => {
-    fetchClientes();
-  }, []);
-
-  const fetchClientes = async () => {
+  const fetchClientes = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch('/api/erp/clientes');
-      if (!res.ok) throw new Error('Falha ao buscar carteira de clientes.');
-      const data = await res.json();
-      setClientes(data);
-    } catch (err: any) {
-      setError(err.message);
+      // A listagem é paginada; a carteira inteira cabe numa página grande.
+      const res = await fetch('/api/customers?pageSize=500');
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Falha ao buscar carteira de clientes.'));
+      const json: Paginated<Cliente> = await res.json();
+      setClientes(json.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao buscar carteira de clientes.');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // A carga roda fora do corpo síncrono do efeito para não encadear renders.
+    void (async () => {
+      await fetchClientes();
+    })();
+  }, [fetchClientes]);
 
   // Consulta CNPJ na Receita via BrasilAPI
   const handleQueryCNPJ = async () => {
@@ -102,7 +133,7 @@ export default function SellerCustomersPage() {
     try {
       const res = await fetch(`/api/tools/cnpj?cnpj=${cleanCnpj}`);
       if (!res.ok) throw new Error('CNPJ não encontrado ou indisponível.');
-      const data = await res.json();
+      const data: RespostaCnpj = await res.json();
 
       // Preenche os campos do formulário
       setNome(data.nome_fantasia || data.razao_social || '');
@@ -113,10 +144,10 @@ export default function SellerCustomersPage() {
       setCidade(data.municipio || 'Rio de Janeiro');
       setEstado(data.uf || 'RJ');
       setCep(data.cep || '');
-      
+
       alert('Dados cadastrais preenchidos a partir da Receita Federal!');
-    } catch (err: any) {
-      alert('Erro ao consultar CNPJ: ' + err.message);
+    } catch (err) {
+      alert('Erro ao consultar CNPJ: ' + (err instanceof Error ? err.message : 'erro desconhecido.'));
     } finally {
       setCnpjLoading(false);
     }
@@ -147,34 +178,32 @@ export default function SellerCustomersPage() {
     if (!nome) return;
 
     setSaving(true);
+    // `phone` agora é gravado de verdade pelo servidor (antes era ignorado).
     const payload = {
-      nome,
-      is_revendedor: isRevendedor,
+      tradeName: nome,
+      isReseller: isRevendedor,
       cnpj: cnpj || undefined,
       cpf: cpf || undefined,
       phone: phone || undefined,
       email: email || undefined,
-      endereco: endereco || undefined,
-      bairro: bairro || undefined,
-      cidade: cidade || undefined,
-      estado: estado || undefined,
-      cep: cep || undefined,
+      address: endereco || undefined,
+      neighborhood: bairro || undefined,
+      city: cidade || undefined,
+      state: estado || undefined,
+      zipCode: cep || undefined,
       latitude: latitude ? parseFloat(latitude) : undefined,
       longitude: longitude ? parseFloat(longitude) : undefined,
-      ativo: true
+      active: true
     };
 
     try {
-      const res = await fetch('/api/erp/clientes', {
+      const res = await fetch('/api/customers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
 
-      if (!res.ok) {
-        const errJson = await res.json();
-        throw new Error(errJson.detail || 'Erro ao cadastrar cliente.');
-      }
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao cadastrar cliente.'));
 
       setIsModalOpen(false);
       // Reset Form
@@ -192,18 +221,18 @@ export default function SellerCustomersPage() {
       
       fetchClientes();
       alert('🎉 Novo parceiro cadastrado com sucesso na base do Doces Prigor OS!');
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erro ao cadastrar cliente.');
     } finally {
       setSaving(false);
     }
   };
 
   // Filtro local de busca
-  const filtered = clientes.filter(c => 
-    c.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+  const filtered = clientes.filter(c =>
+    c.tradeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (c.cnpj && c.cnpj.includes(searchTerm)) ||
-    (c.bairro && c.bairro.toLowerCase().includes(searchTerm.toLowerCase()))
+    (c.neighborhood && c.neighborhood.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
@@ -253,22 +282,22 @@ export default function SellerCustomersPage() {
           {filtered.map((c) => (
             <div key={c.id} className="bg-white p-3.5 rounded-xl border border-stone-200 shadow-xs flex justify-between items-start">
               <div className="min-w-0 pr-3">
-                <span className="text-stone-850 font-bold text-sm block truncate">{c.nome}</span>
+                <span className="text-stone-850 font-bold text-sm block truncate">{c.tradeName}</span>
                 {c.cnpj && <span className="text-[10px] text-stone-400 font-mono block mt-0.5">CNPJ: {c.cnpj}</span>}
                 <span className="text-[10px] text-stone-450 block font-medium mt-1">
-                  📍 {c.endereco || 'Campo de São Cristóvão'} • Bairro: {c.bairro || 'Centro'}
+                  📍 {c.address || 'Endereço não informado'} • Bairro: {c.neighborhood || 'Não informado'}
                 </span>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
-                {c.phone && (
-                  <a href={`tel:${c.phone}`} className="p-1.5 border border-stone-200 rounded-lg hover:bg-stone-50 text-stone-500 transition-all">
+                {(c.mobile || c.phone) && (
+                  <a href={`tel:${c.mobile || c.phone}`} className="p-1.5 border border-stone-200 rounded-lg hover:bg-stone-50 text-stone-500 transition-all">
                     <Phone className="h-4 w-4 text-amber-750" />
                   </a>
                 )}
                 <span className={`inline-flex px-1.5 py-0.5 rounded text-[8px] font-black uppercase ${
-                  c.is_revendedor ? 'bg-amber-50 text-amber-800 border border-amber-100' : 'bg-stone-50 text-stone-700'
+                  c.isReseller ? 'bg-amber-50 text-amber-800 border border-amber-100' : 'bg-stone-50 text-stone-700'
                 }`}>
-                  {c.is_revendedor ? 'Revendedor' : 'Varejo'}
+                  {c.isReseller ? 'Revendedor' : 'Varejo'}
                 </span>
               </div>
             </div>

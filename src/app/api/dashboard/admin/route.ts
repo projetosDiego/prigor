@@ -1,180 +1,189 @@
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/db';
-import { getSession } from '@/lib/auth';
-import { PipelineStage, Role } from '@prisma/client';
+/**
+ * Painel gerencial do CRM.
+ *
+ * Antes este endpoint disparava duas consultas por vendedor, uma por bairro e
+ * uma por categoria — dezenas de idas ao banco para montar uma tela. Agora são
+ * agregações por `groupBy` resolvidas em paralelo e cruzadas por `Map`.
+ *
+ * É leitura consolidada da empresa inteira: gestão apenas.
+ */
+import { requireManager } from '@/server/auth/guard';
+import { prisma } from '@/server/db';
+import { ok, route } from '@/server/http/respond';
+import { type PipelineStageValue } from '@/server/validation/crm';
 
-export async function GET(request: NextRequest) {
-  try {
-    const session = await getSession();
-    if (!session || (session.role !== Role.ADMIN && session.role !== Role.MANAGER)) {
-      return NextResponse.json({ error: 'Não autorizado.' }, { status: 403 });
-    }
-
-    // 1. Distribuição de Leads por Estágio (Funil de Vendas)
-    const stageCounts = await prisma.lead.groupBy({
-      by: ['pipelineStage'],
-      _count: { _all: true },
-    });
-
-    const funnel: Record<PipelineStage, number> = {
-      NOVO: 0,
-      QUALIFICADO: 0,
-      ATRIBUIDO: 0,
-      ABORDADO: 0,
-      CONTATO_REALIZADO: 0,
-      INTERESSADO: 0,
-      REUNIAO: 0,
-      AMOSTRA: 0,
-      NEGOCIACAO: 0,
-      NOVO_REVENDEDOR: 0,
-      PERDIDO: 0,
-    };
-
-    stageCounts.forEach((item) => {
-      funnel[item.pipelineStage] = item._count._all;
-    });
-
-    // 2. Totalizadores Gerais
-    const totalLeads = await prisma.lead.count();
-    const totalCustomers = await prisma.customer.count();
-    const activeSellersCount = await prisma.seller.count({ where: { active: true } });
-
-    // 3. Taxa de Conversão Geral
-    const convertedCount = funnel.NOVO_REVENDEDOR;
-    const conversionRate = totalLeads > 0 ? (convertedCount / totalLeads) * 100 : 0;
-
-    // 4. Tempo Médio de Conversão (Leads Convertidos)
-    const convertedLeads = await prisma.lead.findMany({
-      where: {
-        pipelineStage: PipelineStage.NOVO_REVENDEDOR,
-        convertedCustomerId: { not: null },
-      },
-      select: {
-        createdAt: true,
-        updatedAt: true, // Data da mudança final de estágio
-      },
-    });
-
-    let avgConversionTimeDays = 0;
-    if (convertedLeads.length > 0) {
-      const totalTimeMs = convertedLeads.reduce((sum, lead) => {
-        const diff = lead.updatedAt.getTime() - lead.createdAt.getTime();
-        return sum + diff;
-      }, 0);
-      const avgMs = totalTimeMs / convertedLeads.length;
-      avgConversionTimeDays = parseFloat((avgMs / (1000 * 60 * 60 * 24)).toFixed(1));
-    }
-
-    // 5. Performance por Vendedor
-    const sellers = await prisma.seller.findMany({
-      include: {
-        _count: {
-          select: {
-            leads: true,
-            customers: true,
-            activities: true,
-          },
-        },
-      },
-    });
-
-    const sellerPerformance = await Promise.all(
-      sellers.map(async (seller) => {
-        // Obter número de conversões do vendedor
-        const conversions = await prisma.lead.count({
-          where: {
-            sellerId: seller.id,
-            pipelineStage: PipelineStage.NOVO_REVENDEDOR,
-          },
-        });
-
-        // Contar visitas reais
-        const visits = await prisma.activity.count({
-          where: {
-            sellerId: seller.id,
-            type: 'VISIT',
-          },
-        });
-
-        const conversionRateSeller =
-          seller._count.leads > 0 ? (conversions / seller._count.leads) * 100 : 0;
-
-        return {
-          id: seller.id,
-          name: seller.name,
-          leadsReceived: seller._count.leads,
-          visitsLogged: visits,
-          conversions,
-          goal: seller.goal,
-          conversionRate: parseFloat(conversionRateSeller.toFixed(1)),
-        };
-      })
-    );
-
-    // 6. Performance por Bairro (Top 10)
-    const neighborhoodLeads = await prisma.lead.groupBy({
-      by: ['neighborhood'],
-      _count: { _all: true },
-    });
-
-    const neighborhoodPerformance = await Promise.all(
-      neighborhoodLeads.slice(0, 10).map(async (n) => {
-        const conversions = await prisma.lead.count({
-          where: {
-            neighborhood: n.neighborhood,
-            pipelineStage: PipelineStage.NOVO_REVENDEDOR,
-          },
-        });
-        const total = n._count._all;
-        return {
-          neighborhood: n.neighborhood,
-          totalLeads: total,
-          conversions,
-          conversionRate: total > 0 ? parseFloat(((conversions / total) * 100).toFixed(1)) : 0,
-        };
-      })
-    );
-
-    // 7. Performance por Categoria de Estabelecimento
-    const categoryLeads = await prisma.lead.groupBy({
-      by: ['category'],
-      _count: { _all: true },
-    });
-
-    const categoryPerformance = await Promise.all(
-      categoryLeads.map(async (c) => {
-        const conversions = await prisma.lead.count({
-          where: {
-            category: c.category,
-            pipelineStage: PipelineStage.NOVO_REVENDEDOR,
-          },
-        });
-        const total = c._count._all;
-        return {
-          category: c.category,
-          totalLeads: total,
-          conversions,
-          conversionRate: total > 0 ? parseFloat(((conversions / total) * 100).toFixed(1)) : 0,
-        };
-      })
-    );
-
-    return NextResponse.json({
-      success: true,
-      summary: {
-        totalLeads,
-        totalCustomers,
-        activeSellersCount,
-        conversionRate: parseFloat(conversionRate.toFixed(1)),
-        avgConversionTimeDays,
-      },
-      funnel,
-      sellerPerformance,
-      neighborhoodPerformance,
-      categoryPerformance,
-    });
-  } catch (error) {
-    console.error('Error generating admin dashboard:', error);
-    return NextResponse.json({ error: 'Erro ao compilar dados do dashboard administrativo.' }, { status: 500 });
-  }
+interface StageGroup {
+  pipelineStage: PipelineStageValue;
+  _count: { _all: number };
 }
+
+interface SellerRow {
+  id: string;
+  name: string;
+  goal: number;
+  _count: { leads: number; customers: number; activities: number };
+}
+
+interface GroupCount {
+  _count: { _all: number };
+}
+
+type NeighborhoodGroup = GroupCount & { neighborhood: string };
+type CategoryGroup = GroupCount & { category: string };
+type SellerGroup = GroupCount & { sellerId: string | null };
+
+const EMPTY_FUNNEL: Record<PipelineStageValue, number> = {
+  NOVO: 0,
+  QUALIFICADO: 0,
+  ATRIBUIDO: 0,
+  ABORDADO: 0,
+  CONTATO_REALIZADO: 0,
+  INTERESSADO: 0,
+  REUNIAO: 0,
+  AMOSTRA: 0,
+  NEGOCIACAO: 0,
+  NOVO_REVENDEDOR: 0,
+  PERDIDO: 0,
+};
+
+function rate(part: number, whole: number): number {
+  return whole > 0 ? Number(((part / whole) * 100).toFixed(1)) : 0;
+}
+
+export const GET = route('painel.gestao', async () => {
+  await requireManager();
+
+  const converted = { pipelineStage: 'NOVO_REVENDEDOR' as const };
+
+  const [
+    stageCounts,
+    totalLeads,
+    totalCustomers,
+    activeSellersCount,
+    convertedLeads,
+    sellers,
+    conversionsBySeller,
+    visitsBySeller,
+    leadsByNeighborhood,
+    conversionsByNeighborhood,
+    leadsByCategory,
+    conversionsByCategory,
+  ] = await Promise.all([
+    prisma.lead.groupBy({ by: ['pipelineStage'], _count: { _all: true } }),
+    prisma.lead.count(),
+    prisma.customer.count(),
+    prisma.seller.count({ where: { active: true } }),
+    prisma.lead.findMany({
+      where: { ...converted, convertedCustomerId: { not: null } },
+      select: { createdAt: true, updatedAt: true },
+    }),
+    prisma.seller.findMany({
+      select: {
+        id: true,
+        name: true,
+        goal: true,
+        _count: { select: { leads: true, customers: true, activities: true } },
+      },
+    }),
+    prisma.lead.groupBy({ by: ['sellerId'], where: converted, _count: { _all: true } }),
+    prisma.activity.groupBy({ by: ['sellerId'], where: { type: 'VISIT' }, _count: { _all: true } }),
+    prisma.lead.groupBy({ by: ['neighborhood'], _count: { _all: true } }),
+    prisma.lead.groupBy({ by: ['neighborhood'], where: converted, _count: { _all: true } }),
+    prisma.lead.groupBy({ by: ['category'], _count: { _all: true } }),
+    prisma.lead.groupBy({ by: ['category'], where: converted, _count: { _all: true } }),
+  ]);
+
+  const funnel: Record<PipelineStageValue, number> = { ...EMPTY_FUNNEL };
+  for (const item of stageCounts as StageGroup[]) {
+    funnel[item.pipelineStage] = item._count._all;
+  }
+
+  // Tempo médio entre a criação do lead e a mudança final de estágio.
+  let avgConversionTimeDays = 0;
+  const convertedRows = convertedLeads as Array<{ createdAt: Date; updatedAt: Date }>;
+  if (convertedRows.length > 0) {
+    const totalMs = convertedRows.reduce(
+      (sum: number, lead: { createdAt: Date; updatedAt: Date }) =>
+        sum + (lead.updatedAt.getTime() - lead.createdAt.getTime()),
+      0,
+    );
+    avgConversionTimeDays = Number((totalMs / convertedRows.length / 86_400_000).toFixed(1));
+  }
+
+  const conversionsBySellerId = new Map<string, number>(
+    (conversionsBySeller as SellerGroup[])
+      .filter((row): row is SellerGroup & { sellerId: string } => row.sellerId !== null)
+      .map((row) => [row.sellerId, row._count._all]),
+  );
+  const visitsBySellerId = new Map<string, number>(
+    (visitsBySeller as SellerGroup[])
+      .filter((row): row is SellerGroup & { sellerId: string } => row.sellerId !== null)
+      .map((row) => [row.sellerId, row._count._all]),
+  );
+
+  const sellerPerformance = (sellers as SellerRow[]).map((seller) => {
+    const conversions = conversionsBySellerId.get(seller.id) ?? 0;
+    return {
+      id: seller.id,
+      name: seller.name,
+      leadsReceived: seller._count.leads,
+      visitsLogged: visitsBySellerId.get(seller.id) ?? 0,
+      conversions,
+      goal: seller.goal,
+      conversionRate: rate(conversions, seller._count.leads),
+    };
+  });
+
+  const conversionsByNeighborhoodName = new Map<string, number>(
+    (conversionsByNeighborhood as NeighborhoodGroup[]).map((row) => [
+      row.neighborhood,
+      row._count._all,
+    ]),
+  );
+
+  const neighborhoodPerformance = (leadsByNeighborhood as NeighborhoodGroup[])
+    .map((row) => {
+      const total = row._count._all;
+      const conversions = conversionsByNeighborhoodName.get(row.neighborhood) ?? 0;
+      return {
+        neighborhood: row.neighborhood,
+        totalLeads: total,
+        conversions,
+        conversionRate: rate(conversions, total),
+      };
+    })
+    .sort((a, b) => b.totalLeads - a.totalLeads)
+    .slice(0, 10);
+
+  const conversionsByCategoryName = new Map<string, number>(
+    (conversionsByCategory as CategoryGroup[]).map((row) => [row.category, row._count._all]),
+  );
+
+  const categoryPerformance = (leadsByCategory as CategoryGroup[])
+    .map((row) => {
+      const total = row._count._all;
+      const conversions = conversionsByCategoryName.get(row.category) ?? 0;
+      return {
+        category: row.category,
+        totalLeads: total,
+        conversions,
+        conversionRate: rate(conversions, total),
+      };
+    })
+    .sort((a, b) => b.totalLeads - a.totalLeads);
+
+  return ok({
+    success: true,
+    summary: {
+      totalLeads,
+      totalCustomers,
+      activeSellersCount,
+      conversionRate: rate(funnel.NOVO_REVENDEDOR, totalLeads),
+      avgConversionTimeDays,
+    },
+    funnel,
+    sellerPerformance,
+    neighborhoodPerformance,
+    categoryPerformance,
+  });
+});

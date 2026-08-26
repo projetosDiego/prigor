@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { 
   Package, 
   Plus, 
@@ -13,19 +13,32 @@ import {
   X,
   Scale
 } from 'lucide-react';
+import { responseErrorMessage } from '@/lib/errors';
 
+/** Insumo devolvido por `GET /api/products?type=insumo` (recorte de ProductDTO). */
 interface Insumo {
   id: string;
-  sku?: string;
-  codigo_barras?: string;
-  nome: string;
-  categoria?: string;
-  unidade: string;
-  custo: number;
-  estoque: number;
-  estoque_minimo: number;
-  ativo: boolean;
+  sku: string | null;
+  barCode: string | null;
+  name: string;
+  category: string | null;
+  unit: string;
+  cost: number;
+  stock: number;
+  minStock: number;
+  active: boolean;
 }
+
+/** Envelope de paginação usado por todas as listagens da API. */
+interface Paginated<T> {
+  data: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
+
 
 export default function RawMaterialsPage() {
   const [insumos, setInsumos] = useState<Insumo[]>([]);
@@ -50,28 +63,35 @@ export default function RawMaterialsPage() {
   const [estoque, setEstoque] = useState('0');
   const [estoqueMinimo, setEstoqueMinimo] = useState('0');
 
-  useEffect(() => {
-    fetchInsumos();
-  }, []);
-
-  const fetchInsumos = async () => {
+  const fetchInsumos = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch('/api/erp/produtos?tipo=insumo');
-      if (!res.ok) throw new Error('Falha ao carregar insumos.');
-      const data = await res.json();
-      setInsumos(data);
-      
+      // A listagem é paginada; a tela precisa de todos os insumos de uma vez.
+      const res = await fetch('/api/products?type=insumo&pageSize=500');
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Falha ao carregar insumos.'));
+      const json: Paginated<Insumo> = await res.json();
+      const lista = json.data;
+      setInsumos(lista);
+
       // Extrai categorias únicas
-      const cats: string[] = Array.from(new Set(data.map((i: Insumo) => i.categoria).filter(Boolean))) as string[];
+      const cats: string[] = Array.from(
+        new Set(lista.map((i) => i.category).filter((c): c is string => Boolean(c))),
+      );
       setCategories(cats);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao carregar insumos.');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // A carga roda fora do corpo síncrono do efeito para não encadear renders.
+    void (async () => {
+      await fetchInsumos();
+    })();
+  }, [fetchInsumos]);
 
   const handleOpenCreateModal = () => {
     setModalMode('create');
@@ -90,14 +110,14 @@ export default function RawMaterialsPage() {
   const handleOpenEditModal = (insumo: Insumo) => {
     setModalMode('edit');
     setSelectedId(insumo.id);
-    setNome(insumo.nome);
+    setNome(insumo.name);
     setSku(insumo.sku || '');
-    setCodigoBarras(insumo.codigo_barras || '');
-    setCategoria(insumo.categoria || '');
-    setUnidade(insumo.unidade);
-    setCusto(String(insumo.custo));
-    setEstoque(String(insumo.estoque));
-    setEstoqueMinimo(String(insumo.estoque_minimo));
+    setCodigoBarras(insumo.barCode || '');
+    setCategoria(insumo.category || '');
+    setUnidade(insumo.unit);
+    setCusto(String(insumo.cost));
+    setEstoque(String(insumo.stock));
+    setEstoqueMinimo(String(insumo.minStock));
     setIsModalOpen(true);
   };
 
@@ -105,21 +125,23 @@ export default function RawMaterialsPage() {
     e.preventDefault();
     if (!nome) return;
 
+    // Insumo não tem ficha técnica: `recipe` não é enviado (omitir preserva a
+    // receita existente no servidor) e o custo informado aqui é o que vale.
     const payload = {
-      nome,
+      name: nome,
       sku: sku || undefined,
-      codigo_barras: codigoBarras || undefined,
-      categoria: categoria || undefined,
-      tipo: 'insumo',
-      unidade,
-      custo: parseFloat(custo) || 0,
-      estoque: parseFloat(estoque) || 0,
-      estoque_minimo: parseFloat(estoqueMinimo) || 0,
-      ativo: true
+      barCode: codigoBarras || undefined,
+      category: categoria || undefined,
+      type: 'insumo',
+      unit: unidade,
+      cost: parseFloat(custo) || 0,
+      stock: parseFloat(estoque) || 0,
+      minStock: parseFloat(estoqueMinimo) || 0,
+      active: true
     };
 
     try {
-      const url = modalMode === 'create' ? '/api/erp/produtos' : `/api/erp/produtos/${selectedId}`;
+      const url = modalMode === 'create' ? '/api/products' : `/api/products/${selectedId}`;
       const method = modalMode === 'create' ? 'POST' : 'PUT';
 
       const res = await fetch(url, {
@@ -128,35 +150,32 @@ export default function RawMaterialsPage() {
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) {
-        const errJson = await res.json();
-        throw new Error(errJson.detail || 'Erro ao salvar insumo.');
-      }
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao salvar insumo.'));
 
       setIsModalOpen(false);
       fetchInsumos();
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erro ao salvar insumo.');
     }
   };
 
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Tem certeza que deseja arquivar o insumo "${name}"?`)) return;
     try {
-      const res = await fetch(`/api/erp/produtos/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Erro ao arquivar insumo.');
+      const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao arquivar insumo.'));
       fetchInsumos();
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erro ao arquivar insumo.');
     }
   };
 
   // Filtros
   const filteredInsumos = insumos.filter(insumo => {
-    const matchesSearch = insumo.nome.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    const matchesSearch = insumo.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (insumo.sku && insumo.sku.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (insumo.codigo_barras && insumo.codigo_barras.includes(searchQuery));
-    const matchesCategory = !categoryFilter || insumo.categoria === categoryFilter;
+      (insumo.barCode && insumo.barCode.includes(searchQuery));
+    const matchesCategory = !categoryFilter || insumo.category === categoryFilter;
     return matchesSearch && matchesCategory;
   });
 
@@ -255,27 +274,27 @@ export default function RawMaterialsPage() {
               </thead>
               <tbody className="divide-y divide-stone-100 font-semibold text-stone-700">
                 {filteredInsumos.map((insumo) => {
-                  const isLowStock = insumo.estoque_minimo > 0 && insumo.estoque <= insumo.estoque_minimo;
+                  const isLowStock = insumo.minStock > 0 && insumo.stock <= insumo.minStock;
                   return (
                     <tr key={insumo.id} className="hover:bg-stone-50/50">
                       <td className="py-4 px-6">
                         {insumo.sku && <span className="text-[10px] text-stone-400 font-bold block mb-0.5">{insumo.sku}</span>}
-                        <span className="text-stone-850 font-bold text-sm block">{insumo.nome}</span>
+                        <span className="text-stone-850 font-bold text-sm block">{insumo.name}</span>
                       </td>
-                      <td className="py-4 px-6 text-stone-500">{insumo.categoria || '—'}</td>
-                      <td className="py-4 px-6 text-center font-bold text-stone-500 uppercase">{insumo.unidade}</td>
+                      <td className="py-4 px-6 text-stone-500">{insumo.category || '—'}</td>
+                      <td className="py-4 px-6 text-center font-bold text-stone-500 uppercase">{insumo.unit}</td>
                       <td className="py-4 px-6 text-right text-stone-850">
-                        {insumo.custo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2 })}
+                        {insumo.cost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2 })}
                       </td>
                       <td className="py-4 px-6 text-center">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-black ${
                           isLowStock ? 'bg-red-50 text-red-700 border border-red-100' : 'bg-stone-50 text-stone-800'
                         }`}>
                           {isLowStock && <AlertTriangle className="h-3.5 w-3.5 text-red-650" />}
-                          {insumo.estoque} {insumo.unidade}
+                          {insumo.stock} {insumo.unit}
                         </span>
                       </td>
-                      <td className="py-4 px-6 text-center text-stone-400">{insumo.estoque_minimo} {insumo.unidade}</td>
+                      <td className="py-4 px-6 text-center text-stone-400">{insumo.minStock} {insumo.unit}</td>
                       <td className="py-4 px-6 text-center">
                         <div className="flex items-center justify-center gap-2">
                           <button 
@@ -285,7 +304,7 @@ export default function RawMaterialsPage() {
                             <Edit className="h-4 w-4" />
                           </button>
                           <button 
-                            onClick={() => handleDelete(insumo.id, insumo.nome)}
+                            onClick={() => handleDelete(insumo.id, insumo.name)}
                             className="p-1.5 border border-stone-200 rounded-lg hover:bg-red-50 hover:text-red-750 text-stone-400 transition-all cursor-pointer"
                           >
                             <Trash2 className="h-4 w-4" />

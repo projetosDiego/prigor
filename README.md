@@ -1,36 +1,101 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Doces Prigor OS
 
-## Getting Started
+Sistema único da Doces Prigor: ERP (produtos, pedidos, estoque, financeiro) e
+CRM de expansão (prospecção, funil, território) na mesma aplicação, no mesmo
+banco.
 
-First, run the development server:
+**Stack:** Next.js 16 · React 19 · TypeScript · Prisma · PostgreSQL 16 · Tailwind 4
+
+---
+
+## Como rodar (desenvolvimento)
+
+Pré-requisitos: Node 22+, Docker.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env          # preencha JWT_SECRET, ADMIN_EMAIL e ADMIN_PASSWORD
+npm run db:up                 # sobe o Postgres em container
+npm run setup                 # instala, gera o client, migra e cria o admin
+npm run dev                   # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Para gerar o `JWT_SECRET`:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+openssl rand -hex 32
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Comandos
 
-## Learn More
+| Comando | O que faz |
+|---|---|
+| `npm run dev` | Servidor de desenvolvimento |
+| `npm run verify` | Tipos + lint + testes. **Rode antes de todo commit.** |
+| `npm run typecheck` | Só o TypeScript |
+| `npm run test` | Testes das regras de negócio |
+| `npm run test:coverage` | Testes com cobertura (mínimo 90% no domínio) |
+| `npm run db:migrate` | Cria uma migration nova a partir do schema |
+| `npm run db:deploy` | Aplica migrations pendentes (é o que roda em produção) |
+| `npm run db:studio` | Navegador visual do banco |
+| `npm run db:reset` | **Apaga tudo** e recria do zero |
 
-To learn more about Next.js, take a look at the following resources:
+## Estrutura
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+src/
+├── app/
+│   ├── admin/            Telas de gestão
+│   ├── seller/           Telas do vendedor em campo
+│   └── api/              Rotas HTTP — finas: validam, chamam o serviço, respondem
+├── server/               Tudo que só roda no servidor
+│   ├── domain/           REGRA DE NEGÓCIO PURA (sem banco, sem HTTP) — é aqui
+│   │                     que moram cálculo de pedido, comissão, estoque, preço
+│   ├── services/         Orquestração: transação, persistência, serialização
+│   ├── validation/       Schemas zod de toda entrada
+│   ├── http/             Erros, resposta padronizada, log, limite de tentativas
+│   ├── auth/             Sessão, senha, guards de autorização
+│   ├── db.ts             Cliente Prisma
+│   └── env.ts            Configuração validada (falha no boot se estiver errada)
+├── lib/                  Código compartilhado com o cliente
+└── components/
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+prisma/
+├── schema.prisma         Fonte única da verdade do banco
+├── migrations/           Histórico versionado
+└── seed.ts               Admin inicial + configuração padrão
 
-## Deploy on Vercel
+tests/domain/             Testes da regra de negócio
+docker/                   Entrypoint e nginx
+docs/                     Decisões de arquitetura e guia de deploy
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### A regra que sustenta o resto
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+**Regra de negócio mora em `src/server/domain/`, em função pura.** Nada ali
+importa Prisma, Next ou HTTP: entra dado simples, sai dado simples. Por isso o
+cálculo de um pedido é testável sem subir banco, e por isso o teste roda em
+segundo.
+
+Rota HTTP não calcula nada. Ela valida a entrada, chama um serviço e devolve.
+Serviço orquestra: abre transação, lê e grava, chama o domínio para decidir.
+
+## Autorização
+
+Três papéis: `ADMIN`, `MANAGER`, `SELLER`.
+
+O vendedor enxerga **apenas a própria carteira** — clientes, pedidos e leads
+dele. Isso é aplicado no `where` de cada consulta via `sellerScope(session)` em
+`src/server/auth/guard.ts`, não na tela. Uma consulta nova que esqueça o escopo
+é um vazamento; use sempre o helper.
+
+## Dinheiro
+
+Valor monetário é `Decimal`, nunca `number`. As colunas são `DECIMAL(12,2)`, o
+cálculo passa por `decimal.js` e o arredondamento é HALF_UP. `number` só
+aparece na resposta da API, para o front formatar.
+
+## Documentação
+
+- [`docs/DECISOES.md`](docs/DECISOES.md) — por que o sistema é assim, o que
+  mudou de comportamento e quais bugs foram corrigidos
+- [`docs/DEPLOY.md`](docs/DEPLOY.md) — subir na VPS, passo a passo

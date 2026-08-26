@@ -1,22 +1,30 @@
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/db';
-import { getSession } from '@/lib/auth';
+/**
+ * Histórico de execuções da prospecção.
+ *
+ * Dado consolidado da operação (custo de API, volume gerado): leitura de
+ * gestão. O `take: 20` fixo virou paginação de verdade.
+ */
+import { requireManager } from '@/server/auth/guard';
+import { prisma } from '@/server/db';
+import { ok, route } from '@/server/http/respond';
+import { paginated } from '@/server/services/serializers';
+import { parseQuery } from '@/server/validation/common';
+import { prospectingRunsQuerySchema } from '@/server/validation/crm';
 
-export async function GET() {
-  try {
-    const session = await getSession();
-    if (!session || (session.role !== 'ADMIN' && session.role !== 'MANAGER')) {
-      return NextResponse.json({ error: 'Não autorizado.' }, { status: 403 });
-    }
+export const GET = route('prospeccao.execucoes', async (request) => {
+  await requireManager();
+  const query = parseQuery(request, prospectingRunsQuerySchema);
 
-    const runs = await prisma.prospectingRun.findMany({
+  const [rows, total] = await Promise.all([
+    prisma.prospectingRun.findMany({
       orderBy: { startedAt: 'desc' },
-      take: 20,
-    });
+      skip: (query.page - 1) * query.pageSize,
+      take: query.pageSize,
+    }),
+    prisma.prospectingRun.count(),
+  ]);
 
-    return NextResponse.json({ runs });
-  } catch (error) {
-    console.error('Error fetching runs:', error);
-    return NextResponse.json({ error: 'Erro ao carregar execuções.' }, { status: 500 });
-  }
-}
+  return ok({
+    ...paginated(rows, total, query.page, query.pageSize),
+  });
+});

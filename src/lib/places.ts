@@ -1,7 +1,7 @@
-import prisma from './db';
-import { calculateHaversineDistance } from './geocoding';
-import { calculateLeadScore } from './scoring';
-import { PipelineStage, ScoreSettings } from '@prisma/client';
+import { prisma } from '@/server/db';
+import { errorMessage } from './errors';
+import { calculateLeadScore, type ScoreWeights } from './scoring';
+import { PipelineStage } from '@prisma/client';
 
 /**
  * O modo simulado precisa ser LIGADO DE PROPOSITO. Sem esta flag, qualquer
@@ -99,6 +99,32 @@ function generateMockPlaces(
   return results;
 }
 
+/** Campos pedidos no FieldMask da Places API (New). */
+interface GooglePlaceResult {
+  id: string;
+  displayName?: { text?: string };
+  formattedAddress?: string;
+  nationalPhoneNumber?: string;
+  rating?: number;
+  userRatingCount?: number;
+  websiteUri?: string;
+  location?: { latitude?: number; longitude?: number };
+}
+
+interface GooglePlacesSearchResponse {
+  places?: GooglePlaceResult[];
+}
+
+/** Configurações globais usadas pelo motor de prospecção. */
+interface SystemSettingsRow {
+  id: string;
+  monthlyCostLimit: number;
+  dailyCostLimit: number;
+  apiPaused: boolean;
+  currentDailyCost: number;
+  currentMonthlyCost: number;
+}
+
 /**
  * Consulta a API do Google Places (New) ou gera mocks caso a chave de API não esteja configurada ou seja de desenvolvimento.
  */
@@ -159,10 +185,10 @@ export async function searchGooglePlaces(
       throw new Error(`Google Places API returned error status ${response.status}: ${errorText}`);
     }
 
-    const data = await response.json();
-    const googlePlaces = data.places || [];
+    const data: GooglePlacesSearchResponse = await response.json();
+    const googlePlaces = data.places ?? [];
 
-    const places: ProspectedPlace[] = googlePlaces.map((p: any) => {
+    const places: ProspectedPlace[] = googlePlaces.map((p: GooglePlaceResult) => {
       return {
         googlePlaceId: p.id,
         tradeName: p.displayName?.text || 'Estabelecimento Sem Nome',
@@ -189,18 +215,18 @@ export async function searchGooglePlaces(
       apiCostUsd,
       serviceType: 'GOOGLE_API',
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (!MOCK_PERMITIDO) {
       // Sem fallback silencioso: um erro da API nao pode virar lead ficticio
       // gravado no banco como se fosse real.
       console.error('Falha na requisicao da Google Places API:', error);
       throw new Error(
-        `Falha ao consultar o Google Places: ${error?.message || error}. ` +
+        `Falha ao consultar o Google Places: ${errorMessage(error)}. ` +
         'Nenhum lead foi gravado. Defina ALLOW_MOCK_PLACES=true se quiser ' +
         'usar dados simulados quando a API falhar.'
       );
     }
-    console.warn(avisoMock(`falha na Google Places API (${error?.message || error})`));
+    console.warn(avisoMock(`falha na Google Places API (${errorMessage(error)})`));
     const places = generateMockPlaces(query, category, neighborhoodName, centerLat, centerLng, limit);
     return {
       places,
@@ -230,9 +256,11 @@ export async function runProspectingEngine(params: {
   const { neighborhoodId, category, manual, limit = 5 } = params;
 
   // 1. Carregar configurações do sistema
-  const settings = await prisma.systemSettings.findFirst();
-  const dailyLimit = settings?.dailyCostLimit || 10.0;
+  const settings: SystemSettingsRow | null = await prisma.systemSettings.findFirst();
   const monthlyLimit = settings?.monthlyCostLimit || 150.0;
+  // O teto diário existia na configuração mas nunca era comparado com nada:
+  // só o mensal pausava a API. Agora os dois valem.
+  const dailyLimit = settings?.dailyCostLimit || 10.0;
   const isApiPaused = settings?.apiPaused || false;
 
   // Se a API estiver travada por limite de gastos, abortar
@@ -304,8 +332,8 @@ export async function runProspectingEngine(params: {
     let duplicatesCount = 0;
     let existingCustCount = 0;
 
-    const scoreSettings = await prisma.scoreSettings.findFirst();
-    const activeCustomers = await prisma.customer.findMany({
+    const scoreSettings: ScoreWeights | null = await prisma.scoreSettings.findFirst();
+    const activeCustomers: { latitude: number; longitude: number }[] = await prisma.customer.findMany({
       where: { status: 'ATIVO' },
       select: { latitude: true, longitude: true },
     });
@@ -355,7 +383,7 @@ export async function runProspectingEngine(params: {
       }
 
       // Regra 3: Se não duplicado, calcular Prigor Score
-      const scoreWeights = scoreSettings || {
+      const scoreWeights: ScoreWeights = scoreSettings || {
         categoryWeight: 25,
         compatibilityWeight: 20,
         commercialWeight: 15,
@@ -378,7 +406,7 @@ export async function runProspectingEngine(params: {
           googleReviewsCount: place.googleReviewsCount,
           hasPhotos: place.hasPhotos,
         },
-        scoreWeights as any,
+        scoreWeights,
         activeCustomers
       );
 
@@ -401,7 +429,7 @@ export async function runProspectingEngine(params: {
           category: place.category,
           googlePlaceId: place.googlePlaceId,
           score,
-          scoreBreakdown: breakdown as any,
+          scoreBreakdown: breakdown,
           sellerId,
           regionId: neighborhood.regionId,
           neighborhoodId: neighborhood.id,
@@ -435,8 +463,10 @@ export async function runProspectingEngine(params: {
           data: {
             currentDailyCost: settings.currentDailyCost + searchResult.apiCostUsd,
             currentMonthlyCost: settings.currentMonthlyCost + searchResult.apiCostUsd,
-            // Pausar automaticamente caso atinja limite mensal
-            apiPaused: settings.currentMonthlyCost + searchResult.apiCostUsd >= monthlyLimit,
+            // Pausa ao estourar o teto diário OU o mensal.
+            apiPaused:
+              settings.currentMonthlyCost + searchResult.apiCostUsd >= monthlyLimit ||
+              settings.currentDailyCost + searchResult.apiCostUsd >= dailyLimit,
           },
         });
       }
@@ -470,15 +500,15 @@ export async function runProspectingEngine(params: {
       existingCustomers: existingCustCount,
       costUsd: searchResult.apiCostUsd,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Erro na execução do motor de prospecção:', error);
-    
+
     await prisma.prospectingRun.update({
       where: { id: run.id },
       data: {
         finishedAt: new Date(),
         status: 'FAILED',
-        errors: error.message || 'Erro desconhecido na prospecção.',
+        errors: errorMessage(error) || 'Erro desconhecido na prospecção.',
       },
     });
 

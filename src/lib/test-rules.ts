@@ -72,9 +72,10 @@ async function testScoringEngine() {
     } else {
       console.error(`❌ Teste de Score falhou! Pontuação para lead quente foi muito baixa: ${result.score}`);
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Se falhar porque não consegue conectar ao banco para consultar a região, tudo bem, mostra que o resto funciona
-    console.log(`Nota: Executado teste de scoring. Dependência de banco identificada: ${err.message}`);
+    const message = err instanceof Error ? err.message : String(err);
+    console.log(`Nota: Executado teste de scoring. Dependência de banco identificada: ${message}`);
   }
 }
 

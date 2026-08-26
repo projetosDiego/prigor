@@ -1,107 +1,25 @@
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/db';
-import { getSession, hashPassword } from '@/lib/auth';
-import { Role } from '@prisma/client';
+import { z } from 'zod';
 
-// GET /api/sellers - List all sellers
-export async function GET() {
-  try {
-    const sellers = await prisma.seller.findMany({
-      orderBy: { name: 'asc' },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            phone: true,
-            active: true,
-          },
-        },
-        neighborhoods: {
-          select: {
-            id: true,
-            name: true,
-            region: { select: { name: true } },
-          },
-        },
-      },
-    });
+import { requireManager, requireUser } from '@/server/auth/guard';
+import { created, ok, readJson, route } from '@/server/http/respond';
+import { booleanFlag, parseQuery } from '@/server/validation/common';
+import { sellerInputSchema } from '@/server/validation/sales';
+import { createSeller, listSellers } from '@/server/services/sellers';
 
-    return NextResponse.json({ sellers });
-  } catch (error) {
-    console.error('Error fetching sellers:', error);
-    return NextResponse.json({ error: 'Erro ao buscar vendedores.' }, { status: 500 });
-  }
-}
+const listQuery = z.object({ activeOnly: booleanFlag(true) });
 
-// POST /api/sellers - Create user and seller
-export async function POST(request: NextRequest) {
-  try {
-    const session = await getSession();
-    if (!session || (session.role !== 'ADMIN' && session.role !== 'MANAGER')) {
-      return NextResponse.json({ error: 'Não autorizado.' }, { status: 403 });
-    }
+const createSchema = sellerInputSchema.extend({
+  password: z.string().min(8, 'A senha do vendedor precisa de pelo menos 8 caracteres.').max(200),
+});
 
-    const body = await request.json();
-    const { name, email, password, phone, goal, active, startDate } = body;
+export const GET = route('vendedores.listar', async (request) => {
+  await requireUser();
+  const { activeOnly } = parseQuery(request, listQuery);
+  return ok({ data: await listSellers(activeOnly) });
+});
 
-    if (!name || !email || !password) {
-      return NextResponse.json({ error: 'Nome, E-mail e Senha são campos obrigatórios.' }, { status: 400 });
-    }
-
-    // Verificar se e-mail já existe
-    const existingUser = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
-    });
-
-    if (existingUser) {
-      return NextResponse.json({ error: 'Já existe um usuário cadastrado com este e-mail.' }, { status: 400 });
-    }
-
-    const passwordHash = await hashPassword(password);
-    const isActive = active !== undefined ? active : true;
-
-    // Transação para criar User e Seller juntos
-    const result = await prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({
-        data: {
-          name,
-          email: email.toLowerCase(),
-          phone,
-          passwordHash,
-          role: Role.SELLER,
-          active: isActive,
-        },
-      });
-
-      const seller = await tx.seller.create({
-        data: {
-          userId: user.id,
-          name,
-          phone,
-          active: isActive,
-          goal: goal ? parseInt(goal) : 0,
-          startDate: startDate ? new Date(startDate) : new Date(),
-        },
-      });
-
-      return { user, seller };
-    });
-
-    // Auditoria
-    await prisma.auditLog.create({
-      data: {
-        userId: session.userId,
-        action: 'CREATE_SELLER',
-        entity: 'Seller',
-        entityId: result.seller.id,
-        newValue: { sellerId: result.seller.id, email: result.user.email, name: result.seller.name },
-      },
-    });
-
-    return NextResponse.json({ success: true, seller: result.seller });
-  } catch (error) {
-    console.error('Error creating seller:', error);
-    return NextResponse.json({ error: 'Erro ao cadastrar vendedor.' }, { status: 500 });
-  }
-}
+export const POST = route('vendedores.criar', async (request) => {
+  await requireManager();
+  const input = createSchema.parse(await readJson(request));
+  return created(await createSeller(input));
+});

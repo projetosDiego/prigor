@@ -1,7 +1,7 @@
 import React from 'react';
 import { notFound } from 'next/navigation';
-import prisma from '@/lib/db';
-import { getSession } from '@/lib/auth';
+import { prisma } from '@/server/db';
+import { getSession } from '@/server/auth/session';
 import LeadDetailClient from './LeadDetailClient';
 
 export const metadata = {
@@ -49,21 +49,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     );
   }
 
-  // Obter regiões e bairros ativos para caso o gestor/admin queira alterar o território do lead
-  const regions = await prisma.region.findMany({ where: { active: true } });
-  const neighborhoods = await prisma.neighborhood.findMany({ where: { active: true } });
-
   // Serializar dados para passar ao cliente
   const serializedLead = JSON.parse(JSON.stringify(lead));
-  const serializedRegions = JSON.parse(JSON.stringify(regions));
-  const serializedNeighborhoods = JSON.parse(JSON.stringify(neighborhoods));
 
-  return (
-    <LeadDetailClient
-      initialLead={serializedLead}
-      regions={serializedRegions}
-      neighborhoods={serializedNeighborhoods}
-      currentUserRole={session.role}
-    />
-  );
+  return <LeadDetailClient initialLead={serializedLead} />;
 }

@@ -1,21 +1,21 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { 
-  Users, 
-  Upload, 
-  Check, 
-  AlertCircle, 
-  HelpCircle, 
-  Loader2, 
-  FileText,
+import {
+  Users,
+  Upload,
+  Check,
+  AlertCircle,
+  Loader2,
   MapPin,
   Coffee,
   CheckCircle2,
   Plus,
   X
 } from 'lucide-react';
+
+import { errorMessage, apiErrorMessage } from '@/lib/errors';
 
 interface Customer {
   id: string;
@@ -44,6 +44,65 @@ interface ImportPreviewRow {
   message: string;
 }
 
+interface SellerOption {
+  id: string;
+  name: string;
+}
+
+/** Resumo da pré-visualização (`action: 'preview'`). */
+interface PreviewSummary {
+  total: number;
+  valid: number;
+  duplicates: number;
+  conflicts: number;
+  invalid: number;
+}
+
+/** Resumo da gravação (`action: 'commit'`). */
+interface CommitSummary {
+  total: number;
+  imported: number;
+  skipped: number;
+}
+
+interface CustomersResponse {
+  data?: Customer[];
+  error?: string;
+}
+
+interface SellersResponse {
+  data?: SellerOption[];
+}
+
+interface PreviewResponse {
+  summary?: PreviewSummary;
+  preview?: ImportPreviewRow[];
+  error?: string;
+}
+
+interface CommitResponse {
+  summary?: CommitSummary;
+  error?: string;
+}
+
+/** Resposta da consulta de CNPJ (Receita Federal). */
+interface CnpjLookup {
+  nome_fantasia?: string;
+  razao_social?: string;
+  ddd_telefone_1?: string;
+  logradouro?: string;
+  numero?: string;
+  complemento?: string;
+  bairro?: string;
+  cep?: string;
+}
+
+/** Resposta da consulta de CEP. */
+interface CepLookup {
+  street?: string;
+  neighborhood?: string;
+}
+
 const formatPhone = (value: string) => {
   if (!value) return value;
   const phone = value.replace(/\D/g, '');
@@ -63,17 +122,16 @@ const formatPhone = (value: string) => {
 export default function AdminCustomersPage() {
   const [activeTab, setActiveTab] = useState<'list' | 'import'>('list');
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [sellers, setSellers] = useState<any[]>([]);
+  const [sellers, setSellers] = useState<SellerOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Estados de importação
   const [rawJsonData, setRawJsonData] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewSummary, setPreviewSummary] = useState<any>(null);
+  const [previewSummary, setPreviewSummary] = useState<PreviewSummary | null>(null);
   const [previewRows, setPreviewRows] = useState<ImportPreviewRow[]>([]);
   const [importLoading, setImportLoading] = useState(false);
-  const [importSummary, setImportSummary] = useState<any>(null);
 
   // Estados do Modal de Cadastro Individual
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -93,35 +151,38 @@ export default function AdminCustomersPage() {
   const [cnpjLoading, setCnpjLoading] = useState(false);
   const [cepLoading, setCepLoading] = useState(false);
 
-  useEffect(() => {
-    loadCustomers();
-    loadSellers();
-  }, []);
-
-  const loadSellers = async () => {
+  const loadSellers = useCallback(async () => {
     try {
       const res = await fetch('/api/sellers');
-      const data = await res.json();
-      if (res.ok) setSellers(data.sellers || []);
+      const data: SellersResponse = await res.json();
+      if (res.ok) setSellers(data.data ?? []);
     } catch (err) {
       console.error('Erro ao buscar vendedores:', err);
     }
-  };
+  }, []);
 
-  const loadCustomers = async () => {
+  const loadCustomers = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       const res = await fetch('/api/customers');
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao carregar clientes.');
-      setCustomers(data.customers || []);
-    } catch (err: any) {
-      setError(err.message);
+      const data: CustomersResponse = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(data, 'Erro ao carregar clientes.'));
+      setCustomers(data.data ?? []);
+    } catch (err: unknown) {
+      setError(errorMessage(err));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // As cargas iniciais rodam fora do corpo síncrono do efeito para não
+    // encadear renders (react-hooks/set-state-in-effect).
+    void (async () => {
+      await Promise.all([loadCustomers(), loadSellers()]);
+    })();
+  }, [loadCustomers, loadSellers]);
 
   const handleGeneratePreview = async () => {
     if (!rawJsonData.trim()) {
@@ -132,14 +193,13 @@ export default function AdminCustomersPage() {
     setPreviewLoading(true);
     setPreviewSummary(null);
     setPreviewRows([]);
-    setImportSummary(null);
 
     try {
       // Tentar parsear JSON na mão para testar validade
-      let rows;
+      let rows: unknown;
       try {
         rows = JSON.parse(rawJsonData);
-      } catch (err) {
+      } catch {
         throw new Error('Formato JSON inválido. Certifique-se de colar um array de objetos [{}, {}].');
       }
 
@@ -153,13 +213,13 @@ export default function AdminCustomersPage() {
         body: JSON.stringify({ action: 'preview', rows }),
       });
 
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Erro ao processar preview.');
+      const json: PreviewResponse = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(json, 'Erro ao processar preview.'));
 
-      setPreviewSummary(json.summary);
+      setPreviewSummary(json.summary ?? null);
       setPreviewRows(json.preview || []);
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(errorMessage(err));
     } finally {
       setPreviewLoading(false);
     }
@@ -184,20 +244,19 @@ export default function AdminCustomersPage() {
         body: JSON.stringify({ action: 'commit', rows: validRows }),
       });
 
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Erro ao realizar importação.');
+      const json: CommitResponse = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(json, 'Erro ao realizar importação.'));
 
-      setImportSummary(json.summary);
       setPreviewRows([]);
       setPreviewSummary(null);
       setRawJsonData('');
-      
+
       // Recarregar clientes
       await loadCustomers();
-      alert(`Importação concluída! ${json.summary.imported} clientes novos foram importados com sucesso.`);
+      alert(`Importação concluída! ${json.summary?.imported} clientes novos foram importados com sucesso.`);
       setActiveTab('list');
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(errorMessage(err));
     } finally {
       setImportLoading(false);
     }
@@ -214,7 +273,7 @@ export default function AdminCustomersPage() {
     try {
       const res = await fetch(`/api/tools/cnpj?cnpj=${cleanCnpj}`);
       if (!res.ok) throw new Error('CNPJ não encontrado ou indisponível.');
-      const data = await res.json();
+      const data: CnpjLookup = await res.json();
 
       setFormTradeName(data.nome_fantasia || data.razao_social || '');
       setFormLegalName(data.razao_social || '');
@@ -225,8 +284,8 @@ export default function AdminCustomersPage() {
       setFormNeighborhood(data.bairro || '');
       setFormZipCode(data.cep || '');
       alert('Dados cadastrais preenchidos a partir da Receita Federal!');
-    } catch (err: any) {
-      alert('Erro ao buscar CNPJ: ' + err.message);
+    } catch (err: unknown) {
+      alert('Erro ao buscar CNPJ: ' + errorMessage(err));
     } finally {
       setCnpjLoading(false);
     }
@@ -243,13 +302,13 @@ export default function AdminCustomersPage() {
     try {
       const res = await fetch(`/api/tools/cep?cep=${cleanCep}`);
       if (!res.ok) throw new Error('CEP não encontrado ou indisponível.');
-      const data = await res.json();
+      const data: CepLookup = await res.json();
 
       setFormAddress(data.street || '');
       setFormNeighborhood(data.neighborhood || '');
       alert('Endereço do CEP carregado!');
-    } catch (err: any) {
-      alert('Erro ao consultar CEP: ' + err.message);
+    } catch (err: unknown) {
+      alert('Erro ao consultar CEP: ' + errorMessage(err));
     } finally {
       setCepLoading(false);
     }
@@ -279,7 +338,7 @@ export default function AdminCustomersPage() {
       longitude: -43.1729,
       category: formCategory,
       sellerId: formSellerId || undefined,
-      isRevendedor: formIsRevendedor,
+      isReseller: formIsRevendedor,
       status: 'ATIVO'
     };
 
@@ -290,10 +349,10 @@ export default function AdminCustomersPage() {
         body: JSON.stringify(payload)
       });
 
-      const data = await res.json();
+      const data: CustomersResponse = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || 'Erro ao cadastrar cliente.');
+        throw new Error(apiErrorMessage(data, 'Erro ao cadastrar cliente.'));
       }
 
       alert('🎉 Ponto de revenda cadastrado com sucesso!');
@@ -313,8 +372,8 @@ export default function AdminCustomersPage() {
 
       // Recarrega lista
       await loadCustomers();
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(errorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -587,7 +646,7 @@ export default function AdminCustomersPage() {
               </div>
             ) : (
               <div className="p-16 text-center border border-dashed border-stone-300 rounded-2xl text-stone-450 italic text-xs">
-                Nenhum preview gerado. Cole os dados na caixa ao lado e clique em "Carregar Preview".
+                Nenhum preview gerado. Cole os dados na caixa ao lado e clique em &quot;Carregar Preview&quot;.
               </div>
             )}
           </div>

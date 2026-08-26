@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { 
   Package, 
@@ -14,43 +14,57 @@ import {
   RefreshCw,
   X,
   Utensils,
-  DollarSign,
-  Layers
+  DollarSign
 } from 'lucide-react';
+import { responseErrorMessage } from '@/lib/errors';
 
-interface IngredienteOut {
+/** Linha da ficha técnica devolvida pela API (RecipeLineDTO). */
+interface LinhaReceita {
   id?: string;
-  insumo_id: string;
-  insumo_nome: string;
-  insumo_unidade: string;
-  insumo_custo: number;
-  quantidade: number;
-  observacao?: string;
+  ingredientId: string;
+  ingredientName: string | null;
+  ingredientUnit: string | null;
+  ingredientCost: number | null;
+  quantity: number;
+  observation?: string | null;
 }
 
+/** Produto de venda devolvido por `GET /api/products?type=venda` (ProductDTO). */
 interface Produto {
   id: string;
-  sku?: string;
-  codigo_barras?: string;
-  nome: string;
-  categoria?: string;
-  unidade: string;
-  preco_venda: number;
-  preco_atacado: number;
-  qtd_min_atacado: number;
-  custo: number;
-  estoque: number;
-  estoque_minimo: number;
-  ativo: boolean;
-  ingredientes?: IngredienteOut[];
+  sku: string | null;
+  barCode: string | null;
+  name: string;
+  category: string | null;
+  unit: string;
+  salePrice: number;
+  wholesalePrice: number;
+  minWholesaleQty: number;
+  cost: number;
+  stock: number;
+  minStock: number;
+  active: boolean;
+  recipe?: LinhaReceita[];
 }
 
+/** Insumo usado para montar a ficha técnica. */
 interface Insumo {
   id: string;
-  nome: string;
-  unidade: string;
-  custo: number;
+  name: string;
+  unit: string;
+  cost: number;
 }
+
+/** Envelope de paginação usado por todas as listagens da API. */
+interface Paginated<T> {
+  data: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
+
 
 export default function ProductsPage() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
@@ -79,45 +93,52 @@ export default function ProductsPage() {
   const [estoqueMinimo, setEstoqueMinimo] = useState('0');
   
   // Ingredientes do Produto (Ficha Técnica)
-  const [ingredientes, setIngredientes] = useState<any[]>([]);
+  const [ingredientes, setIngredientes] = useState<LinhaReceita[]>([]);
   const [selectedInsumoId, setSelectedInsumoId] = useState('');
   const [ingredienteQtd, setIngredienteQtd] = useState('0');
   const [ingredienteObs, setIngredienteObs] = useState('');
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       
-      // Carrega produtos de venda
-      const resProd = await fetch('/api/erp/produtos?tipo=venda');
-      if (!resProd.ok) throw new Error('Falha ao carregar produtos.');
-      const dataProd = await resProd.json();
-      setProdutos(dataProd);
-      
+      // Carrega produtos de venda (listagem paginada; a tela mostra todos)
+      const resProd = await fetch('/api/products?type=venda&pageSize=500');
+      if (!resProd.ok) throw new Error(await responseErrorMessage(resProd, 'Falha ao carregar produtos.'));
+      const jsonProd: Paginated<Produto> = await resProd.json();
+      const listaProd = jsonProd.data;
+      setProdutos(listaProd);
+
       // Carrega insumos disponíveis
-      const resInsumo = await fetch('/api/erp/produtos?tipo=insumo');
+      const resInsumo = await fetch('/api/products?type=insumo&pageSize=500');
       if (resInsumo.ok) {
-        const dataInsumo = await resInsumo.json();
-        setInsumosList(dataInsumo);
-        if (dataInsumo.length > 0) {
-          setSelectedInsumoId(dataInsumo[0].id);
+        const jsonInsumo: Paginated<Insumo> = await resInsumo.json();
+        const listaInsumo = jsonInsumo.data;
+        setInsumosList(listaInsumo);
+        if (listaInsumo.length > 0) {
+          setSelectedInsumoId(listaInsumo[0].id);
         }
       }
 
       // Extrai categorias de produtos
-      const cats: string[] = Array.from(new Set(dataProd.map((p: Produto) => p.categoria).filter(Boolean))) as string[];
+      const cats: string[] = Array.from(
+        new Set(listaProd.map((p) => p.category).filter((c): c is string => Boolean(c))),
+      );
       setCategories(cats);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao carregar produtos.');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // A carga roda fora do corpo síncrono do efeito para não encadear renders.
+    void (async () => {
+      await fetchData();
+    })();
+  }, [fetchData]);
 
   const handleOpenCreateModal = () => {
     setModalMode('create');
@@ -141,30 +162,30 @@ export default function ProductsPage() {
   const handleOpenEditModal = async (produto: Produto) => {
     setModalMode('edit');
     setSelectedId(produto.id);
-    setNome(produto.nome);
+    setNome(produto.name);
     setSku(produto.sku || '');
-    setCodigoBarras(produto.codigo_barras || '');
-    setCategoria(produto.categoria || '');
-    setUnidade(produto.unidade);
-    setPrecoVenda(String(produto.preco_venda));
-    setPrecoAtacado(String(produto.preco_atacado));
-    setQtdMinAtacado(String(produto.qtd_min_atacado));
-    setEstoque(String(produto.estoque));
-    setEstoqueMinimo(String(produto.estoque_minimo));
-    
+    setCodigoBarras(produto.barCode || '');
+    setCategoria(produto.category || '');
+    setUnidade(produto.unit);
+    setPrecoVenda(String(produto.salePrice));
+    setPrecoAtacado(String(produto.wholesalePrice));
+    setQtdMinAtacado(String(produto.minWholesaleQty));
+    setEstoque(String(produto.stock));
+    setEstoqueMinimo(String(produto.minStock));
+
     // Carrega ingredientes (receita) do produto completo
     try {
-      const res = await fetch(`/api/erp/produtos/${produto.id}`);
+      const res = await fetch(`/api/products/${produto.id}`);
       if (res.ok) {
-        const fullProd = await res.json();
-        setIngredientes(fullProd.ingredientes || []);
+        const fullProd: Produto = await res.json();
+        setIngredientes(fullProd.recipe || []);
       } else {
-        setIngredientes(produto.ingredientes || []);
+        setIngredientes(produto.recipe || []);
       }
     } catch {
-      setIngredientes(produto.ingredientes || []);
+      setIngredientes(produto.recipe || []);
     }
-    
+
     setIsModalOpen(true);
   };
 
@@ -175,18 +196,18 @@ export default function ProductsPage() {
     if (!insumo) return;
 
     // Evita duplicados na lista visual
-    if (ingredientes.some(i => i.insumo_id === selectedInsumoId)) {
+    if (ingredientes.some(i => i.ingredientId === selectedInsumoId)) {
       alert('Este insumo já foi adicionado à receita.');
       return;
     }
 
-    const novoIng = {
-      insumo_id: insumo.id,
-      insumo_nome: insumo.nome,
-      insumo_unidade: insumo.unidade,
-      insumo_custo: insumo.custo,
-      quantidade: parseFloat(ingredienteQtd),
-      observacao: ingredienteObs || undefined
+    const novoIng: LinhaReceita = {
+      ingredientId: insumo.id,
+      ingredientName: insumo.name,
+      ingredientUnit: insumo.unit,
+      ingredientCost: insumo.cost,
+      quantity: parseFloat(ingredienteQtd),
+      observation: ingredienteObs || undefined
     };
 
     setIngredientes([...ingredientes, novoIng]);
@@ -195,43 +216,47 @@ export default function ProductsPage() {
   };
 
   const handleRemoveIngrediente = (insumoId: string) => {
-    setIngredientes(ingredientes.filter(i => i.insumo_id !== insumoId));
+    setIngredientes(ingredientes.filter(i => i.ingredientId !== insumoId));
   };
 
   // Calcula custo de produção estimado
   const calculatedCost = ingredientes.reduce((sum, ing) => {
-    return sum + (ing.quantidade * (ing.insumo_custo || 0));
+    return sum + (ing.quantity * (ing.ingredientCost || 0));
   }, 0);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nome) return;
 
-    // Envia ingredientes simplificados no formato de input (insumo_id, quantidade, observacao)
-    const ingsPayload = ingredientes.map(i => ({
-      insumo_id: i.insumo_id,
-      quantidade: i.quantidade,
-      observacao: i.observacao
+    // Envia a ficha técnica no formato de entrada (ingredientId, quantity, observation).
+    // Esta tela edita a receita, então `recipe` vai sempre — inclusive vazio,
+    // que é como se apaga a ficha técnica.
+    const recipePayload = ingredientes.map(i => ({
+      ingredientId: i.ingredientId,
+      quantity: i.quantity,
+      observation: i.observation ?? undefined
     }));
 
+    // `cost` não é enviado: com ficha técnica o servidor calcula o custo; sem
+    // ficha ele preserva o custo que já estava gravado.
     const payload = {
-      nome,
+      name: nome,
       sku: sku || undefined,
-      codigo_barras: codigoBarras || undefined,
-      categoria: categoria || undefined,
-      tipo: 'venda',
-      unidade,
-      preco_venda: parseFloat(precoVenda) || 0,
-      preco_atacado: parseFloat(precoAtacado) || 0,
-      qtd_min_atacado: parseFloat(qtdMinAtacado) || 0,
-      estoque: parseFloat(estoque) || 0,
-      estoque_minimo: parseFloat(estoqueMinimo) || 0,
-      ingredientes: ingsPayload,
-      ativo: true
+      barCode: codigoBarras || undefined,
+      category: categoria || undefined,
+      type: 'venda',
+      unit: unidade,
+      salePrice: parseFloat(precoVenda) || 0,
+      wholesalePrice: parseFloat(precoAtacado) || 0,
+      minWholesaleQty: parseFloat(qtdMinAtacado) || 0,
+      stock: parseFloat(estoque) || 0,
+      minStock: parseFloat(estoqueMinimo) || 0,
+      recipe: recipePayload,
+      active: true
     };
 
     try {
-      const url = modalMode === 'create' ? '/api/erp/produtos' : `/api/erp/produtos/${selectedId}`;
+      const url = modalMode === 'create' ? '/api/products' : `/api/products/${selectedId}`;
       const method = modalMode === 'create' ? 'POST' : 'PUT';
 
       const res = await fetch(url, {
@@ -240,35 +265,32 @@ export default function ProductsPage() {
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) {
-        const errJson = await res.json();
-        throw new Error(errJson.detail || 'Erro ao salvar produto.');
-      }
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao salvar produto.'));
 
       setIsModalOpen(false);
       fetchData();
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erro ao salvar produto.');
     }
   };
 
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Tem certeza que deseja arquivar o produto "${name}"?`)) return;
     try {
-      const res = await fetch(`/api/erp/produtos/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Erro ao arquivar produto.');
+      const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao arquivar produto.'));
       fetchData();
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erro ao arquivar produto.');
     }
   };
 
   // Filtros
   const filteredProdutos = produtos.filter(prod => {
-    const matchesSearch = prod.nome.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    const matchesSearch = prod.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (prod.sku && prod.sku.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (prod.codigo_barras && prod.codigo_barras.includes(searchQuery));
-    const matchesCategory = !categoryFilter || prod.categoria === categoryFilter;
+      (prod.barCode && prod.barCode.includes(searchQuery));
+    const matchesCategory = !categoryFilter || prod.category === categoryFilter;
     return matchesSearch && matchesCategory;
   });
 
@@ -377,27 +399,27 @@ export default function ProductsPage() {
               </thead>
               <tbody className="divide-y divide-stone-100 font-semibold text-stone-700">
                 {filteredProdutos.map((prod) => {
-                  const markup = prod.preco_venda > 0 ? ((prod.preco_venda - prod.custo) / prod.preco_venda) * 100 : 0;
-                  const isLowStock = prod.estoque_minimo > 0 && prod.estoque <= prod.estoque_minimo;
-                  
+                  const markup = prod.salePrice > 0 ? ((prod.salePrice - prod.cost) / prod.salePrice) * 100 : 0;
+                  const isLowStock = prod.minStock > 0 && prod.stock <= prod.minStock;
+
                   return (
                     <tr key={prod.id} className="hover:bg-stone-50/50">
                       <td className="py-4 px-6">
                         {prod.sku && <span className="text-[10px] text-stone-400 font-bold block mb-0.5">{prod.sku}</span>}
-                        <span className="text-stone-850 font-bold text-sm block">{prod.nome}</span>
+                        <span className="text-stone-850 font-bold text-sm block">{prod.name}</span>
                       </td>
-                      <td className="py-4 px-6 text-stone-500">{prod.categoria || '—'}</td>
+                      <td className="py-4 px-6 text-stone-500">{prod.category || '—'}</td>
                       <td className="py-4 px-6 text-right text-stone-500">
-                        {prod.custo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        {prod.cost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                       </td>
                       <td className="py-4 px-6 text-right text-stone-850">
-                        {prod.preco_venda.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        {prod.salePrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                       </td>
                       <td className="py-4 px-6 text-right text-stone-850">
-                        {prod.preco_atacado > 0 ? (
+                        {prod.wholesalePrice > 0 ? (
                           <div>
-                            <span>{prod.preco_atacado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
-                            <span className="text-[9px] text-stone-400 block">Met. {prod.qtd_min_atacado} un</span>
+                            <span>{prod.wholesalePrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                            <span className="text-[9px] text-stone-400 block">Met. {prod.minWholesaleQty} un</span>
                           </div>
                         ) : '—'}
                       </td>
@@ -413,7 +435,7 @@ export default function ProductsPage() {
                           isLowStock ? 'bg-red-50 text-red-700 border border-red-100' : 'bg-stone-50 text-stone-800'
                         }`}>
                           {isLowStock && <AlertTriangle className="h-3.5 w-3.5 text-red-650" />}
-                          {prod.estoque} un
+                          {prod.stock} un
                         </span>
                       </td>
                       <td className="py-4 px-6 text-center">
@@ -425,7 +447,7 @@ export default function ProductsPage() {
                             <Edit className="h-4 w-4" />
                           </button>
                           <button 
-                            onClick={() => handleDelete(prod.id, prod.nome)}
+                            onClick={() => handleDelete(prod.id, prod.name)}
                             className="p-1.5 border border-stone-200 rounded-lg hover:bg-red-50 hover:text-red-750 text-stone-400 transition-all cursor-pointer"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -606,7 +628,7 @@ export default function ProductsPage() {
                       ) : (
                         insumosList.map((insumo) => (
                           <option key={insumo.id} value={insumo.id}>
-                            {insumo.nome} ({insumo.unidade}) - Custo: {insumo.custo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                            {insumo.name} ({insumo.unit}) - Custo: {insumo.cost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                           </option>
                         ))
                       )}
@@ -652,18 +674,18 @@ export default function ProductsPage() {
                       </thead>
                       <tbody className="divide-y divide-stone-100 font-semibold text-stone-600">
                         {ingredientes.map((ing, idx) => {
-                          const costRel = ing.quantidade * (ing.insumo_custo || 0);
+                          const costRel = ing.quantity * (ing.ingredientCost || 0);
                           return (
                             <tr key={idx} className="hover:bg-stone-50/50">
-                              <td className="py-2 px-4 text-stone-800 font-bold">{ing.insumo_nome}</td>
-                              <td className="py-2 px-4 text-center">{ing.quantidade} {ing.insumo_unidade}</td>
+                              <td className="py-2 px-4 text-stone-800 font-bold">{ing.ingredientName}</td>
+                              <td className="py-2 px-4 text-center">{ing.quantity} {ing.ingredientUnit}</td>
                               <td className="py-2 px-4 text-right">
                                 {costRel.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                               </td>
                               <td className="py-2 px-4 text-center">
-                                <button 
+                                <button
                                   type="button"
-                                  onClick={() => handleRemoveIngrediente(ing.insumo_id)}
+                                  onClick={() => handleRemoveIngrediente(ing.ingredientId)}
                                   className="text-red-600 hover:text-red-800 font-bold cursor-pointer"
                                 >
                                   Remover

@@ -1,0 +1,126 @@
+# ============================================================================
+#  Doces Prigor OS — produção (VPS)
+#
+#  Subir com:
+#    docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#
+#  O Postgres NÃO expõe porta para fora: só a rede interna do compose alcança.
+#  Quem fala com a internet é o nginx.
+# ============================================================================
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: prigor-db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?defina POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-prigor}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backups:/backups
+    networks: [interna]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # Sem `ports:` de propósito — o banco não fica exposto na internet.
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: prigor-app
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-prigor}
+      DIRECT_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-prigor}
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET}
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-12}
+      NEXT_PUBLIC_APP_URL: ${APP_URL:?defina APP_URL}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:?defina GOOGLE_MAPS_API_KEY}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-12}
+      LOGIN_RATE_LIMIT: ${LOGIN_RATE_LIMIT:-10}
+      RUN_SEED: ${RUN_SEED:-false}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_NAME: ${ADMIN_NAME:-}
+      COMPANY_NAME: ${COMPANY_NAME:-Doces Prigor}
+      COMPANY_LEGAL_NAME: ${COMPANY_LEGAL_NAME:-}
+      COMPANY_CNPJ: ${COMPANY_CNPJ:-}
+      COMPANY_ADDRESS: ${COMPANY_ADDRESS:-}
+      COMPANY_CITY: ${COMPANY_CITY:-}
+      COMPANY_STATE: ${COMPANY_STATE:-}
+      COMPANY_ZIP: ${COMPANY_ZIP:-}
+      COMPANY_PHONE: ${COMPANY_PHONE:-}
+      COMPANY_EMAIL: ${COMPANY_EMAIL:-}
+    networks: [interna]
+    logging:
+      driver: json-file
+      options: { max-size: '10m', max-file: '5' }
+
+  nginx:
+    image: nginx:alpine
+    container_name: prigor-nginx
+    restart: always
+    depends_on: [app]
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+    networks: [interna]
+    logging:
+      driver: json-file
+      options: { max-size: '10m', max-file: '5' }
+
+  # Renovação automática do certificado.
+  certbot:
+    image: certbot/certbot
+    container_name: prigor-certbot
+    restart: unless-stopped
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    entrypoint: >
+      sh -c "trap exit TERM;
+             while :; do certbot renew --webroot -w /var/www/certbot --quiet;
+             sleep 12h & wait $${!}; done"
+
+  # Backup diário do banco, mantendo 14 dias.
+  backup:
+    image: postgres:16-alpine
+    container_name: prigor-backup
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./backups:/backups
+    networks: [interna]
+    entrypoint: >
+      sh -c "while :; do
+               arquivo=/backups/prigor-$$(date +%Y%m%d-%H%M).sql.gz;
+               pg_dump -h db -U ${POSTGRES_USER} ${POSTGRES_DB:-prigor} | gzip > $$arquivo
+                 && echo \"[backup] gerado $$arquivo\"
+                 || echo '[backup] FALHOU';
+               find /backups -name 'prigor-*.sql.gz' -mtime +14 -delete;
+               sleep 86400;
+             done"
+
+volumes:
+  pgdata:
+
+networks:
+  interna:
+    driver: bridge

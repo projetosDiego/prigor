@@ -1,55 +1,46 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
+/**
+ * Busca por proximidade: leads e clientes ao redor de uma coordenada.
+ *
+ * Os leads saem escopados pelo vendedor da sessão — carteira alheia não
+ * aparece. Os clientes ficam abertos de propósito: a tela usa a rede Prigor
+ * instalada como prova social e como referência de rota, e são só nome,
+ * categoria e endereço público do estabelecimento.
+ */
+import { isManagement, requireUser } from '@/server/auth/guard';
 import { getNearbyCustomers, getNearbyLeads } from '@/lib/geocoding';
-import prisma from '@/lib/db';
+import { prisma } from '@/server/db';
+import { ok, route } from '@/server/http/respond';
+import { parseQuery } from '@/server/validation/common';
+import { nearbyQuerySchema } from '@/server/validation/crm';
 
-export async function GET(request: NextRequest) {
-  try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
-    }
+const FALLBACK_RADIUS_KM = 5;
 
-    const { searchParams } = new URL(request.url);
-    const latStr = searchParams.get('lat');
-    const lngStr = searchParams.get('lng');
-    const radiusStr = searchParams.get('radius');
+export const GET = route('mapa.proximidade', async (request) => {
+  const session = await requireUser();
+  const query = parseQuery(request, nearbyQuerySchema);
 
-    if (!latStr || !lngStr) {
-      return NextResponse.json({ error: 'Latitude (lat) e Longitude (lng) são obrigatórias.' }, { status: 400 });
-    }
-
-    const lat = parseFloat(latStr);
-    const lng = parseFloat(lngStr);
-
-    // Carregar raio padrão das configurações do sistema se não fornecido
-    let radiusKm = 5;
-    if (radiusStr) {
-      radiusKm = parseFloat(radiusStr);
-    } else {
-      const settings = await prisma.systemSettings.findFirst();
-      if (settings) {
-        radiusKm = settings.nearbyRadiusKm;
-      }
-    }
-
-    // Se o usuário for vendedor, filtrar leads pelo seu id de vendedor
-    const sellerId = session.role === 'SELLER' ? session.sellerId : null;
-
-    const [customers, leads] = await Promise.all([
-      getNearbyCustomers(lat, lng, radiusKm),
-      getNearbyLeads(lat, lng, radiusKm, sellerId),
-    ]);
-
-    return NextResponse.json({
-      success: true,
-      coordinates: { lat, lng },
-      radiusKm,
-      customers,
-      leads,
+  let radiusKm: number;
+  if (query.radius !== undefined) {
+    radiusKm = query.radius;
+  } else {
+    const settings: { nearbyRadiusKm: number } | null = await prisma.systemSettings.findFirst({
+      select: { nearbyRadiusKm: true },
     });
-  } catch (error) {
-    console.error('Error in nearby API:', error);
-    return NextResponse.json({ error: 'Erro ao processar busca por proximidade.' }, { status: 500 });
+    radiusKm = settings?.nearbyRadiusKm ?? FALLBACK_RADIUS_KM;
   }
-}
+
+  const sellerId = isManagement(session) ? null : (session.sellerId ?? '__sem_vendedor__');
+
+  const [customers, leads] = await Promise.all([
+    getNearbyCustomers(query.lat, query.lng, radiusKm),
+    getNearbyLeads(query.lat, query.lng, radiusKm, sellerId),
+  ]);
+
+  return ok({
+    success: true,
+    coordinates: { lat: query.lat, lng: query.lng },
+    radiusKm,
+    customers,
+    leads,
+  });
+});

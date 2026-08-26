@@ -1,173 +1,178 @@
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/db';
-import { getSession } from '@/lib/auth';
-import { ActivityType, MeetingStatus, SampleResult, PipelineStage } from '@prisma/client';
+/**
+ * Atividades: linha do tempo do lead/cliente e registro de ações do vendedor.
+ *
+ * Registrar uma atividade move o lead de estágio — visita, reunião e amostra
+ * têm cada uma o seu destino no funil. Tudo isso continua numa transação: uma
+ * amostra sem o avanço de estágio deixaria o funil mentindo.
+ */
+import {
+  assertOwnedBySeller,
+  isManagement,
+  requireUser,
+  sellerScope,
+} from '@/server/auth/guard';
+import { prisma } from '@/server/db';
+import { badRequest, notFound } from '@/server/http/errors';
+import { created, ok, readJson, route } from '@/server/http/respond';
+import { paginated } from '@/server/services/serializers';
+import { parseQuery } from '@/server/validation/common';
+import {
+  activityCreateSchema,
+  activityListQuerySchema,
+  type ActivityTypeValue,
+} from '@/server/validation/crm';
 
-// GET /api/activities - Fetch activity history (filtered)
-export async function GET(request: NextRequest) {
-  try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
-    }
+/** Estágio para o qual cada tipo de atividade empurra o lead. */
+const STAGE_BY_ACTIVITY: Partial<Record<ActivityTypeValue, string>> = {
+  VISIT: 'ABORDADO',
+  MEETING: 'REUNIAO',
+  SAMPLE: 'AMOSTRA',
+};
 
-    const { searchParams } = new URL(request.url);
-    const leadId = searchParams.get('leadId');
-    const customerId = searchParams.get('customerId');
-    const sellerId = searchParams.get('sellerId');
+export const GET = route('atividades.listar', async (request) => {
+  const session = await requireUser();
+  const query = parseQuery(request, activityListQuerySchema);
 
-    const filter: any = {};
-    if (leadId) filter.leadId = leadId;
-    if (customerId) filter.customerId = customerId;
-    if (sellerId) filter.sellerId = sellerId;
+  const where: Record<string, unknown> = {
+    ...(query.leadId ? { leadId: query.leadId } : {}),
+    ...(query.customerId ? { customerId: query.customerId } : {}),
+    ...(query.type ? { type: query.type } : {}),
+  };
 
-    // Se o usuário logado for vendedor, restringir para suas próprias ações,
-    // a menos que esteja filtrando por um lead atribuído a ele (o que já é verificado no middleware/lead)
-    if (session.role === 'SELLER') {
-      filter.sellerId = session.sellerId;
-    }
+  if (query.leadId) {
+    // Timeline de um lead: mostra tudo, inclusive os eventos automáticos que
+    // não têm vendedor — desde que o lead seja da carteira de quem pede.
+    const lead = await prisma.lead.findUnique({
+      where: { id: query.leadId },
+      select: { sellerId: true },
+    });
+    if (!lead) throw notFound('Lead');
+    assertOwnedBySeller(session, lead, 'lead');
+  } else if (query.customerId) {
+    const customer = await prisma.customer.findUnique({
+      where: { id: query.customerId },
+      select: { sellerId: true },
+    });
+    if (!customer) throw notFound('Cliente');
+    assertOwnedBySeller(session, customer, 'cliente');
+  } else {
+    // Sem âncora, o vendedor só enxerga as próprias ações.
+    Object.assign(where, sellerScope(session));
+  }
 
-    const activities = await prisma.activity.findMany({
-      where: filter,
+  if (isManagement(session) && query.sellerId) {
+    where.sellerId = query.sellerId;
+  }
+
+  const [rows, total] = await Promise.all([
+    prisma.activity.findMany({
+      where,
       orderBy: { date: 'desc' },
       include: {
         seller: { select: { id: true, name: true } },
         lead: { select: { id: true, tradeName: true } },
         customer: { select: { id: true, tradeName: true } },
       },
+      skip: (query.page - 1) * query.pageSize,
+      take: query.pageSize,
+    }),
+    prisma.activity.count({ where }),
+  ]);
+
+  return ok({
+    ...paginated(rows, total, query.page, query.pageSize),
+  });
+});
+
+export const POST = route('atividades.criar', async (request) => {
+  const session = await requireUser();
+  const input = activityCreateSchema.parse(await readJson(request));
+
+  // Vendedor sempre registra em seu próprio nome; só gestão escolhe o vendedor.
+  const sellerId = isManagement(session) ? input.sellerId : session.sellerId;
+
+  if (input.leadId) {
+    const lead = await prisma.lead.findUnique({
+      where: { id: input.leadId },
+      select: { sellerId: true },
+    });
+    if (!lead) throw notFound('Lead');
+    assertOwnedBySeller(session, lead, 'lead');
+  }
+
+  if (input.customerId) {
+    const customer = await prisma.customer.findUnique({
+      where: { id: input.customerId },
+      select: { sellerId: true },
+    });
+    if (!customer) throw notFound('Cliente');
+    assertOwnedBySeller(session, customer, 'cliente');
+  }
+
+  if ((input.type === 'SAMPLE' || input.type === 'MEETING') && !sellerId) {
+    throw badRequest('Amostras e reuniões exigem um vendedor responsável associado.');
+  }
+
+  const activity = await prisma.$transaction(async (tx: typeof prisma) => {
+    const record = await tx.activity.create({
+      data: {
+        leadId: input.leadId,
+        customerId: input.customerId,
+        sellerId,
+        type: input.type,
+        description: input.description,
+        latitude: input.latitude,
+        longitude: input.longitude,
+        result: input.result,
+      },
     });
 
-    return NextResponse.json({ activities });
-  } catch (error) {
-    console.error('Error fetching activities:', error);
-    return NextResponse.json({ error: 'Erro ao carregar atividades.' }, { status: 500 });
-  }
-}
-
-// POST /api/activities - Register a new seller activity
-export async function POST(request: NextRequest) {
-  try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
-    }
-
-    const body = await request.json();
-    const {
-      leadId,
-      customerId,
-      type,
-      description,
-      latitude,
-      longitude,
-      result,
-      // Dados extras para Amostra (SAMPLE)
-      sampleQuantity,
-      sampleFlavors,
-      sampleResult,
-      // Dados extras para Reunião (MEETING)
-      meetingDate,
-      meetingLocation,
-      meetingObservation,
-      meetingStatus,
-    } = body;
-
-    if (!type || !description) {
-      return NextResponse.json({ error: 'Tipo de atividade e descrição são obrigatórios.' }, { status: 400 });
-    }
-
-    if (!leadId && !customerId) {
-      return NextResponse.json({ error: 'É necessário associar a atividade a um Lead ou Cliente.' }, { status: 400 });
-    }
-
-    // Se o usuário logado for SELLER, usar seu sellerId
-    const finalSellerId = session.role === 'SELLER' ? session.sellerId : (body.sellerId || null);
-
-    const lat = latitude ? parseFloat(latitude) : null;
-    const lng = longitude ? parseFloat(longitude) : null;
-
-    const activity = await prisma.$transaction(async (tx) => {
-      // 1. Criar a atividade base
-      const act = await tx.activity.create({
+    if (input.type === 'SAMPLE' && input.leadId && sellerId) {
+      await tx.sample.create({
         data: {
-          leadId: leadId || null,
-          customerId: customerId || null,
-          sellerId: finalSellerId,
-          type: type as ActivityType,
-          description,
-          latitude: lat,
-          longitude: lng,
-          result: result || null,
+          leadId: input.leadId,
+          sellerId,
+          product: 'Brownie Recheado 7x5 cm',
+          quantity: input.sampleQuantity,
+          flavors: input.sampleFlavors,
+          observation: input.description,
+          result: input.sampleResult ?? null,
         },
       });
+    }
 
-      // 2. Se for uma amostra, salvar dados de controle de estoque/amostra
-      if (type === ActivityType.SAMPLE && leadId) {
-        if (!finalSellerId) {
-          throw new Error('Amostras exigem um vendedor responsável associado.');
-        }
-        await tx.sample.create({
-          data: {
-            leadId,
-            sellerId: finalSellerId,
-            product: 'Brownie Recheado 7x5 cm',
-            quantity: sampleQuantity ? parseInt(sampleQuantity) : 1,
-            flavors: sampleFlavors || null,
-            observation: description,
-            result: (sampleResult as SampleResult) || null,
-          },
-        });
-      }
+    if (input.type === 'MEETING' && input.leadId && sellerId) {
+      await tx.meeting.create({
+        data: {
+          leadId: input.leadId,
+          sellerId,
+          date: input.meetingDate ?? new Date(),
+          location: input.meetingLocation,
+          observation: input.meetingObservation ?? input.description,
+          status: input.meetingStatus,
+        },
+      });
+    }
 
-      // 3. Se for uma reunião, criar o agendamento
-      if (type === ActivityType.MEETING && leadId) {
-        if (!finalSellerId) {
-          throw new Error('Reuniões exigem um vendedor responsável associado.');
-        }
-        await tx.meeting.create({
-          data: {
-            leadId,
-            sellerId: finalSellerId,
-            date: meetingDate ? new Date(meetingDate) : new Date(),
-            location: meetingLocation || null,
-            observation: meetingObservation || description,
-            status: (meetingStatus as MeetingStatus) || MeetingStatus.AGENDADA,
-          },
-        });
-      }
+    const newStage = input.leadId ? STAGE_BY_ACTIVITY[input.type] : undefined;
+    if (input.leadId && newStage) {
+      await tx.lead.update({
+        where: { id: input.leadId },
+        data: { pipelineStage: newStage },
+      });
 
-      // 4. Mudar estágio do lead caso ocorra visita/amostra/reunião automaticamente
-      if (leadId) {
-        let newStage = null;
-        if (type === ActivityType.VISIT) newStage = PipelineStage.ABORDADO;
-        if (type === ActivityType.MEETING) newStage = PipelineStage.REUNIAO;
-        if (type === ActivityType.SAMPLE) newStage = PipelineStage.AMOSTRA;
+      await tx.activity.create({
+        data: {
+          leadId: input.leadId,
+          sellerId,
+          type: 'STATUS_CHANGE',
+          description: `Estágio do pipeline atualizado automaticamente para [${newStage}] devido ao registro de atividade: [${input.type}].`,
+        },
+      });
+    }
 
-        if (newStage) {
-          // Atualizar o lead
-          await tx.lead.update({
-            where: { id: leadId },
-            data: { pipelineStage: newStage },
-          });
+    return record;
+  });
 
-          // Registrar mudança de estágio também no log da mesma transação
-          await tx.activity.create({
-            data: {
-              leadId,
-              sellerId: finalSellerId,
-              type: ActivityType.STATUS_CHANGE,
-              description: `Estágio do pipeline atualizado automaticamente para [${newStage}] devido ao registro de atividade: [${type}].`,
-            },
-          });
-        }
-      }
-
-      return act;
-    });
-
-    return NextResponse.json({ success: true, activity });
-  } catch (error: any) {
-    console.error('Error creating activity:', error);
-    return NextResponse.json({ error: error.message || 'Erro ao registrar atividade.' }, { status: 500 });
-  }
-}
+  return created({ success: true, activity });
+});

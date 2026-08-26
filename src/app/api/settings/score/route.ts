@@ -1,143 +1,107 @@
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/db';
-import { getSession } from '@/lib/auth';
+/**
+ * Calibragem do score de leads.
+ *
+ * Configuração de sistema: restrita a administrador. A soma dos pesos tem de
+ * fechar 100 — regra que agora vive no schema, não num `if` no meio da rota —
+ * e toda alteração grava histórico e recalcula os leads ativos.
+ */
+import { requireAdmin } from '@/server/auth/guard';
 import { recalculateAllLeadsScores } from '@/lib/scoring';
+import { prisma } from '@/server/db';
+import { logger } from '@/server/http/logger';
+import { ok, readJson, route } from '@/server/http/respond';
+import { paginated } from '@/server/services/serializers';
+import { parseQuery } from '@/server/validation/common';
+import { scoreHistoryQuerySchema, scoreWeightsSchema } from '@/server/validation/crm';
 
-// GET /api/settings/score - Get current weights and history
-export async function GET() {
-  try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
-    }
+/** Distribuição inicial dos pesos, usada quando ainda não há configuração. */
+const DEFAULT_WEIGHTS = {
+  categoryWeight: 25,
+  compatibilityWeight: 20,
+  commercialWeight: 15,
+  regionWeight: 15,
+  digitalWeight: 10,
+  nearbyWeight: 10,
+  dataQualityWeight: 5,
+};
 
-    let settings = await prisma.scoreSettings.findFirst();
-    if (!settings) {
-      // Criar padrão caso não exista
-      settings = await prisma.scoreSettings.create({
-        data: {
-          categoryWeight: 25,
-          compatibilityWeight: 20,
-          commercialWeight: 15,
-          regionWeight: 15,
-          digitalWeight: 10,
-          nearbyWeight: 10,
-          dataQualityWeight: 5,
-        },
-      });
-    }
+export const GET = route('score.obter', async (request) => {
+  await requireAdmin();
+  const query = parseQuery(request, scoreHistoryQuerySchema);
 
-    const history = await prisma.scoreHistory.findMany({
+  const settings =
+    (await prisma.scoreSettings.findFirst()) ??
+    (await prisma.scoreSettings.create({ data: DEFAULT_WEIGHTS }));
+
+  const [history, total] = await Promise.all([
+    prisma.scoreHistory.findMany({
       orderBy: { createdAt: 'desc' },
-      take: 20,
-    });
+      skip: (query.page - 1) * query.pageSize,
+      take: query.pageSize,
+    }),
+    prisma.scoreHistory.count(),
+  ]);
 
-    return NextResponse.json({ settings, history });
-  } catch (error) {
-    console.error('Error fetching score settings:', error);
-    return NextResponse.json({ error: 'Erro ao buscar configurações de score.' }, { status: 500 });
-  }
-}
+  return ok({
+    settings,
+    ...paginated(history, total, query.page, query.pageSize),
+    // Alias de compatibilidade com a tela de calibragem.
+    history,
+  });
+});
 
-// POST /api/settings/score - Update weights and recalculate lead scores
-export async function POST(request: NextRequest) {
-  try {
-    const session = await getSession();
-    if (!session || (session.role !== 'ADMIN' && session.role !== 'MANAGER')) {
-      return NextResponse.json({ error: 'Não autorizado.' }, { status: 403 });
-    }
+export const POST = route('score.calibrar', async (request) => {
+  const session = await requireAdmin();
+  const input = scoreWeightsSchema.parse(await readJson(request));
 
-    const body = await request.json();
-    const {
-      categoryWeight,
-      compatibilityWeight,
-      commercialWeight,
-      regionWeight,
-      digitalWeight,
-      nearbyWeight,
-      dataQualityWeight,
-      reason,
-    } = body;
+  const weights = {
+    categoryWeight: input.categoryWeight,
+    compatibilityWeight: input.compatibilityWeight,
+    commercialWeight: input.commercialWeight,
+    regionWeight: input.regionWeight,
+    digitalWeight: input.digitalWeight,
+    nearbyWeight: input.nearbyWeight,
+    dataQualityWeight: input.dataQualityWeight,
+  };
 
-    const wCat = parseInt(categoryWeight || 0);
-    const wComp = parseInt(compatibilityWeight || 0);
-    const wComm = parseInt(commercialWeight || 0);
-    const wReg = parseInt(regionWeight || 0);
-    const wDig = parseInt(digitalWeight || 0);
-    const wNear = parseInt(nearbyWeight || 0);
-    const wDq = parseInt(dataQualityWeight || 0);
+  const current = await prisma.scoreSettings.findFirst();
 
-    const sum = wCat + wComp + wComm + wReg + wDig + wNear + wDq;
-    if (sum !== 100) {
-      return NextResponse.json(
-        { error: `A soma dos pesos deve ser exatamente 100%. Soma informada: ${sum}%` },
-        { status: 400 }
-      );
-    }
+  const updated = current
+    ? await prisma.scoreSettings.update({ where: { id: current.id }, data: weights })
+    : await prisma.scoreSettings.create({ data: weights });
 
-    // Buscar configurações atuais
-    const current = await prisma.scoreSettings.findFirst();
+  await prisma.scoreHistory.create({
+    data: {
+      weights,
+      updatedBy: session.name,
+      reason: input.reason ?? 'Ajuste de calibragem de score.',
+    },
+  });
 
-    let updated;
-    if (current) {
-      updated = await prisma.scoreSettings.update({
-        where: { id: current.id },
-        data: {
-          categoryWeight: wCat,
-          compatibilityWeight: wComp,
-          commercialWeight: wComm,
-          regionWeight: wReg,
-          digitalWeight: wDig,
-          nearbyWeight: wNear,
-          dataQualityWeight: wDq,
-        },
-      });
-    } else {
-      updated = await prisma.scoreSettings.create({
-        data: {
-          categoryWeight: wCat,
-          compatibilityWeight: wComp,
-          commercialWeight: wComm,
-          regionWeight: wReg,
-          digitalWeight: wDig,
-          nearbyWeight: wNear,
-          dataQualityWeight: wDq,
-        },
-      });
-    }
+  await prisma.auditLog.create({
+    data: {
+      userId: session.userId,
+      action: 'CHANGE_SCORE_WEIGHTS',
+      entity: 'ScoreSettings',
+      entityId: updated.id,
+      oldValue: current,
+      newValue: updated,
+    },
+  });
 
-    // Gravar no histórico de modificações
-    await prisma.scoreHistory.create({
-      data: {
-        weights: updated as any,
-        updatedBy: session.name,
-        reason: reason || 'Ajuste de calibragem de score.',
-      },
-    });
+  // Peso novo sem recálculo deixaria a fila de leads ordenada pelo critério antigo.
+  const recalculatedCount = await recalculateAllLeadsScores();
 
-    // Gravar auditoria administrativa
-    await prisma.auditLog.create({
-      data: {
-        userId: session.userId,
-        action: 'CHANGE_SCORE_WEIGHTS',
-        entity: 'ScoreSettings',
-        entityId: updated.id,
-        oldValue: current as any,
-        newValue: updated as any,
-      },
-    });
+  logger.info('pesos de score recalibrados', {
+    route: 'score.calibrar',
+    userId: session.userId,
+    recalculatedCount,
+  });
 
-    // Disparar o recálculo imediato de todos os leads ativos
-    const recalculatedCount = await recalculateAllLeadsScores(session.name);
-
-    return NextResponse.json({
-      success: true,
-      settings: updated,
-      recalculatedCount,
-      message: `Pesos salvos com sucesso. ${recalculatedCount} leads ativos foram recalculados.`,
-    });
-  } catch (error: any) {
-    console.error('Error updating score settings:', error);
-    return NextResponse.json({ error: error.message || 'Erro ao salvar pesos do score.' }, { status: 500 });
-  }
-}
+  return ok({
+    success: true,
+    settings: updated,
+    recalculatedCount,
+    message: `Pesos salvos com sucesso. ${recalculatedCount} leads ativos foram recalculados.`,
+  });
+});

@@ -1,9 +1,8 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { 
   DollarSign, 
-  Plus, 
   Trash2, 
   Loader2, 
   RefreshCw, 
@@ -11,21 +10,46 @@ import {
   ArrowUpRight, 
   ArrowDownRight, 
   Check, 
-  Calendar,
   AlertTriangle
 } from 'lucide-react';
+import { responseErrorMessage } from '@/lib/errors';
 
+/** Lançamento devolvido por `GET /api/financial/transactions` (TransactionDTO). */
 interface Lancamento {
   id: string;
-  tipo: 'receita' | 'despesa';
-  descricao: string;
-  categoria?: string;
-  valor: number;
-  data_lancamento: string;
-  data_vencimento?: string;
-  data_pagamento?: string;
+  type: 'receita' | 'despesa';
+  description: string;
+  category: string | null;
+  value: number;
+  issueDate: string | null;
+  dueDate: string | null;
+  paymentDate: string | null;
   status: 'pendente' | 'pago' | 'atrasado' | 'cancelado';
-  observacoes?: string;
+  orderId: string | null;
+  orderNumber: number | null;
+  notes: string | null;
+}
+
+/** Envelope de paginação usado por todas as listagens da API. */
+interface Paginated<T> {
+  data: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
+
+
+/**
+ * Formata uma data civil (AAAA-MM-DD) como dd/mm/aaaa.
+ * `new Date('2026-01-05')` seria interpretada como meia-noite UTC e voltaria
+ * um dia atrás no fuso do Brasil, então a conversão é feita na mão.
+ */
+function formatarData(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const [ano, mes, dia] = iso.slice(0, 10).split('-');
+  return ano && mes && dia ? `${dia}/${mes}/${ano}` : '—';
 }
 
 export default function FinancialPage() {
@@ -49,29 +73,42 @@ export default function FinancialPage() {
   const [dataVencimento, setDataVencimento] = useState('');
   const [observacoes, setObservacoes] = useState('');
 
-  useEffect(() => {
-    fetchLancamentos();
-  }, []);
-
-  const fetchLancamentos = async () => {
+  // Recebe os filtros por parâmetro para não depender do estado: assim a
+  // função é estável e o efeito de carga inicial não roda de novo a cada
+  // mudança de filtro (que só valem ao clicar em "Aplicar Filtros").
+  const carregarLancamentos = useCallback(async (tipo: string, status: string) => {
     try {
       setLoading(true);
       setError(null);
-      
-      const params = new URLSearchParams();
-      if (typeFilter) params.append('tipo', typeFilter);
-      if (statusFilter) params.append('status', statusFilter);
 
-      const res = await fetch(`/api/erp/financeiro/lancamentos?${params.toString()}`);
-      if (!res.ok) throw new Error('Falha ao carregar dados financeiros.');
-      const data = await res.json();
-      setLancamentos(data);
-    } catch (err: any) {
-      setError(err.message);
+      const params = new URLSearchParams();
+      if (tipo) params.append('type', tipo);
+      if (status) params.append('status', status);
+      // A listagem é paginada; a tela resume tudo o que existe no filtro.
+      params.append('pageSize', '500');
+
+      const res = await fetch(`/api/financial/transactions?${params.toString()}`);
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Falha ao carregar dados financeiros.'));
+      const json: Paginated<Lancamento> = await res.json();
+      setLancamentos(json.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao carregar dados financeiros.');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  const fetchLancamentos = useCallback(() => {
+    void carregarLancamentos(typeFilter, statusFilter);
+  }, [carregarLancamentos, typeFilter, statusFilter]);
+
+  useEffect(() => {
+    // Na montagem os filtros ainda estão vazios. A carga roda fora do corpo
+    // síncrono do efeito para não encadear renders.
+    void (async () => {
+      await carregarLancamentos('', '');
+    })();
+  }, [carregarLancamentos]);
 
   const handleOpenModal = (tipo: 'receita' | 'despesa') => {
     setModalType(tipo);
@@ -89,69 +126,66 @@ export default function FinancialPage() {
     if (!descricao || parseFloat(valor) <= 0) return;
 
     const payload = {
-      tipo: modalType,
-      descricao,
-      categoria: categoria || undefined,
-      valor: parseFloat(valor),
-      data_lancamento: dataLancamento,
-      data_vencimento: dataVencimento || undefined,
+      type: modalType,
+      description: descricao,
+      category: categoria || undefined,
+      value: parseFloat(valor),
+      issueDate: dataLancamento,
+      dueDate: dataVencimento || undefined,
       status: 'pendente',
-      observacoes: observacoes || undefined
+      notes: observacoes || undefined
     };
 
     try {
-      const res = await fetch('/api/erp/financeiro/lancamentos', {
+      const res = await fetch('/api/financial/transactions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
 
-      if (!res.ok) {
-        const errJson = await res.json();
-        throw new Error(errJson.detail || 'Erro ao criar lançamento.');
-      }
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao criar lançamento.'));
 
       setIsModalOpen(false);
       fetchLancamentos();
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erro ao criar lançamento.');
     }
   };
 
   const handlePay = async (id: string, desc: string) => {
     if (!confirm(`Confirmar recebimento/pagamento de "${desc}"?`)) return;
     try {
-      const res = await fetch(`/api/erp/financeiro/lancamentos/${id}/baixar`, { method: 'POST' });
-      if (!res.ok) throw new Error('Erro ao baixar lançamento.');
+      const res = await fetch(`/api/financial/transactions/${id}/settle`, { method: 'POST' });
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao baixar lançamento.'));
       fetchLancamentos();
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erro ao baixar lançamento.');
     }
   };
 
   const handleDelete = async (id: string, desc: string) => {
     if (!confirm(`Deseja excluir permanentemente o lançamento "${desc}"?`)) return;
     try {
-      const res = await fetch(`/api/erp/financeiro/lancamentos/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Erro ao excluir lançamento.');
+      const res = await fetch(`/api/financial/transactions/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao excluir lançamento.'));
       fetchLancamentos();
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erro ao excluir lançamento.');
     }
   };
 
   // Cálculos de resumo
   const totalReceber = lancamentos
-    .filter(l => l.tipo === 'receita' && l.status !== 'pago')
-    .reduce((sum, l) => sum + l.valor, 0);
+    .filter(l => l.type === 'receita' && l.status !== 'pago')
+    .reduce((sum, l) => sum + l.value, 0);
 
   const totalPagar = lancamentos
-    .filter(l => l.tipo === 'despesa' && l.status !== 'pago')
-    .reduce((sum, l) => sum + l.valor, 0);
+    .filter(l => l.type === 'despesa' && l.status !== 'pago')
+    .reduce((sum, l) => sum + l.value, 0);
 
   const totalPagoMes = lancamentos
     .filter(l => l.status === 'pago')
-    .reduce((sum, l) => sum + (l.tipo === 'receita' ? l.valor : -l.valor), 0);
+    .reduce((sum, l) => sum + (l.type === 'receita' ? l.value : -l.value), 0);
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -304,18 +338,18 @@ export default function FinancialPage() {
                   <tr key={l.id} className="hover:bg-stone-50/50">
                     <td className="py-4 px-6">
                       <span className={`inline-flex px-2 py-0.5 rounded text-[9px] font-black uppercase ${
-                        l.tipo === 'receita' ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' : 'bg-red-50 text-red-700 border border-red-100'
+                        l.type === 'receita' ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' : 'bg-red-50 text-red-700 border border-red-100'
                       }`}>
-                        {l.tipo}
+                        {l.type}
                       </span>
                     </td>
                     <td className="py-4 px-6">
-                      <span className="text-stone-850 font-bold text-sm block">{l.descricao}</span>
-                      {l.observacoes && <span className="text-[10px] text-stone-400 block font-medium mt-0.5">{l.observacoes}</span>}
+                      <span className="text-stone-850 font-bold text-sm block">{l.description}</span>
+                      {l.notes && <span className="text-[10px] text-stone-400 block font-medium mt-0.5">{l.notes}</span>}
                     </td>
-                    <td className="py-4 px-6 text-stone-500">{l.categoria || '—'}</td>
+                    <td className="py-4 px-6 text-stone-500">{l.category || '—'}</td>
                     <td className="py-4 px-6 text-stone-400">
-                      {l.data_vencimento ? new Date(l.data_vencimento).toLocaleDateString('pt-BR') : '—'}
+                      {formatarData(l.dueDate)}
                     </td>
                     <td className="py-4 px-6 text-center">
                       <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
@@ -325,15 +359,15 @@ export default function FinancialPage() {
                         {l.status}
                       </span>
                     </td>
-                    <td className={`py-4 px-6 text-right font-black text-sm ${l.tipo === 'receita' ? 'text-stone-850' : 'text-red-750'}`}>
-                      {l.tipo === 'despesa' ? '-' : ''}
-                      {l.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    <td className={`py-4 px-6 text-right font-black text-sm ${l.type === 'receita' ? 'text-stone-850' : 'text-red-750'}`}>
+                      {l.type === 'despesa' ? '-' : ''}
+                      {l.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                     </td>
                     <td className="py-4 px-6 text-center">
                       <div className="flex items-center justify-center gap-1.5">
                         {l.status !== 'pago' && (
                           <button 
-                            onClick={() => handlePay(l.id, l.descricao)}
+                            onClick={() => handlePay(l.id, l.description)}
                             className="p-1.5 border border-emerald-200 rounded-lg hover:bg-emerald-50 text-emerald-700 transition-all cursor-pointer"
                             title="Confirmar Liquidação (Baixar)"
                           >
@@ -341,7 +375,7 @@ export default function FinancialPage() {
                           </button>
                         )}
                         <button 
-                          onClick={() => handleDelete(l.id, l.descricao)}
+                          onClick={() => handleDelete(l.id, l.description)}
                           className="p-1.5 border border-stone-200 rounded-lg hover:bg-red-50 text-stone-400 hover:text-red-700 transition-all cursor-pointer"
                           title="Excluir Lançamento"
                         >

@@ -1,91 +1,89 @@
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/db';
-import { comparePassword, setSession, SessionPayload } from '@/lib/auth';
+import bcrypt from 'bcryptjs';
+import { z } from 'zod';
 
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { email, password } = body;
+import { prisma } from '@/server/db';
+import { env } from '@/server/env';
+import { setSession, type Role } from '@/server/auth/session';
+import { unauthorized, rateLimited, forbidden } from '@/server/http/errors';
+import { ok, readJson, route } from '@/server/http/respond';
+import { logger } from '@/server/http/logger';
+import { clientIp, hit, reset } from '@/server/http/rate-limit';
 
-    if (!email || !password) {
-      return NextResponse.json(
-        { error: 'E-mail e senha são obrigatórios.' },
-        { status: 400 }
-      );
-    }
+const loginSchema = z.object({
+  email: z.string().trim().min(1, 'Informe o e-mail.').max(160),
+  password: z.string().min(1, 'Informe a senha.').max(200),
+});
 
-    // Buscar usuário e seu vendedor associado (se houver)
-    const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
-      include: { seller: true },
-    });
+export const POST = route('auth.login', async (request) => {
+  const config = env();
+  const ip = clientIp(request);
+  const limit = hit(`login:${ip}`, config.LOGIN_RATE_LIMIT, config.LOGIN_RATE_WINDOW_SECONDS);
 
-    if (!user) {
-      return NextResponse.json(
-        { error: 'Credenciais inválidas.' },
-        { status: 401 }
-      );
-    }
-
-    if (!user.active) {
-      return NextResponse.json(
-        { error: 'Sua conta está desativada. Entre em contato com o administrador.' },
-        { status: 403 }
-      );
-    }
-
-    const isPasswordCorrect = await comparePassword(password, user.passwordHash);
-    if (!isPasswordCorrect) {
-      return NextResponse.json(
-        { error: 'Credenciais inválidas.' },
-        { status: 401 }
-      );
-    }
-
-    const payload: SessionPayload = {
-      userId: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      sellerId: user.seller?.id || null,
-    };
-
-    // Salvar sessão no cookie
-    await setSession(payload);
-
-    // Gravar log de auditoria
-    await prisma.auditLog.create({
-      data: {
-        userId: user.id,
-        action: 'LOGIN',
-        entity: 'User',
-        entityId: user.id,
-        newValue: { email: user.email, role: user.role },
-      },
-    });
-
-    // Definir rota de redirecionamento baseada no cargo
-    const redirectUrl =
-      user.role === 'ADMIN' || user.role === 'MANAGER'
-        ? '/admin/dashboard'
-        : '/seller/dashboard';
-
-    return NextResponse.json({
-      success: true,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        sellerId: user.seller?.id || null,
-      },
-      redirectUrl,
-    });
-  } catch (error: any) {
-    console.error('Erro na API de Login:', error);
-    return NextResponse.json(
-      { error: 'Erro interno no servidor ao tentar realizar login.' },
-      { status: 500 }
+  if (!limit.allowed) {
+    logger.warn('login bloqueado por limite de tentativas', { ip });
+    throw rateLimited(
+      `Muitas tentativas de login. Tente novamente em ${limit.retryAfterSeconds} segundos.`,
     );
   }
-}
+
+  const { email, password } = loginSchema.parse(await readJson(request));
+
+  const user = await prisma.user.findUnique({
+    where: { email: email.toLowerCase() },
+    include: { seller: { select: { id: true, active: true } } },
+  });
+
+  // Mesma mensagem para usuário inexistente e senha errada: não entrega quais
+  // e-mails existem no sistema.
+  const genericFailure = unauthorized('E-mail ou senha inválidos.');
+
+  if (!user) {
+    // Gasta o mesmo tempo de um bcrypt real para não vazar a existência da
+    // conta pelo tempo de resposta.
+    await bcrypt.compare(password, '$2a$12$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidin');
+    throw genericFailure;
+  }
+
+  const passwordMatches = await bcrypt.compare(password, user.passwordHash);
+  if (!passwordMatches) {
+    logger.warn('senha incorreta', { ip, userId: user.id });
+    throw genericFailure;
+  }
+
+  if (!user.active) {
+    throw forbidden('Sua conta está desativada. Fale com o administrador.');
+  }
+
+  reset(`login:${ip}`);
+
+  const sellerId = user.seller?.active ? user.seller.id : null;
+
+  await setSession({
+    userId: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role as Role,
+    sellerId,
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      userId: user.id,
+      action: 'LOGIN',
+      entity: 'User',
+      entityId: user.id,
+      newValue: { role: user.role, ip },
+    },
+  });
+
+  logger.info('login realizado', { userId: user.id, role: user.role });
+
+  const redirectUrl =
+    user.role === 'ADMIN' || user.role === 'MANAGER' ? '/admin/dashboard' : '/seller/dashboard';
+
+  return ok({
+    success: true,
+    user: { id: user.id, name: user.name, email: user.email, role: user.role, sellerId },
+    redirectUrl,
+  });
+});

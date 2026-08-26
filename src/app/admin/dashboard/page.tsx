@@ -1,12 +1,11 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { 
   BarChart3, 
   Users, 
   Flame, 
   Award, 
-  Calendar, 
   Clock, 
   Loader2,
   MapPin,
@@ -15,11 +14,11 @@ import {
   DollarSign,
   Package,
   Scale,
-  ListFilter,
   CheckCircle2,
   ArrowUpRight,
   ArrowDownRight
 } from 'lucide-react';
+import { responseErrorMessage } from '@/lib/errors';
 
 // CRM Types (Expansão)
 interface CRMData {
@@ -54,32 +53,51 @@ interface CRMData {
   }[];
 }
 
-// ERP Types (Operações/Financeiro)
+// ERP Types (Operações/Financeiro) — resposta de `GET /api/dashboard/erp`
 interface ERPStats {
-  total_clientes: number;
-  total_produtos_venda: number;
-  total_insumos: number;
-  pedidos_mes: number;
-  faturamento_mes: number;
-  pedidos_em_aberto: number;
-  valor_em_aberto: number;
-  contas_a_receber: number;
-  contas_a_pagar: number;
-  produtos_baixo_estoque: number;
-  comissoes_pendentes: number;
-  top_produtos: {
-    produto: string;
-    qtd: number;
+  period: { from: string; to: string };
+  customers: { active: number };
+  products: { forSale: number; supplies: number; lowStock: number };
+  orders: {
+    inMonth: number;
+    open: number;
+    openValue: number;
+    monthGrossValue: number;
+    monthBilledValue: number;
+  };
+  financial: {
+    receivable: number;
+    payable: number;
+    overdueReceivable: number;
+    pendingCommissions: number;
+  };
+  topProducts: {
+    productId: string;
+    name: string;
+    quantity: number;
     total: number;
   }[];
-  ultimos_pedidos: {
+  latestOrders: {
     id: string;
     numero: number;
-    cliente: string;
-    data: string;
+    customerName: string;
+    orderDate: string | null;
     total: number;
     status: string;
   }[];
+}
+
+
+
+/**
+ * Formata uma data civil (AAAA-MM-DD) como dd/mm/aaaa.
+ * `new Date('2026-01-05')` seria interpretada como meia-noite UTC e voltaria
+ * um dia atrás no fuso do Brasil, então a conversão é feita na mão.
+ */
+function formatarData(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const [ano, mes, dia] = iso.slice(0, 10).split('-');
+  return ano && mes && dia ? `${dia}/${mes}/${ano}` : '—';
 }
 
 export default function AdminDashboardPage() {
@@ -91,11 +109,7 @@ export default function AdminDashboardPage() {
   // Controle de abas
   const [activeTab, setActiveTab] = useState<'crm' | 'financeiro' | 'producao'>('crm');
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -103,30 +117,36 @@ export default function AdminDashboardPage() {
       // Dispara as requisições em paralelo
       const [resCrm, resErp] = await Promise.all([
         fetch('/api/dashboard/admin'),
-        fetch('/api/erp/dashboard/stats')
+        fetch('/api/dashboard/erp')
       ]);
 
       if (!resCrm.ok) {
-        const crmJson = await resCrm.json();
-        throw new Error(crmJson.error || 'Erro ao carregar dados do CRM.');
-      }
-      
-      if (!resErp.ok) {
-        const erpJson = await resErp.json();
-        throw new Error(erpJson.detail || 'Erro ao carregar dados do ERP.');
+        throw new Error(await responseErrorMessage(resCrm, 'Erro ao carregar dados do CRM.'));
       }
 
-      const crmJson = await resCrm.json();
-      const erpJson = await resErp.json();
+      if (!resErp.ok) {
+        throw new Error(await responseErrorMessage(resErp, 'Erro ao carregar dados do ERP.'));
+      }
+
+      const crmJson: CRMData = await resCrm.json();
+      const erpJson: ERPStats = await resErp.json();
 
       setCrmData(crmJson);
       setErpData(erpJson);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao obter dados consolidados.');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // A carga roda fora do corpo síncrono do efeito para não encadear
+    // renders (react-hooks/set-state-in-effect).
+    void (async () => {
+      await fetchData();
+    })();
+  }, [fetchData]);
 
   if (loading) {
     return (
@@ -211,7 +231,7 @@ export default function AdminDashboardPage() {
             <div className="rounded-xl bg-white p-6 shadow-sm border border-stone-200 flex items-center justify-between">
               <div>
                 <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Clientes Cadastrados</span>
-                <span className="text-2xl font-black text-stone-800 mt-1 block">{erpData.total_clientes}</span>
+                <span className="text-2xl font-black text-stone-800 mt-1 block">{erpData.customers.active}</span>
               </div>
               <div className="h-12 w-12 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600">
                 <Users className="h-6 w-6" />
@@ -336,9 +356,9 @@ export default function AdminDashboardPage() {
               <div>
                 <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Faturamento do Mês</span>
                 <span className="text-2xl font-black text-emerald-800 mt-1 block">
-                  {erpData.faturamento_mes.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  {erpData.orders.monthGrossValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </span>
-                <span className="text-[10px] text-stone-400 font-medium">{erpData.pedidos_mes} vendas no período</span>
+                <span className="text-[10px] text-stone-400 font-medium">{erpData.orders.inMonth} vendas no período</span>
               </div>
               <div className="h-12 w-12 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600">
                 <ArrowUpRight className="h-6 w-6" />
@@ -349,9 +369,9 @@ export default function AdminDashboardPage() {
               <div>
                 <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Pedidos Em Aberto</span>
                 <span className="text-2xl font-black text-amber-800 mt-1 block">
-                  {erpData.valor_em_aberto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  {erpData.orders.openValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </span>
-                <span className="text-[10px] text-stone-400 font-medium">{erpData.pedidos_em_aberto} pedidos aguardando faturamento</span>
+                <span className="text-[10px] text-stone-400 font-medium">{erpData.orders.open} pedidos aguardando faturamento</span>
               </div>
               <div className="h-12 w-12 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-700">
                 <Clock className="h-6 w-6" />
@@ -362,7 +382,7 @@ export default function AdminDashboardPage() {
               <div>
                 <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Contas a Receber</span>
                 <span className="text-2xl font-black text-stone-800 mt-1 block">
-                  {erpData.contas_a_receber.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  {erpData.financial.receivable.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </span>
               </div>
               <div className="h-12 w-12 rounded-xl bg-stone-50 border border-stone-150 flex items-center justify-center text-stone-600">
@@ -374,9 +394,9 @@ export default function AdminDashboardPage() {
               <div>
                 <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Contas a Pagar</span>
                 <span className="text-2xl font-black text-red-750 mt-1 block">
-                  {erpData.contas_a_pagar.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  {erpData.financial.payable.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </span>
-                <span className="text-[10px] text-stone-400 font-medium">Inclui {erpData.comissoes_pendentes.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} de comissões</span>
+                <span className="text-[10px] text-stone-400 font-medium">Inclui {erpData.financial.pendingCommissions.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} de comissões</span>
               </div>
               <div className="h-12 w-12 rounded-xl bg-red-50 border border-red-100 flex items-center justify-center text-red-650">
                 <ArrowDownRight className="h-6 w-6" />
@@ -400,11 +420,11 @@ export default function AdminDashboardPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-100 font-semibold text-stone-600">
-                    {erpData.ultimos_pedidos.map((p) => (
+                    {erpData.latestOrders.map((p) => (
                       <tr key={p.id} className="hover:bg-stone-50/50">
                         <td className="py-3 font-bold text-stone-850">#{p.numero}</td>
-                        <td className="py-3 text-stone-700">{p.cliente}</td>
-                        <td className="py-3 text-stone-450">{new Date(p.data).toLocaleDateString('pt-BR')}</td>
+                        <td className="py-3 text-stone-700">{p.customerName}</td>
+                        <td className="py-3 text-stone-450">{formatarData(p.orderDate)}</td>
                         <td className="py-3 text-center">
                           <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
                             p.status === 'faturado' || p.status === 'entregue' ? 'bg-emerald-50 text-emerald-800' :
@@ -431,15 +451,15 @@ export default function AdminDashboardPage() {
                 <div>
                   <div className="flex justify-between text-xs font-bold text-stone-650 mb-1">
                     <span>Faturamento Comercial</span>
-                    <span>{((erpData.faturamento_mes / 15000) * 100).toFixed(0)}% da Meta</span>
+                    <span>{((erpData.orders.monthGrossValue / 15000) * 100).toFixed(0)}% da Meta</span>
                   </div>
                   <div className="h-3 w-full bg-stone-100 rounded-full overflow-hidden border border-stone-150">
                     <div 
                       className="h-full bg-emerald-600 rounded-full"
-                      style={{ width: `${Math.min(100, (erpData.faturamento_mes / 15000) * 100)}%` }}
+                      style={{ width: `${Math.min(100, (erpData.orders.monthGrossValue / 15000) * 100)}%` }}
                     />
                   </div>
-                  <span className="text-[10px] text-stone-400 font-medium block mt-1">Realizado: {erpData.faturamento_mes.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} / Meta: R$ 15.000,00</span>
+                  <span className="text-[10px] text-stone-400 font-medium block mt-1">Realizado: {erpData.orders.monthGrossValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} / Meta: R$ 15.000,00</span>
                 </div>
 
                 <div>
@@ -448,9 +468,9 @@ export default function AdminDashboardPage() {
                     <span>Líquido Estimado</span>
                   </div>
                   <div className={`p-4 rounded-xl border font-bold text-sm ${
-                    (erpData.contas_a_receber - erpData.contas_a_pagar) >= 0 ? 'bg-emerald-50/50 border-emerald-100 text-emerald-800' : 'bg-red-50/50 border-red-100 text-red-800'
+                    (erpData.financial.receivable - erpData.financial.payable) >= 0 ? 'bg-emerald-50/50 border-emerald-100 text-emerald-800' : 'bg-red-50/50 border-red-100 text-red-800'
                   }`}>
-                    {(erpData.contas_a_receber - erpData.contas_a_pagar).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    {(erpData.financial.receivable - erpData.financial.payable).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                     <span className="text-[10px] text-stone-450 block font-medium mt-1">Saldo projetado após recebimento/pagamento das faturas pendentes.</span>
                   </div>
                 </div>
@@ -468,7 +488,7 @@ export default function AdminDashboardPage() {
             <div className="rounded-xl bg-white p-6 shadow-sm border border-stone-200 flex items-center justify-between">
               <div>
                 <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Produtos para Venda</span>
-                <span className="text-2xl font-black text-stone-800 mt-1 block">{erpData.total_produtos_venda}</span>
+                <span className="text-2xl font-black text-stone-800 mt-1 block">{erpData.products.forSale}</span>
                 <span className="text-[10px] text-stone-400 font-medium">Produtos finais de brownie</span>
               </div>
               <div className="h-12 w-12 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-700">
@@ -479,7 +499,7 @@ export default function AdminDashboardPage() {
             <div className="rounded-xl bg-white p-6 shadow-sm border border-stone-200 flex items-center justify-between">
               <div>
                 <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Insumos & Ingredientes</span>
-                <span className="text-2xl font-black text-stone-800 mt-1 block">{erpData.total_insumos}</span>
+                <span className="text-2xl font-black text-stone-800 mt-1 block">{erpData.products.supplies}</span>
                 <span className="text-[10px] text-stone-400 font-medium">Matérias-primas e recheios</span>
               </div>
               <div className="h-12 w-12 rounded-xl bg-stone-50 border border-stone-150 flex items-center justify-center text-stone-600">
@@ -490,15 +510,15 @@ export default function AdminDashboardPage() {
             <div className="rounded-xl bg-white p-6 shadow-sm border border-stone-200 flex items-center justify-between">
               <div>
                 <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Rupturas / Estoque Baixo</span>
-                <span className={`text-2xl font-black mt-1 block ${erpData.produtos_baixo_estoque > 0 ? 'text-red-750' : 'text-emerald-800'}`}>
-                  {erpData.produtos_baixo_estoque}
+                <span className={`text-2xl font-black mt-1 block ${erpData.products.lowStock > 0 ? 'text-red-750' : 'text-emerald-800'}`}>
+                  {erpData.products.lowStock}
                 </span>
                 <span className="text-[10px] text-stone-400 font-medium">Itens abaixo do estoque mínimo</span>
               </div>
               <div className={`h-12 w-12 rounded-xl flex items-center justify-center ${
-                erpData.produtos_baixo_estoque > 0 ? 'bg-red-50 border border-red-100 text-red-700' : 'bg-emerald-50 border border-emerald-100 text-emerald-600'
+                erpData.products.lowStock > 0 ? 'bg-red-50 border border-red-100 text-red-700' : 'bg-emerald-50 border border-emerald-100 text-emerald-600'
               }`}>
-                {erpData.produtos_baixo_estoque > 0 ? <AlertTriangle className="h-6 w-6" /> : <CheckCircle2 className="h-6 w-6" />}
+                {erpData.products.lowStock > 0 ? <AlertTriangle className="h-6 w-6" /> : <CheckCircle2 className="h-6 w-6" />}
               </div>
             </div>
           </div>
@@ -518,16 +538,16 @@ export default function AdminDashboardPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-100 font-semibold text-stone-600">
-                    {erpData.top_produtos.map((p, idx) => (
+                    {erpData.topProducts.map((p, idx) => (
                       <tr key={idx} className="hover:bg-stone-50/50">
-                        <td className="py-3 font-bold text-stone-850">{p.produto}</td>
-                        <td className="py-3 text-center text-stone-700 font-bold">{p.qtd} un</td>
+                        <td className="py-3 font-bold text-stone-850">{p.name}</td>
+                        <td className="py-3 text-center text-stone-700 font-bold">{p.quantity} un</td>
                         <td className="py-3 text-right font-black text-stone-850">
                           {p.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                         </td>
                       </tr>
                     ))}
-                    {erpData.top_produtos.length === 0 && (
+                    {erpData.topProducts.length === 0 && (
                       <tr>
                         <td colSpan={3} className="py-8 text-center text-stone-400 font-medium">Sem dados de vendas registradas neste mês.</td>
                       </tr>
@@ -542,12 +562,12 @@ export default function AdminDashboardPage() {
               <h3 className="text-sm font-bold text-stone-800 uppercase tracking-wider">Ações Recomendadas</h3>
               
               <div className="space-y-3.5 pt-2 text-xs">
-                {erpData.produtos_baixo_estoque > 0 ? (
+                {erpData.products.lowStock > 0 ? (
                   <div className="p-3 bg-red-50 border border-red-100 text-red-800 rounded-xl flex items-start gap-2.5 font-semibold">
                     <AlertTriangle className="h-5 w-5 shrink-0 text-red-700" />
                     <div>
                       <span className="font-bold block">Aviso de Ruptura de Estoque</span>
-                      <span className="text-[10px] text-red-700 font-medium block mt-0.5">Há {erpData.produtos_baixo_estoque} ingredientes/produtos abaixo do limite de segurança. Vá para Matérias-primas para verificar o estoque mínimo.</span>
+                      <span className="text-[10px] text-red-700 font-medium block mt-0.5">Há {erpData.products.lowStock} ingredientes/produtos abaixo do limite de segurança. Vá para Matérias-primas para verificar o estoque mínimo.</span>
                     </div>
                   </div>
                 ) : (

@@ -1,17 +1,18 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { 
-  Map, 
-  MapPin, 
-  Plus, 
-  Edit2, 
-  Trash2, 
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Map,
+  MapPin,
+  Plus,
+  Edit2,
+  Trash2,
   Loader2,
-  CheckCircle,
   ToggleLeft,
   ToggleRight
 } from 'lucide-react';
+
+import { errorMessage, apiErrorMessage } from '@/lib/errors';
 
 interface Neighborhood {
   id: string;
@@ -34,6 +35,18 @@ interface Region {
 interface Seller {
   id: string;
   name: string;
+}
+
+interface RegionsResponse {
+  data?: Region[];
+}
+
+interface SellersResponse {
+  data?: Seller[];
+}
+
+interface MutationResponse {
+  error?: string;
 }
 
 export default function AdminRegionsPage() {
@@ -61,11 +74,7 @@ export default function AdminRegionsPage() {
   const [neighActive, setNeighActive] = useState(true);
   const [neighLoading, setNeighLoading] = useState(false);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -74,21 +83,28 @@ export default function AdminRegionsPage() {
         fetch('/api/sellers'),
       ]);
 
-      const regJson = await regRes.json();
-      const sellersJson = await sellersRes.json();
+      const regJson: RegionsResponse = await regRes.json();
+      const sellersJson: SellersResponse = await sellersRes.json();
 
       if (!regRes.ok || !sellersRes.ok) {
         throw new Error('Erro ao carregar dados territoriais.');
       }
 
-      setRegions(regJson.regions || []);
-      setSellers(sellersJson.sellers || []);
-    } catch (err: any) {
-      setError(err.message);
+      setRegions(regJson.data ?? []);
+      setSellers(sellersJson.data ?? []);
+    } catch (err: unknown) {
+      setError(errorMessage(err));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // A carga roda fora do corpo síncrono do efeito para não encadear renders.
+    void (async () => {
+      await loadData();
+    })();
+  }, [loadData]);
 
   const handleSaveRegion = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,8 +120,8 @@ export default function AdminRegionsPage() {
         body: JSON.stringify(payload),
       });
 
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Erro ao salvar região.');
+      const json: MutationResponse = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(json, 'Erro ao salvar região.'));
 
       // Reset form
       setRegId(null);
@@ -117,8 +133,8 @@ export default function AdminRegionsPage() {
       // Recarregar
       await loadData();
       alert('Região salva com sucesso!');
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(errorMessage(err));
     } finally {
       setRegLoading(false);
     }
@@ -128,13 +144,13 @@ export default function AdminRegionsPage() {
     if (!confirm('Deseja realmente excluir esta região? Isso falhará se houver bairros associados.')) return;
     try {
       const res = await fetch(`/api/regions/${id}`, { method: 'DELETE' });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Erro ao excluir região.');
+      const json: MutationResponse = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(json, 'Erro ao excluir região.'));
       
       await loadData();
       alert('Região excluída.');
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(errorMessage(err));
     }
   };
 
@@ -159,8 +175,8 @@ export default function AdminRegionsPage() {
         body: JSON.stringify(payload),
       });
 
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Erro ao salvar bairro.');
+      const json: MutationResponse = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(json, 'Erro ao salvar bairro.'));
 
       // Reset
       setNeighId(null);
@@ -172,8 +188,8 @@ export default function AdminRegionsPage() {
 
       await loadData();
       alert('Bairro salvo e atribuído com sucesso!');
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(errorMessage(err));
     } finally {
       setNeighLoading(false);
     }
@@ -183,13 +199,13 @@ export default function AdminRegionsPage() {
     if (!confirm('Deseja realmente excluir este bairro?')) return;
     try {
       const res = await fetch(`/api/neighborhoods/${id}`, { method: 'DELETE' });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Erro ao excluir bairro.');
+      const json: MutationResponse = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(json, 'Erro ao excluir bairro.'));
       
       await loadData();
       alert('Bairro excluído.');
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(errorMessage(err));
     }
   };
 

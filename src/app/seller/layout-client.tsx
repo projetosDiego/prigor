@@ -1,8 +1,9 @@
 'use client';
 
 import React from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { 
   Home, 
   List, 
@@ -20,13 +21,15 @@ interface SellerLayoutClientProps {
 
 export default function SellerLayoutClient({ children, sessionName }: SellerLayoutClientProps) {
   const pathname = usePathname();
+  const router = useRouter();
 
   const handleLogout = async () => {
     if (!confirm('Deseja realmente sair do sistema?')) return;
     try {
       const res = await fetch('/api/auth/logout', { method: 'POST' });
       if (res.ok) {
-        window.location.href = '/login';
+        router.push('/login');
+        router.refresh();
       }
     } catch (err) {
       console.error('Erro ao sair:', err);
@@ -40,7 +43,7 @@ export default function SellerLayoutClient({ children, sessionName }: SellerLayo
       {/* Mobile Top Header */}
       <header className="sticky top-0 z-45 flex h-14 items-center justify-between border-b border-stone-200 bg-white px-4 shadow-sm">
         <div className="flex items-center gap-2">
-          <img src="/logo.png" alt="Doces Prigor" className="h-7 w-auto object-contain" />
+          <Image src="/logo.png" alt="Doces Prigor" width={532} height={469} priority className="h-7 w-auto object-contain" />
           <span className="font-black text-stone-900 text-xs tracking-wide uppercase">Prigor Vendedor</span>
         </div>
         

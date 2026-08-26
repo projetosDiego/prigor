@@ -1,184 +1,152 @@
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/db';
-import { getSession } from '@/lib/auth';
-import { PipelineStage, ActivityType } from '@prisma/client';
+/**
+ * Bairro individual.
+ *
+ * Trocar o vendedor de um bairro reatribui os leads ativos dele. Antes isso
+ * era um laço que, para cada lead, ia ao banco buscar o MESMO vendedor e
+ * gravava atividade e auditoria uma a uma — N+1 puro e fora de transação. Agora
+ * o vendedor é resolvido uma vez e os registros vão em lote, tudo atômico.
+ */
+import { requireAdmin, requireManager } from '@/server/auth/guard';
+import { prisma } from '@/server/db';
+import { conflict, notFound } from '@/server/http/errors';
+import { ok, readJson, route } from '@/server/http/respond';
+import { logger } from '@/server/http/logger';
+import { neighborhoodUpdateSchema } from '@/server/validation/crm';
 
-// PUT /api/neighborhoods/[id] - Update neighborhood
-export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const session = await getSession();
-    if (!session || (session.role !== 'ADMIN' && session.role !== 'MANAGER')) {
-      return NextResponse.json({ error: 'Não autorizado.' }, { status: 403 });
-    }
+type Context = { params: Promise<{ id: string }> };
 
-    const { id } = await params;
-    const { name, city, state, regionId, sellerId, active } = await request.json();
+export const PUT = route<Context>('bairros.atualizar', async (request, { params }) => {
+  const session = await requireManager();
+  const { id } = await params;
+  const input = neighborhoodUpdateSchema.parse(await readJson(request));
 
-    const existing = await prisma.neighborhood.findUnique({
+  const existing = await prisma.neighborhood.findUnique({ where: { id } });
+  if (!existing) throw notFound('Bairro');
+
+  const name = input.name ?? existing.name;
+  const city = input.city ?? existing.city;
+  const state = input.state ?? existing.state;
+
+  if (name !== existing.name || city !== existing.city || state !== existing.state) {
+    const clash = await prisma.neighborhood.findFirst({
+      where: { name, city, state, NOT: { id } },
+      select: { id: true },
+    });
+    if (clash) throw conflict('Já existe um bairro cadastrado com estes dados.');
+  }
+
+  const newSellerId = input.sellerId !== undefined ? input.sellerId : existing.sellerId;
+  const oldSellerId: string | null = existing.sellerId;
+  const sellerChanged = newSellerId !== oldSellerId;
+
+  // O nome do vendedor de destino é o mesmo para todos os leads: uma consulta.
+  const destSeller = sellerChanged && newSellerId
+    ? await prisma.seller.findUnique({ where: { id: newSellerId }, select: { name: true } })
+    : null;
+  const destSellerName = newSellerId
+    ? (destSeller?.name ?? 'Novo Vendedor')
+    : 'Fila de Triagem (Sem Vendedor)';
+
+  const { updated, reassignedCount } = await prisma.$transaction(async (tx: typeof prisma) => {
+    const row = await tx.neighborhood.update({
       where: { id },
-      include: { seller: true },
+      data: { name, city, state, regionId: input.regionId ?? existing.regionId, sellerId: newSellerId, active: input.active ?? existing.active },
     });
 
-    if (!existing) {
-      return NextResponse.json({ error: 'Bairro não encontrado.' }, { status: 404 });
-    }
+    let count = 0;
 
-    // Se mudou o nome/cidade/estado, verificar duplicidade
-    if (
-      (name && name !== existing.name) ||
-      (city && city !== existing.city) ||
-      (state && state !== existing.state)
-    ) {
-      const nameCheck = await prisma.neighborhood.findFirst({
-        where: {
-          name: name !== undefined ? name : existing.name,
-          city: city !== undefined ? city : existing.city,
-          state: state !== undefined ? state : existing.state,
-          NOT: { id },
-        },
-      });
-      if (nameCheck) {
-        return NextResponse.json({ error: 'Já existe um bairro cadastrado com estes dados.' }, { status: 400 });
-      }
-    }
-
-    const updated = await prisma.neighborhood.update({
-      where: { id },
-      data: {
-        name: name !== undefined ? name : existing.name,
-        city: city !== undefined ? city : existing.city,
-        state: state !== undefined ? state : existing.state,
-        regionId: regionId !== undefined ? regionId : existing.regionId,
-        sellerId: sellerId !== undefined ? (sellerId === '' ? null : sellerId) : existing.sellerId,
-        active: active !== undefined ? active : existing.active,
-      },
-    });
-
-    // REGRA DE NEGÓCIO: Se o vendedor do território mudou, reatribuir leads ativos desse bairro!
-    const oldSellerId = existing.sellerId;
-    const newSellerId = sellerId !== undefined ? (sellerId === '' ? null : sellerId) : existing.sellerId;
-
-    if (oldSellerId !== newSellerId) {
-      // Buscar leads ativos no bairro (estágio não seja NOVO_REVENDEDOR e status não seja PERDIDO)
-      const activeLeads = await prisma.lead.findMany({
+    if (sellerChanged) {
+      // Leads ainda em jogo: já convertidos ou perdidos não mudam de dono.
+      const activeLeads = await tx.lead.findMany({
         where: {
           neighborhoodId: id,
-          NOT: {
-            OR: [
-              { pipelineStage: PipelineStage.NOVO_REVENDEDOR },
-              { status: 'PERDIDO' }
-            ]
-          }
-        }
+          NOT: { OR: [{ pipelineStage: 'NOVO_REVENDEDOR' }, { status: 'PERDIDO' }] },
+        },
+        select: { id: true },
       });
 
-      if (activeLeads.length > 0) {
-        // Atualizar leads
-        await prisma.lead.updateMany({
-          where: {
-            id: { in: activeLeads.map(l => l.id) }
-          },
-          data: {
-            sellerId: newSellerId,
-            status: newSellerId ? 'ATIVO' : 'SEM_TERRITORIO'
-          }
+      const leadIds = activeLeads.map((lead: { id: string }) => lead.id);
+      count = leadIds.length;
+
+      if (leadIds.length > 0) {
+        await tx.lead.updateMany({
+          where: { id: { in: leadIds } },
+          data: { sellerId: newSellerId, status: newSellerId ? 'ATIVO' : 'SEM_TERRITORIO' },
         });
 
-        // Registrar atividades de transferência e logs para cada lead
-        for (const lead of activeLeads) {
-          const sellerName = newSellerId 
-            ? (await prisma.seller.findUnique({ where: { id: newSellerId } }))?.name || 'Novo Vendedor'
-            : 'Fila de Triagem (Sem Vendedor)';
+        await tx.activity.createMany({
+          data: leadIds.map((leadId: string) => ({
+            leadId,
+            type: 'ASSIGNMENT',
+            description: `Lead reatribuído automaticamente devido à mudança de vendedor responsável pelo bairro ${row.name}. Destino: ${destSellerName}.`,
+          })),
+        });
 
-          await prisma.activity.create({
-            data: {
-              leadId: lead.id,
-              type: ActivityType.ASSIGNMENT,
-              description: `Lead reatribuído automaticamente devido à mudança de vendedor responsável pelo bairro ${updated.name}. Destino: ${sellerName}.`,
-            }
-          });
-
-          await prisma.auditLog.create({
-            data: {
-              userId: session.userId,
-              action: 'LEAD_REASSIGN_BY_TERRITORY_CHANGE',
-              entity: 'Lead',
-              entityId: lead.id,
-              oldValue: { sellerId: oldSellerId },
-              newValue: { sellerId: newSellerId }
-            }
-          });
-        }
+        await tx.auditLog.createMany({
+          data: leadIds.map((leadId: string) => ({
+            userId: session.userId,
+            action: 'LEAD_REASSIGN_BY_TERRITORY_CHANGE',
+            entity: 'Lead',
+            entityId: leadId,
+            oldValue: { sellerId: oldSellerId },
+            newValue: { sellerId: newSellerId },
+          })),
+        });
       }
     }
 
-    // Auditoria do Bairro
-    await prisma.auditLog.create({
+    await tx.auditLog.create({
       data: {
         userId: session.userId,
         action: 'UPDATE_NEIGHBORHOOD',
         entity: 'Neighborhood',
         entityId: id,
         oldValue: existing,
-        newValue: updated,
+        newValue: row,
       },
     });
 
-    return NextResponse.json({ success: true, neighborhood: updated });
-  } catch (error) {
-    console.error('Error updating neighborhood:', error);
-    return NextResponse.json({ error: 'Erro ao atualizar bairro.' }, { status: 500 });
+    return { updated: row, reassignedCount: count };
+  });
+
+  if (sellerChanged) {
+    logger.info('território reatribuído', {
+      route: 'bairros.atualizar',
+      neighborhoodId: id,
+      reassignedLeads: reassignedCount,
+    });
   }
-}
 
-// DELETE /api/neighborhoods/[id] - Delete neighborhood
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const session = await getSession();
-    if (!session || session.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Apenas administradores podem excluir bairros.' }, { status: 403 });
-    }
+  return ok({ success: true, neighborhood: updated, reassignedLeads: reassignedCount });
+});
 
-    const { id } = await params;
+export const PATCH = PUT;
 
-    const existing = await prisma.neighborhood.findUnique({
-      where: { id },
-      include: {
-        _count: {
-          select: { leads: true, customers: true },
-        },
-      },
-    });
+export const DELETE = route<Context>('bairros.excluir', async (_request, { params }) => {
+  const session = await requireAdmin();
+  const { id } = await params;
 
-    if (!existing) {
-      return NextResponse.json({ error: 'Bairro não encontrado.' }, { status: 404 });
-    }
+  const existing = await prisma.neighborhood.findUnique({
+    where: { id },
+    include: { _count: { select: { leads: true, customers: true } } },
+  });
+  if (!existing) throw notFound('Bairro');
 
-    if (existing._count.leads > 0 || existing._count.customers > 0) {
-      return NextResponse.json(
-        { error: 'Não é possível excluir um bairro que possui leads ou clientes cadastrados.' },
-        { status: 400 }
-      );
-    }
-
-    await prisma.neighborhood.delete({
-      where: { id },
-    });
-
-    // Auditoria
-    await prisma.auditLog.create({
-      data: {
-        userId: session.userId,
-        action: 'DELETE_NEIGHBORHOOD',
-        entity: 'Neighborhood',
-        entityId: id,
-        oldValue: existing,
-      },
-    });
-
-    return NextResponse.json({ success: true, message: 'Bairro excluído com sucesso.' });
-  } catch (error) {
-    console.error('Error deleting neighborhood:', error);
-    return NextResponse.json({ error: 'Erro ao excluir bairro.' }, { status: 500 });
+  if (existing._count.leads > 0 || existing._count.customers > 0) {
+    throw conflict('Não é possível excluir um bairro que possui leads ou clientes cadastrados.');
   }
-}
+
+  await prisma.neighborhood.delete({ where: { id } });
+
+  await prisma.auditLog.create({
+    data: {
+      userId: session.userId,
+      action: 'DELETE_NEIGHBORHOOD',
+      entity: 'Neighborhood',
+      entityId: id,
+      oldValue: existing,
+    },
+  });
+
+  return ok({ success: true, message: 'Bairro excluído com sucesso.' });
+});

@@ -1,16 +1,16 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { 
-  Sliders, 
-  Save, 
-  Loader2, 
-  History, 
-  AlertCircle,
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Sliders,
+  Save,
+  Loader2,
+  History,
   CheckCircle,
-  Flame,
   Info
 } from 'lucide-react';
+
+import { errorMessage, apiErrorMessage } from '@/lib/errors';
 
 interface ScoreSettings {
   categoryWeight: number;
@@ -27,11 +27,17 @@ interface ScoreHistory {
   createdAt: string;
   updatedBy: string;
   reason?: string | null;
-  weights: any;
+  weights: ScoreSettings;
+}
+
+interface ScoreResponse {
+  settings?: ScoreSettings | null;
+  history?: ScoreHistory[];
+  message?: string;
+  error?: string;
 }
 
 export default function AdminScorePage() {
-  const [weights, setWeights] = useState<ScoreSettings | null>(null);
   const [history, setHistory] = useState<ScoreHistory[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -48,18 +54,14 @@ export default function AdminScorePage() {
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveResult, setSaveResult] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadScoreSettings();
-  }, []);
-
-  const loadScoreSettings = async () => {
+  const loadScoreSettings = useCallback(async () => {
     try {
       setLoading(true);
       const res = await fetch('/api/settings/score');
-      const json = await res.json();
+      const json: ScoreResponse = await res.json();
       if (res.ok) {
-        setWeights(json.settings);
         setHistory(json.history || []);
+
         
         // Inicializar inputs
         if (json.settings) {
@@ -77,7 +79,14 @@ export default function AdminScorePage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // A carga roda fora do corpo síncrono do efeito para não encadear renders.
+    void (async () => {
+      await loadScoreSettings();
+    })();
+  }, [loadScoreSettings]);
 
   const currentSum = catW + compW + commW + regW + digW + nearW + dqW;
   const isValid = currentSum === 100;
@@ -107,16 +116,16 @@ export default function AdminScorePage() {
         }),
       });
 
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Erro ao calibrar score.');
+      const json: ScoreResponse = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(json, 'Erro ao calibrar score.'));
 
-      setSaveResult(json.message);
+      setSaveResult(json.message ?? null);
       setReason('');
       
       // Recarregar
       await loadScoreSettings();
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(errorMessage(err));
     } finally {
       setSaveLoading(false);
     }

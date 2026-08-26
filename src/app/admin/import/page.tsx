@@ -11,17 +11,29 @@ import {
   Info
 } from 'lucide-react';
 
+import { errorMessage, apiErrorMessage } from '@/lib/errors';
+
+/** Resumo devolvido pelas rotas de importação de planilha. */
+interface ImportResult {
+  totalProcessed: number;
+  inserted: number;
+  updated: number;
+  skipped: number;
+  erros?: string[];
+  error?: string;
+}
+
 export default function AdminImportPage() {
   // Estados para Clientes
   const [customerFile, setCustomerFile] = useState<File | null>(null);
   const [customerLoading, setCustomerLoading] = useState(false);
-  const [customerResult, setCustomerResult] = useState<any | null>(null);
+  const [customerResult, setCustomerResult] = useState<ImportResult | null>(null);
   const [customerError, setCustomerError] = useState<string | null>(null);
 
   // Estados para Produtos
   const [productFile, setProductFile] = useState<File | null>(null);
   const [productLoading, setProductLoading] = useState(false);
-  const [productResult, setProductResult] = useState<any | null>(null);
+  const [productResult, setProductResult] = useState<ImportResult | null>(null);
   const [productError, setProductError] = useState<string | null>(null);
 
   const handleImportCustomers = async (e: React.FormEvent) => {
@@ -41,10 +53,10 @@ export default function AdminImportPage() {
         body: formData
       });
 
-      const data = await res.json();
+      const data: ImportResult = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || 'Erro ao importar clientes.');
+        throw new Error(apiErrorMessage(data, 'Erro ao importar clientes.'));
       }
 
       setCustomerResult(data);
@@ -52,8 +64,8 @@ export default function AdminImportPage() {
       // Reset input element
       const input = document.getElementById('customer-file-input') as HTMLInputElement;
       if (input) input.value = '';
-    } catch (err: any) {
-      setCustomerError(err.message);
+    } catch (err: unknown) {
+      setCustomerError(errorMessage(err));
     } finally {
       setCustomerLoading(false);
     }
@@ -76,10 +88,10 @@ export default function AdminImportPage() {
         body: formData
       });
 
-      const data = await res.json();
+      const data: ImportResult = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || 'Erro ao importar produtos.');
+        throw new Error(apiErrorMessage(data, 'Erro ao importar produtos.'));
       }
 
       setProductResult(data);
@@ -87,8 +99,8 @@ export default function AdminImportPage() {
       // Reset input element
       const input = document.getElementById('product-file-input') as HTMLInputElement;
       if (input) input.value = '';
-    } catch (err: any) {
-      setProductError(err.message);
+    } catch (err: unknown) {
+      setProductError(errorMessage(err));
     } finally {
       setProductLoading(false);
     }

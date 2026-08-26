@@ -1,123 +1,132 @@
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/db';
-import { getSession } from '@/lib/auth';
-import { Role } from '@prisma/client';
+/**
+ * Limites de custo e parametrização da integração com o Google Maps.
+ *
+ * Configuração de sistema: restrita a administrador. Os valores monetários
+ * são colunas Decimal — passam por `num()` para chegar ao front como número,
+ * e não como o objeto Decimal do driver, sobre o qual a tela chamava
+ * `.toFixed()`.
+ */
+import { requireAdmin } from '@/server/auth/guard';
+import { prisma } from '@/server/db';
+import { badRequest } from '@/server/http/errors';
+import { logger } from '@/server/http/logger';
+import { ok, readJson, route } from '@/server/http/respond';
+import { num, paginated } from '@/server/services/serializers';
+import { parseQuery } from '@/server/validation/common';
+import { apiUsageQuerySchema, apiUsageUpdateSchema } from '@/server/validation/crm';
 
-// GET /api/settings/api-usage - Get current API usage and settings
-export async function GET() {
-  try {
-    const session = await getSession();
-    if (!session || (session.role !== Role.ADMIN && session.role !== Role.MANAGER)) {
-      return NextResponse.json({ error: 'Não autorizado.' }, { status: 403 });
-    }
+const DEFAULT_SETTINGS = {
+  dailyCostLimit: 10.0,
+  monthlyCostLimit: 150.0,
+  currentDailyCost: 0.0,
+  currentMonthlyCost: 0.0,
+  apiPaused: false,
+  nearbyRadiusKm: 5,
+};
 
-    // Carregar configurações globais
-    let settings = await prisma.systemSettings.findFirst();
-    if (!settings) {
-      settings = await prisma.systemSettings.create({
-        data: {
-          dailyCostLimit: 10.0,
-          monthlyCostLimit: 150.0,
-          currentDailyCost: 0.0,
-          currentMonthlyCost: 0.0,
-          apiPaused: false,
-          nearbyRadiusKm: 5,
-        },
-      });
-    }
+interface SettingsRow {
+  id: string;
+  dailyCostLimit: unknown;
+  monthlyCostLimit: unknown;
+  currentDailyCost: unknown;
+  currentMonthlyCost: unknown;
+  apiPaused: boolean;
+  nearbyRadiusKm: number;
+  whatsappTemplate: string;
+}
 
-    // Buscar histórico de chamadas recentes de API
-    const recentUsage = await prisma.apiUsage.findMany({
+function toSettingsDTO(row: SettingsRow) {
+  const dailyLimit = num(row.dailyCostLimit);
+  const monthlyLimit = num(row.monthlyCostLimit);
+  const dailyCost = num(row.currentDailyCost);
+  const monthlyCost = num(row.currentMonthlyCost);
+
+  return {
+    id: row.id,
+    dailyCostLimit: dailyLimit,
+    monthlyCostLimit: monthlyLimit,
+    currentDailyCost: Number(dailyCost.toFixed(3)),
+    currentMonthlyCost: Number(monthlyCost.toFixed(3)),
+    apiPaused: row.apiPaused,
+    nearbyRadiusKm: row.nearbyRadiusKm,
+    whatsappTemplate: row.whatsappTemplate,
+    dailyPercent: dailyLimit > 0 ? Math.min(100, Math.round((dailyCost / dailyLimit) * 100)) : 0,
+    monthlyPercent:
+      monthlyLimit > 0 ? Math.min(100, Math.round((monthlyCost / monthlyLimit) * 100)) : 0,
+  };
+}
+
+export const GET = route('consumo-api.obter', async (request) => {
+  await requireAdmin();
+  const query = parseQuery(request, apiUsageQuerySchema);
+
+  const settings: SettingsRow =
+    (await prisma.systemSettings.findFirst()) ??
+    (await prisma.systemSettings.create({ data: DEFAULT_SETTINGS }));
+
+  const [recentUsage, total] = await Promise.all([
+    prisma.apiUsage.findMany({
       orderBy: { date: 'desc' },
-      take: 50,
-    });
+      skip: (query.page - 1) * query.pageSize,
+      take: query.pageSize,
+    }),
+    prisma.apiUsage.count(),
+  ]);
 
-    // Calcular percentuais consumidos
-    const dailyPercent = Math.min(100, Math.round((settings.currentDailyCost / settings.dailyCostLimit) * 100)) || 0;
-    const monthlyPercent = Math.min(100, Math.round((settings.currentMonthlyCost / settings.monthlyCostLimit) * 100)) || 0;
+  return ok({
+    settings: toSettingsDTO(settings),
+    ...paginated(recentUsage, total, query.page, query.pageSize),
+    // Alias de compatibilidade com a tela de custos.
+    recentUsage,
+  });
+});
 
-    return NextResponse.json({
-      settings: {
-        id: settings.id,
-        dailyCostLimit: settings.dailyCostLimit,
-        monthlyCostLimit: settings.monthlyCostLimit,
-        currentDailyCost: parseFloat(settings.currentDailyCost.toFixed(3)),
-        currentMonthlyCost: parseFloat(settings.currentMonthlyCost.toFixed(3)),
-        apiPaused: settings.apiPaused,
-        nearbyRadiusKm: settings.nearbyRadiusKm,
-        whatsappTemplate: settings.whatsappTemplate,
-        dailyPercent,
-        monthlyPercent,
-      },
-      recentUsage,
-    });
-  } catch (error) {
-    console.error('Error fetching API usage data:', error);
-    return NextResponse.json({ error: 'Erro ao carregar controle de custos da API.' }, { status: 500 });
+export const POST = route('consumo-api.atualizar', async (request) => {
+  const session = await requireAdmin();
+  const input = apiUsageUpdateSchema.parse(await readJson(request));
+
+  const current: SettingsRow | null = await prisma.systemSettings.findFirst();
+  if (!current) throw badRequest('Configurações de sistema não inicializadas.');
+
+  const data: Record<string, unknown> = {};
+  if (input.dailyCostLimit !== undefined) data.dailyCostLimit = input.dailyCostLimit;
+  if (input.monthlyCostLimit !== undefined) data.monthlyCostLimit = input.monthlyCostLimit;
+  if (input.apiPaused !== undefined) data.apiPaused = input.apiPaused;
+  if (input.nearbyRadiusKm !== undefined) data.nearbyRadiusKm = input.nearbyRadiusKm;
+  if (input.whatsappTemplate !== undefined) data.whatsappTemplate = input.whatsappTemplate;
+
+  if (input.resetCosts === true) {
+    data.currentDailyCost = 0;
+    data.currentMonthlyCost = 0;
+    // Zerar o contador sem reabrir a torneira deixaria a prospecção parada.
+    data.apiPaused = false;
   }
-}
 
-// POST /api/settings/api-usage - Update API limits and manual controls
-export async function POST(request: NextRequest) {
-  try {
-    const session = await getSession();
-    if (!session || (session.role !== Role.ADMIN && session.role !== Role.MANAGER)) {
-      return NextResponse.json({ error: 'Não autorizado.' }, { status: 403 });
-    }
+  const updated: SettingsRow = await prisma.systemSettings.update({
+    where: { id: current.id },
+    data,
+  });
 
-    const body = await request.json();
-    const {
-      dailyCostLimit,
-      monthlyCostLimit,
-      apiPaused,
-      nearbyRadiusKm,
-      whatsappTemplate,
-      resetCosts,
-    } = body;
+  await prisma.auditLog.create({
+    data: {
+      userId: session.userId,
+      action: 'UPDATE_SYSTEM_SETTINGS',
+      entity: 'SystemSettings',
+      entityId: current.id,
+      oldValue: current,
+      newValue: updated,
+    },
+  });
 
-    const current = await prisma.systemSettings.findFirst();
-    if (!current) {
-      return NextResponse.json({ error: 'Configurações de sistema não inicializadas.' }, { status: 400 });
-    }
+  logger.info('configurações de custo de API atualizadas', {
+    route: 'consumo-api.atualizar',
+    userId: session.userId,
+    resetCosts: input.resetCosts === true,
+  });
 
-    const updateData: any = {};
-
-    if (dailyCostLimit !== undefined) updateData.dailyCostLimit = parseFloat(dailyCostLimit);
-    if (monthlyCostLimit !== undefined) updateData.monthlyCostLimit = parseFloat(monthlyCostLimit);
-    if (apiPaused !== undefined) updateData.apiPaused = apiPaused;
-    if (nearbyRadiusKm !== undefined) updateData.nearbyRadiusKm = parseInt(nearbyRadiusKm);
-    if (whatsappTemplate !== undefined) updateData.whatsappTemplate = whatsappTemplate;
-
-    if (resetCosts === true) {
-      updateData.currentDailyCost = 0.0;
-      updateData.currentMonthlyCost = 0.0;
-      updateData.apiPaused = false; // reativa em caso de reset de custo
-    }
-
-    const updated = await prisma.systemSettings.update({
-      where: { id: current.id },
-      data: updateData,
-    });
-
-    // Auditoria
-    await prisma.auditLog.create({
-      data: {
-        userId: session.userId,
-        action: 'UPDATE_SYSTEM_SETTINGS',
-        entity: 'SystemSettings',
-        entityId: current.id,
-        oldValue: current as any,
-        newValue: updated as any,
-      },
-    });
-
-    return NextResponse.json({
-      success: true,
-      settings: updated,
-      message: 'Configurações de limites de custo e parametrizações salvas com sucesso.',
-    });
-  } catch (error) {
-    console.error('Error updating system settings:', error);
-    return NextResponse.json({ error: 'Erro ao atualizar configurações do sistema.' }, { status: 500 });
-  }
-}
+  return ok({
+    success: true,
+    settings: toSettingsDTO(updated),
+    message: 'Configurações de limites de custo e parametrizações salvas com sucesso.',
+  });
+});

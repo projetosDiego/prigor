@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   UserSquare2, 
   Plus, 
@@ -14,6 +14,8 @@ import {
   ToggleLeft,
   ToggleRight
 } from 'lucide-react';
+
+import { errorMessage, apiErrorMessage } from '@/lib/errors';
 
 interface Neighborhood {
   id: string;
@@ -36,6 +38,26 @@ interface Seller {
   neighborhoods: Neighborhood[];
 }
 
+interface SellersResponse {
+  data?: Seller[];
+  error?: string;
+}
+
+interface MutationResponse {
+  error?: string;
+}
+
+/** Corpo enviado ao criar/editar vendedor. A senha só vai quando informada. */
+interface SellerPayload {
+  name: string;
+  email: string;
+  phone: string;
+  goal: string;
+  active: boolean;
+  startDate: string;
+  password?: string;
+}
+
 export default function AdminSellersPage() {
   const [sellers, setSellers] = useState<Seller[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,24 +75,27 @@ export default function AdminSellersPage() {
   const [startDate, setStartDate] = useState('');
   const [formLoading, setFormLoading] = useState(false);
 
-  useEffect(() => {
-    loadSellers();
-  }, []);
-
-  const loadSellers = async () => {
+  const loadSellers = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       const res = await fetch('/api/sellers');
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao carregar vendedores.');
-      setSellers(data.sellers || []);
-    } catch (err: any) {
-      setError(err.message);
+      const data: SellersResponse = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(data, 'Erro ao carregar vendedores.'));
+      setSellers(data.data ?? []);
+    } catch (err: unknown) {
+      setError(errorMessage(err));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // A carga roda fora do corpo síncrono do efeito para não encadear renders.
+    void (async () => {
+      await loadSellers();
+    })();
+  }, [loadSellers]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,7 +103,7 @@ export default function AdminSellersPage() {
     try {
       const url = sellerId ? `/api/sellers/${sellerId}` : '/api/sellers';
       const method = sellerId ? 'PUT' : 'POST';
-      const payload: any = { name, email, phone, goal, active, startDate };
+      const payload: SellerPayload = { name, email, phone, goal, active, startDate };
       
       // Senha é obrigatória na criação, opcional na edição
       if (password) {
@@ -91,8 +116,8 @@ export default function AdminSellersPage() {
         body: JSON.stringify(payload),
       });
 
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Erro ao salvar vendedor.');
+      const json: MutationResponse = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(json, 'Erro ao salvar vendedor.'));
 
       // Reset form
       setSellerId(null);
@@ -107,8 +132,8 @@ export default function AdminSellersPage() {
 
       await loadSellers();
       alert('Vendedor salvo com sucesso!');
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(errorMessage(err));
     } finally {
       setFormLoading(false);
     }
@@ -118,13 +143,13 @@ export default function AdminSellersPage() {
     if (!confirm('Deseja realmente excluir este vendedor permanentemente?')) return;
     try {
       const res = await fetch(`/api/sellers/${id}`, { method: 'DELETE' });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Erro ao excluir vendedor.');
+      const json: MutationResponse = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(json, 'Erro ao excluir vendedor.'));
       
       await loadSellers();
       alert('Vendedor excluído do sistema.');
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(errorMessage(err));
     }
   };
 

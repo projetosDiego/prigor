@@ -1,15 +1,7 @@
-import { NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
+import { getSession } from '@/server/auth/session';
+import { ok, route } from '@/server/http/respond';
 
-export async function GET() {
-  try {
-    const session = await getSession();
-    return NextResponse.json({ session });
-  } catch (error) {
-    console.error('Erro na API de Sessão:', error);
-    return NextResponse.json(
-      { error: 'Erro interno ao recuperar sessão.' },
-      { status: 500 }
-    );
-  }
-}
+export const GET = route('auth.sessao', async () => {
+  const session = await getSession();
+  return ok({ authenticated: Boolean(session), user: session });
+});

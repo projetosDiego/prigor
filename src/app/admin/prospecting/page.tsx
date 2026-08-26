@@ -1,17 +1,16 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { 
-  Compass, 
-  Play, 
-  Loader2, 
-  History, 
-  CheckCircle2, 
-  AlertTriangle,
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Play,
+  Loader2,
+  History,
+  CheckCircle2,
   Clock,
-  Sparkles,
-  Search
+  Sparkles
 } from 'lucide-react';
+
+import { errorMessage, apiErrorMessage } from '@/lib/errors';
 
 interface Neighborhood {
   id: string;
@@ -34,6 +33,30 @@ interface ProspectingRun {
   status: string;
 }
 
+/** Resumo devolvido por `POST /api/prospecting/run`. */
+interface RunStats {
+  resultsFound: number;
+  newLeads: number;
+  duplicates: number;
+  existingCustomers: number;
+  costUsd: number;
+}
+
+interface NeighborhoodsResponse {
+  data?: Neighborhood[];
+  error?: string;
+}
+
+interface RunsResponse {
+  data?: ProspectingRun[];
+}
+
+interface RunResponse {
+  stats?: RunStats;
+  message?: string;
+  error?: string;
+}
+
 export default function AdminProspectingPage() {
   const [neighborhoods, setNeighborhoods] = useState<Neighborhood[]>([]);
   const [history, setHistory] = useState<ProspectingRun[]>([]);
@@ -44,46 +67,52 @@ export default function AdminProspectingPage() {
   const [selectedCategory, setSelectedCategory] = useState('cafeterias');
   const [limit, setLimit] = useState('5');
   const [runLoading, setRunLoading] = useState(false);
-  const [runStats, setRunStats] = useState<any>(null);
+  const [runStats, setRunStats] = useState<RunStats | null>(null);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      const [neighRes, runsRes] = await Promise.all([
-        fetch('/api/neighborhoods'),
-        // Fazer fetch direto da tabela de execuções
-        fetch('/api/settings/api-usage'), // para carregar o histórico acoplado
-      ]);
-
-      const neighJson = await neighRes.json();
-      const usageJson = await usageResData(runsRes);
-
-      if (!neighRes.ok) throw new Error(neighJson.error || 'Erro ao carregar bairros.');
-
-      setNeighborhoods(neighJson.neighborhoods || []);
-      setHistory(usageJson.history || []);
-    } catch (err: any) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const usageResData = async (res: Response) => {
+  const carregarHistorico = useCallback(async (): Promise<ProspectingRun[]> => {
     try {
       // Para carregar runs, faremos um endpoint de runs no BD
       const runsRes = await fetch('/api/prospecting/runs');
       if (runsRes.ok) {
-        const data = await runsRes.json();
-        return { history: data.runs || [] };
+        const data: RunsResponse = await runsRes.json();
+        return data.data ?? [];
       }
-    } catch (e) {}
-    return { history: [] };
-  };
+    } catch {
+      // Histórico é acessório: falha aqui não impede a tela de abrir.
+    }
+    return [];
+  }, []);
+
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [neighRes] = await Promise.all([
+        fetch('/api/neighborhoods'),
+        // Mantém a chamada ao endpoint de configurações, que é quem inicializa
+        // a linha de config do sistema. A resposta em si não é usada aqui.
+        fetch('/api/settings/api-usage'),
+      ]);
+
+      const neighJson: NeighborhoodsResponse = await neighRes.json();
+      const historico = await carregarHistorico();
+
+      if (!neighRes.ok) throw new Error(apiErrorMessage(neighJson, 'Erro ao carregar bairros.'));
+
+      setNeighborhoods(neighJson.data ?? []);
+      setHistory(historico);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [carregarHistorico]);
+
+  useEffect(() => {
+    // A carga roda fora do corpo síncrono do efeito para não encadear renders.
+    void (async () => {
+      await loadData();
+    })();
+  }, [loadData]);
 
   const handleRunProspecting = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,16 +129,16 @@ export default function AdminProspectingPage() {
         }),
       });
 
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Erro ao rodar motor de busca.');
+      const json: RunResponse = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(json, 'Erro ao rodar motor de busca.'));
 
-      setRunStats(json.stats);
+      setRunStats(json.stats ?? null);
       alert(json.message);
-      
+
       // Recarregar histórico
       await loadData();
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(errorMessage(err));
     } finally {
       setRunLoading(false);
     }

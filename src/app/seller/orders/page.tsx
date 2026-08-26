@@ -1,21 +1,14 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { 
-  FileText, 
-  Plus, 
-  Search, 
-  Trash2, 
-  Loader2, 
-  RefreshCw, 
-  X, 
-  Clock, 
-  CreditCard, 
-  Calendar, 
-  DollarSign, 
-  AlertTriangle,
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  FileText,
+  Plus,
+  Loader2,
+  X,
   Package
 } from 'lucide-react';
+import { responseErrorMessage } from '@/lib/errors';
 
 const formatPhone = (value: string) => {
   if (!value) return value;
@@ -33,39 +26,84 @@ const formatPhone = (value: string) => {
   return `(${phone.substring(0, 2)}) ${phone.substring(2, 7)}-${phone.substring(7, 11)}`;
 };
 
+/** Item de pedido devolvido pela API (OrderItemDTO). */
 interface PedidoItem {
-  produto_id: string;
-  produto_nome?: string;
-  quantidade: number;
-  preco_unitario: number;
-  desconto_item: number;
+  id?: string;
+  productId: string;
+  productName?: string | null;
+  quantity: number;
+  unitPrice: number;
+  discountItem: number;
   subtotal: number;
 }
 
+/** Pedido devolvido por `GET /api/orders` (recorte de OrderDTO). */
 interface Pedido {
   id: string;
   numero: number;
-  cliente_nome?: string;
-  vendedor_nome?: string;
+  customerName?: string | null;
+  sellerName?: string | null;
   status: 'novo' | 'confirmado' | 'em_producao' | 'entregue' | 'faturado' | 'cancelado';
-  forma_pagamento?: string;
-  data_pedido: string;
+  paymentMethod?: string;
+  orderDate: string;
   total: number;
-  itens: PedidoItem[];
+  items: PedidoItem[];
 }
 
+/** Cliente devolvido por `GET /api/customers` (recorte de CustomerDTO). */
 interface Cliente {
   id: string;
-  nome: string;
-  is_revendedor: boolean;
+  tradeName: string;
+  isReseller: boolean;
 }
 
+/** Produto de venda devolvido por `GET /api/products` (recorte de ProductDTO). */
 interface Produto {
   id: string;
-  nome: string;
-  preco_venda: number;
-  preco_atacado?: number;
-  qtd_min_atacado?: number;
+  name: string;
+  salePrice: number;
+  wholesalePrice: number;
+  minWholesaleQty: number;
+}
+
+/** Envelope de paginação usado por todas as listagens da API. */
+interface Paginated<T> {
+  data: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
+
+
+/** Resposta da consulta de CNPJ (BrasilAPI, via `/api/tools/cnpj`). */
+interface RespostaCnpj {
+  nome_fantasia?: string;
+  razao_social?: string;
+  ddd_telefone_1?: string;
+  logradouro?: string;
+  numero?: string;
+  complemento?: string;
+  bairro?: string;
+  cep?: string;
+}
+
+/** Resposta da consulta de CEP (via `/api/tools/cep`). */
+interface RespostaCep {
+  street?: string;
+  neighborhood?: string;
+}
+
+/**
+ * Formata uma data civil (AAAA-MM-DD) como dd/mm/aaaa.
+ * `new Date('2026-01-05')` seria interpretada como meia-noite UTC e voltaria
+ * um dia atrás no fuso do Brasil, então a conversão é feita na mão.
+ */
+function formatarData(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const [ano, mes, dia] = iso.slice(0, 10).split('-');
+  return ano && mes && dia ? `${dia}/${mes}/${ano}` : '—';
 }
 
 export default function SellerOrdersPage() {
@@ -76,8 +114,8 @@ export default function SellerOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Estado do Vendedor Logado (ID herdado no Backend do JWT)
-  const [vendedorId, setVendedorId] = useState<string | null>(null);
+  // O vendedor do pedido é o da sessão: o servidor resolve sozinho, a tela
+  // não envia nem guarda esse id.
 
   // Estado do Modal de Novo Pedido
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -112,53 +150,59 @@ export default function SellerOrdersPage() {
   const [itemQty, setItemQty] = useState('1');
   const [itemDesc, setItemDesc] = useState('0');
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Dispara requisições paralelas via Proxy e CRM
+      // Listagens paginadas: pedidos aceitam no máximo 200 por página,
+      // clientes e produtos até 500. O servidor já limita os pedidos e a
+      // carteira ao vendedor da sessão.
       const [pedsRes, clisRes, prodsRes] = await Promise.all([
-        fetch('/api/erp/pedidos'),
-        fetch('/api/erp/clientes'),
-        fetch('/api/erp/produtos?tipo=venda'),
+        fetch('/api/orders?pageSize=200'),
+        fetch('/api/customers?pageSize=500'),
+        fetch('/api/products?type=venda&pageSize=500'),
       ]);
 
       if (!pedsRes.ok || !clisRes.ok || !prodsRes.ok) {
-        throw new Error('Falha ao obter dados da carteira do vendedor.');
+        const naoOk = [pedsRes, clisRes, prodsRes].find((r) => !r.ok)!;
+        throw new Error(await responseErrorMessage(naoOk, 'Falha ao obter dados da carteira do vendedor.'));
       }
 
-      const peds = await pedsRes.json();
-      const clis = await clisRes.json();
-      const prods = await prodsRes.json();
+      const peds: Paginated<Pedido> = await pedsRes.json();
+      const clis: Paginated<Cliente> = await clisRes.json();
+      const prods: Paginated<Produto> = await prodsRes.json();
 
-      setPedidos(peds);
-      setClientes(clis);
-      setProdutos(prods);
+      setPedidos(peds.data);
+      setClientes(clis.data);
+      setProdutos(prods.data);
 
-      if (prods.length > 0) {
-        setSelectedProdId(prods[0].id);
+      if (prods.data.length > 0) {
+        setSelectedProdId(prods.data[0].id);
       }
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao obter dados da carteira do vendedor.');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // A carga roda fora do corpo síncrono do efeito para não encadear renders.
+    void (async () => {
+      await loadData();
+    })();
+  }, [loadData]);
 
   // Cálculo de Preço Unitário dinâmico do Atacado vs Varejo
   const obterPrecoUnitario = (prod: Produto, quantidade: number, isRevendedor: boolean) => {
-    if (isRevendedor && prod.preco_atacado && prod.preco_atacado > 0) {
-      return prod.preco_atacado;
+    if (isRevendedor && prod.wholesalePrice > 0) {
+      return prod.wholesalePrice;
     }
-    if (prod.qtd_min_atacado && prod.qtd_min_atacado > 0 && quantidade >= prod.qtd_min_atacado && prod.preco_atacado && prod.preco_atacado > 0) {
-      return prod.preco_atacado;
+    if (prod.minWholesaleQty > 0 && quantidade >= prod.minWholesaleQty && prod.wholesalePrice > 0) {
+      return prod.wholesalePrice;
     }
-    return prod.preco_venda;
+    return prod.salePrice;
   };
 
   const handleAddItem = () => {
@@ -167,7 +211,7 @@ export default function SellerOrdersPage() {
     if (!prod) return;
 
     const client = clientes.find(c => c.id === clienteId);
-    const isRev = client ? !!client.is_revendedor : false;
+    const isRev = client ? !!client.isReseller : false;
 
     const qty = parseFloat(itemQty);
     const pu = obterPrecoUnitario(prod, qty, isRev);
@@ -175,11 +219,11 @@ export default function SellerOrdersPage() {
     const sub = Math.max(0, qty * pu - desc);
 
     const novoItem: PedidoItem = {
-      produto_id: prod.id,
-      produto_nome: prod.nome,
-      quantidade: qty,
-      preco_unitario: pu,
-      desconto_item: desc,
+      productId: prod.id,
+      productName: prod.name,
+      quantity: qty,
+      unitPrice: pu,
+      discountItem: desc,
       subtotal: sub
     };
 
@@ -201,34 +245,32 @@ export default function SellerOrdersPage() {
     if (!clienteId || itensTemp.length === 0) return;
 
     setSaving(true);
+    // `sellerId` não vai no corpo: o servidor usa o vendedor da sessão.
     const payload = {
-      cliente_id: clienteId,
+      customerId: clienteId,
       status: 'confirmado', // Pedido já é lançado confirmado do celular para baixa automática de estoque!
-      forma_pagamento: formaPagamento,
-      data_pedido: dataPedido,
-      data_entrega: dataPedido, // Assume entrega para o mesmo dia em campo
-      desconto: parseFloat(desconto) || 0,
-      frete: parseFloat(frete) || 0,
-      observacoes: observacoes || undefined,
-      itens: itensTemp.map(i => ({
-        produto_id: i.produto_id,
-        quantidade: i.quantidade,
-        preco_unitario: i.preco_unitario,
-        desconto_item: i.desconto_item
+      paymentMethod: formaPagamento,
+      orderDate: dataPedido,
+      deliveryDate: dataPedido, // Assume entrega para o mesmo dia em campo
+      discount: parseFloat(desconto) || 0,
+      shipping: parseFloat(frete) || 0,
+      notes: observacoes || undefined,
+      items: itensTemp.map(i => ({
+        productId: i.productId,
+        quantity: i.quantity,
+        unitPrice: i.unitPrice,
+        discountItem: i.discountItem
       }))
     };
 
     try {
-      const res = await fetch('/api/erp/pedidos', {
+      const res = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
 
-      if (!res.ok) {
-        const errJson = await res.json();
-        throw new Error(errJson.detail || 'Erro ao emitir pedido.');
-      }
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao emitir pedido.'));
 
       setIsModalOpen(false);
       setItensTemp([]);
@@ -238,8 +280,8 @@ export default function SellerOrdersPage() {
       setObservacoes('');
       loadData();
       alert('🎉 Pedido de venda lançado e faturado com sucesso! Baixa de estoque efetuada.');
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erro ao emitir pedido.');
     } finally {
       setSaving(false);
     }
@@ -256,7 +298,7 @@ export default function SellerOrdersPage() {
     try {
       const res = await fetch(`/api/tools/cnpj?cnpj=${cleanCnpj}`);
       if (!res.ok) throw new Error('CNPJ não encontrado ou indisponível.');
-      const data = await res.json();
+      const data: RespostaCnpj = await res.json();
 
       setQuickClientName(data.nome_fantasia || data.razao_social || '');
       setQuickClientPhone(data.ddd_telefone_1 || '');
@@ -268,8 +310,8 @@ export default function SellerOrdersPage() {
       setQuickClientCep(data.cep || '');
       
       alert('Dados do CNPJ preenchidos com sucesso!');
-    } catch (err: any) {
-      alert('Erro ao consultar CNPJ: ' + err.message);
+    } catch (err) {
+      alert('Erro ao consultar CNPJ: ' + (err instanceof Error ? err.message : 'erro desconhecido.'));
     } finally {
       setCnpjLoading(false);
     }
@@ -286,13 +328,13 @@ export default function SellerOrdersPage() {
     try {
       const res = await fetch(`/api/tools/cep?cep=${cleanCep}`);
       if (!res.ok) throw new Error('CEP não encontrado ou indisponível.');
-      const data = await res.json();
+      const data: RespostaCep = await res.json();
 
       setQuickClientAddress(data.street || '');
       setQuickClientNeighborhood(data.neighborhood || '');
       alert('Endereço do CEP carregado!');
-    } catch (err: any) {
-      alert('Erro ao consultar CEP: ' + err.message);
+    } catch (err) {
+      alert('Erro ao consultar CEP: ' + (err instanceof Error ? err.message : 'erro desconhecido.'));
     } finally {
       setCepLoading(false);
     }
@@ -303,40 +345,38 @@ export default function SellerOrdersPage() {
     if (!quickClientName) return;
 
     setQuickSaving(true);
+    // `phone` agora é gravado de verdade pelo servidor (antes era ignorado).
     const payload = {
-      nome: quickClientName,
-      is_revendedor: quickClientIsRev,
+      tradeName: quickClientName,
+      isReseller: quickClientIsRev,
       phone: quickClientPhone || undefined,
       cnpj: quickClientCnpj || undefined,
       latitude: -22.9068,
       longitude: -43.1729,
-      endereco: quickClientAddress || 'Cadastrado via atalho rápido de pedidos',
-      numero: quickClientNumber || undefined,
-      complemento: quickClientComplement || undefined,
-      bairro: quickClientNeighborhood || 'Centro',
-      cep: quickClientCep || undefined,
-      cidade: 'Rio de Janeiro',
-      estado: 'RJ',
-      ativo: true
+      address: quickClientAddress || 'Cadastrado via atalho rápido de pedidos',
+      number: quickClientNumber || undefined,
+      complement: quickClientComplement || undefined,
+      neighborhood: quickClientNeighborhood || 'Centro',
+      zipCode: quickClientCep || undefined,
+      city: 'Rio de Janeiro',
+      state: 'RJ',
+      active: true
     };
 
     try {
-      const res = await fetch('/api/erp/clientes', {
+      const res = await fetch('/api/customers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
 
-      if (!res.ok) {
-        const errJson = await res.json();
-        throw new Error(errJson.detail || 'Erro ao cadastrar cliente.');
-      }
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao cadastrar cliente.'));
 
-      const newCli = await res.json();
-      
-      const updatedClients = [...clientes, { id: newCli.id, nome: newCli.nome, is_revendedor: newCli.is_revendedor }];
+      const newCli: Cliente = await res.json();
+
+      const updatedClients = [...clientes, { id: newCli.id, tradeName: newCli.tradeName, isReseller: newCli.isReseller }];
       setClientes(updatedClients);
-      
+
       setClienteId(newCli.id);
       setItensTemp([]);
 
@@ -350,9 +390,9 @@ export default function SellerOrdersPage() {
       setQuickClientCep('');
       setIsClientModalOpen(false);
       
-      alert(`🎉 Cliente "${newCli.nome}" cadastrado na sua carteira e selecionado!`);
-    } catch (err: any) {
-      alert(err.message);
+      alert(`🎉 Cliente "${newCli.tradeName}" cadastrado na sua carteira e selecionado!`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erro ao cadastrar cliente.');
     } finally {
       setQuickSaving(false);
     }
@@ -394,9 +434,9 @@ export default function SellerOrdersPage() {
             <div key={p.id} className="bg-white p-3.5 rounded-xl border border-stone-200 shadow-xs text-xs font-semibold text-stone-700 flex justify-between items-start">
               <div>
                 <span className="text-stone-850 font-bold text-sm block">Pedido #{p.numero}</span>
-                <span className="text-stone-500 block mt-0.5">{p.cliente_nome}</span>
+                <span className="text-stone-500 block mt-0.5">{p.customerName}</span>
                 <span className="text-[9px] text-stone-400 block font-medium mt-1">
-                  Emitido em: {new Date(p.data_pedido).toLocaleDateString('pt-BR')} • {p.forma_pagamento?.toUpperCase()}
+                  Emitido em: {formatarData(p.orderDate)} • {p.paymentMethod?.toUpperCase()}
                 </span>
               </div>
               <div className="text-right flex flex-col items-end gap-1.5 shrink-0">
@@ -449,7 +489,7 @@ export default function SellerOrdersPage() {
                     <option value="">Selecione o Cliente...</option>
                     {clientes.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.nome} {c.is_revendedor ? ' (Revendedor)' : ''}
+                        {c.tradeName} {c.isReseller ? ' (Revendedor)' : ''}
                       </option>
                     ))}
                   </select>
@@ -473,7 +513,7 @@ export default function SellerOrdersPage() {
                         >
                           {produtos.map((p) => (
                             <option key={p.id} value={p.id}>
-                              {p.nome} - R$ {p.preco_venda}
+                              {p.name} - R$ {p.salePrice}
                             </option>
                           ))}
                         </select>
@@ -527,8 +567,8 @@ export default function SellerOrdersPage() {
                           <tbody className="divide-y divide-stone-100">
                             {itensTemp.map((it, idx) => (
                               <tr key={idx}>
-                                <td className="py-1.5 px-2 truncate max-w-[120px]">{it.produto_nome}</td>
-                                <td className="py-1.5 px-2 text-center">{it.quantidade}</td>
+                                <td className="py-1.5 px-2 truncate max-w-[120px]">{it.productName}</td>
+                                <td className="py-1.5 px-2 text-center">{it.quantity}</td>
                                 <td className="py-1.5 px-2 text-right">{it.subtotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                                 <td className="py-1.5 px-2 text-center">
                                   <button onClick={() => handleRemoveItem(idx)} className="text-red-600 font-bold cursor-pointer">X</button>

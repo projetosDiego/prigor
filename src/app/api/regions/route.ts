@@ -1,68 +1,69 @@
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/db';
-import { getSession } from '@/lib/auth';
+/**
+ * Regiões comerciais.
+ *
+ * A listagem não exigia sessão nenhuma: qualquer um na rede conseguia ler o
+ * mapa territorial da empresa, com bairros e tudo. Agora exige usuário
+ * autenticado, e a escrita é de gestão.
+ */
+import { requireManager, requireUser } from '@/server/auth/guard';
+import { prisma } from '@/server/db';
+import { conflict } from '@/server/http/errors';
+import { created, ok, readJson, route } from '@/server/http/respond';
+import { paginated } from '@/server/services/serializers';
+import { parseQuery } from '@/server/validation/common';
+import { regionInputSchema, regionListQuerySchema } from '@/server/validation/crm';
 
-// GET /api/regions - List all regions
-export async function GET() {
-  try {
-    const regions = await prisma.region.findMany({
+export const GET = route('regioes.listar', async (request) => {
+  await requireUser();
+  const query = parseQuery(request, regionListQuerySchema);
+
+  const where = query.activeOnly ? { active: true } : {};
+
+  const [rows, total] = await Promise.all([
+    prisma.region.findMany({
+      where,
       orderBy: { name: 'asc' },
       include: {
-        neighborhoods: {
-          select: { id: true, name: true, active: true },
-        },
+        neighborhoods: { select: { id: true, name: true, active: true } },
       },
-    });
-    return NextResponse.json({ regions });
-  } catch (error) {
-    console.error('Error fetching regions:', error);
-    return NextResponse.json({ error: 'Erro ao buscar regiões.' }, { status: 500 });
-  }
-}
+      skip: (query.page - 1) * query.pageSize,
+      take: query.pageSize,
+    }),
+    prisma.region.count({ where }),
+  ]);
 
-// POST /api/regions - Create a new region (Admin/Manager only)
-export async function POST(request: NextRequest) {
-  try {
-    const session = await getSession();
-    if (!session || (session.role !== 'ADMIN' && session.role !== 'MANAGER')) {
-      return NextResponse.json({ error: 'Não autorizado.' }, { status: 403 });
-    }
+  return ok({
+    ...paginated(rows, total, query.page, query.pageSize),
+  });
+});
 
-    const { name, description, active } = await request.json();
-    if (!name) {
-      return NextResponse.json({ error: 'O nome da região é obrigatório.' }, { status: 400 });
-    }
+export const POST = route('regioes.criar', async (request) => {
+  const session = await requireManager();
+  const input = regionInputSchema.parse(await readJson(request));
 
-    const existing = await prisma.region.findUnique({
-      where: { name },
-    });
+  const existing = await prisma.region.findUnique({
+    where: { name: input.name },
+    select: { id: true },
+  });
+  if (existing) throw conflict('Uma região com este nome já existe.');
 
-    if (existing) {
-      return NextResponse.json({ error: 'Uma região com este nome já existe.' }, { status: 400 });
-    }
+  const region = await prisma.region.create({
+    data: {
+      name: input.name,
+      description: input.description,
+      active: input.active,
+    },
+  });
 
-    const region = await prisma.region.create({
-      data: {
-        name,
-        description,
-        active: active !== undefined ? active : true,
-      },
-    });
+  await prisma.auditLog.create({
+    data: {
+      userId: session.userId,
+      action: 'CREATE_REGION',
+      entity: 'Region',
+      entityId: region.id,
+      newValue: region,
+    },
+  });
 
-    // Auditoria
-    await prisma.auditLog.create({
-      data: {
-        userId: session.userId,
-        action: 'CREATE_REGION',
-        entity: 'Region',
-        entityId: region.id,
-        newValue: region,
-      },
-    });
-
-    return NextResponse.json({ success: true, region });
-  } catch (error) {
-    console.error('Error creating region:', error);
-    return NextResponse.json({ error: 'Erro ao criar região.' }, { status: 500 });
-  }
-}
+  return created({ success: true, region });
+});

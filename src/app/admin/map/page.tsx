@@ -1,18 +1,40 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { 
-  MapPin, 
-  Users, 
-  Loader2, 
-  Compass, 
-  Map, 
-  User, 
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Loader2,
+  Compass,
+  Map,
   Filter,
-  CheckCircle2,
   Navigation
 } from 'lucide-react';
+
+interface Seller {
+  id: string;
+  name: string;
+}
+
+/** Cliente devolvido por `GET /api/customers` (recorte de CustomerDTO). */
+interface CustomerRow {
+  id: string;
+  tradeName: string;
+  category: string;
+  address: string;
+  number?: string | null;
+  neighborhood: string;
+  latitude: number;
+  longitude: number;
+  sellerId?: string | null;
+  seller?: { name: string } | null;
+}
+
+interface CustomersResponse {
+  data?: CustomerRow[];
+}
+
+interface SellersResponse {
+  data?: Seller[];
+}
 
 interface Point {
   id: string;
@@ -28,23 +50,17 @@ interface Point {
 
 export default function AdminMapPage() {
   const [points, setPoints] = useState<Point[]>([]);
-  const [sellers, setSellers] = useState<any[]>([]);
+  const [sellers, setSellers] = useState<Seller[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   // Filtros
   const [filterSeller, setFilterSeller] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [filterNeighborhood, setFilterNeighborhood] = useState('');
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null);
 
       // Carregar clientes e vendedores em paralelo
       const [custRes, sellRes] = await Promise.all([
@@ -52,16 +68,16 @@ export default function AdminMapPage() {
         fetch('/api/sellers')
       ]);
 
-      const custData = await custRes.json();
-      const sellData = await sellRes.json();
+      const custData: CustomersResponse = await custRes.json();
+      const sellData: SellersResponse = await sellRes.json();
 
       if (!custRes.ok || !sellRes.ok) {
         throw new Error('Falha ao buscar dados geográficos do servidor.');
       }
 
-      setSellers(sellData.sellers || []);
+      setSellers(sellData.data ?? []);
 
-      const normalized: Point[] = (custData.customers || []).map((c: any) => ({
+      const normalized: Point[] = (custData.data ?? []).map((c: CustomerRow) => ({
         id: c.id,
         tradeName: c.tradeName,
         category: c.category,
@@ -74,12 +90,19 @@ export default function AdminMapPage() {
       }));
 
       setPoints(normalized);
-    } catch (err: any) {
-      setError(err.message || 'Erro ao carregar mapa comercial.');
+    } catch (err) {
+      console.error('Erro ao carregar mapa comercial:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // A carga roda fora do corpo síncrono do efeito para não encadear renders.
+    void (async () => {
+      await loadData();
+    })();
+  }, [loadData]);
 
   // Filtrar pontos de acordo com os filtros selecionados
   const filteredPoints = points.filter((p) => {
@@ -88,9 +111,6 @@ export default function AdminMapPage() {
     const matchesNeighborhood = !filterNeighborhood || p.neighborhood.toLowerCase().includes(filterNeighborhood.toLowerCase());
     return matchesSeller && matchesCategory && matchesNeighborhood;
   });
-
-  // Lista de bairros únicos para o filtro (opcional)
-  const uniqueNeighborhoods = Array.from(new Set(points.map(p => p.neighborhood))).sort();
 
   return (
     <div className="space-y-6">

@@ -1,14 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { 
-  MapPin, 
-  Coffee, 
-  Flame, 
-  CheckCircle2, 
-  Loader2, 
-  SlidersHorizontal,
+import {
+  Loader2,
   Navigation,
   Compass
 } from 'lucide-react';
@@ -24,45 +19,71 @@ interface MapPoint {
   score?: number;
 }
 
+type MarkerFilter = 'ALL' | 'LEAD' | 'CUSTOMER';
+
+/** Lead devolvido por `GET /api/leads`. */
+interface LeadRow {
+  id: string;
+  tradeName: string;
+  category: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  score: number;
+  status: string;
+  convertedCustomerId?: string | null;
+}
+
+/** Cliente devolvido por `GET /api/customers`. */
+interface CustomerRow {
+  id: string;
+  tradeName: string;
+  category: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  status: string;
+}
+
+interface LeadsResponse {
+  data?: LeadRow[];
+}
+
+interface CustomersResponse {
+  data?: CustomerRow[];
+}
+
 export default function SellerMapPage() {
   const [points, setPoints] = useState<MapPoint[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   // Filtros
-  const [filterType, setFilterType] = useState<'ALL' | 'LEAD' | 'CUSTOMER'>('ALL');
+  const [filterType, setFilterType] = useState<MarkerFilter>('ALL');
   const [category, setCategory] = useState('');
 
-  // Centro do Mapa (default centro do RJ)
-  const [mapCenter, setMapCenter] = useState({ lat: -22.9068, lng: -43.1729 });
   const [gpsActive, setGpsActive] = useState(false);
   const [locLoading, setLocLoading] = useState(false);
 
-  useEffect(() => {
-    loadMapPoints();
-  }, []);
-
-  const loadMapPoints = async () => {
+  const loadMapPoints = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null);
-      
+
       // Buscar Leads e Clientes em paralelo
       const [leadsRes, customersRes] = await Promise.all([
         fetch('/api/leads'),
         fetch('/api/customers'),
       ]);
 
-      const leadsJson = await leadsRes.json();
-      const customersJson = await customersRes.json();
+      const leadsJson: LeadsResponse = await leadsRes.json();
+      const customersJson: CustomersResponse = await customersRes.json();
 
       if (!leadsRes.ok || !customersRes.ok) {
         throw new Error('Erro ao buscar dados geográficos.');
       }
 
-      const normalizedLeads: MapPoint[] = (leadsJson.leads || [])
-        .filter((l: any) => l.status === 'ATIVO' && !l.convertedCustomerId)
-        .map((l: any) => ({
+      const normalizedLeads: MapPoint[] = (leadsJson.data ?? [])
+        .filter((l) => l.status === 'ATIVO' && !l.convertedCustomerId)
+        .map((l) => ({
           id: l.id,
           tradeName: l.tradeName,
           category: l.category,
@@ -73,9 +94,9 @@ export default function SellerMapPage() {
           score: l.score,
         }));
 
-      const normalizedCustomers: MapPoint[] = (customersJson.customers || [])
-        .filter((c: any) => c.status === 'ATIVO')
-        .map((c: any) => ({
+      const normalizedCustomers: MapPoint[] = (customersJson.data ?? [])
+        .filter((c) => c.status === 'ATIVO')
+        .map((c) => ({
           id: c.id,
           tradeName: c.tradeName,
           category: c.category,
@@ -85,19 +106,20 @@ export default function SellerMapPage() {
           type: 'CUSTOMER',
         }));
 
-      const allPoints = [...normalizedLeads, ...normalizedCustomers];
-      setPoints(allPoints);
-
-      // Centralizar no primeiro ponto se houver
-      if (allPoints.length > 0) {
-        setMapCenter({ lat: allPoints[0].latitude, lng: allPoints[0].longitude });
-      }
-    } catch (err: any) {
-      setError(err.message || 'Falha ao carregar mapa.');
+      setPoints([...normalizedLeads, ...normalizedCustomers]);
+    } catch (err) {
+      console.error('Falha ao carregar mapa:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // A carga roda fora do corpo síncrono do efeito para não encadear renders.
+    void (async () => {
+      await loadMapPoints();
+    })();
+  }, [loadMapPoints]);
 
   const handleGPSLocation = () => {
     setLocLoading(true);
@@ -108,9 +130,7 @@ export default function SellerMapPage() {
     }
 
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { latitude, longitude } = pos.coords;
-        setMapCenter({ lat: latitude, lng: longitude });
+      () => {
         setGpsActive(true);
         setLocLoading(false);
       },
@@ -153,7 +173,7 @@ export default function SellerMapPage() {
           <label className="block text-[10px] font-bold text-stone-500 uppercase mb-1">Filtrar Marcadores</label>
           <select
             value={filterType}
-            onChange={(e) => setFilterType(e.target.value as any)}
+            onChange={(e) => setFilterType(e.target.value as MarkerFilter)}
             className="block w-full rounded-lg border border-stone-300 bg-stone-50 p-2 text-stone-800"
           >
             <option value="ALL">Mostrar Todos</option>

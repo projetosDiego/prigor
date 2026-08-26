@@ -1,6 +1,6 @@
 import React from 'react';
 import { redirect } from 'next/navigation';
-import { getSession } from '@/lib/auth';
+import { getSession } from '@/server/auth/session';
 import SellerLayoutClient from './layout-client';
 
 export default async function SellerLayout({

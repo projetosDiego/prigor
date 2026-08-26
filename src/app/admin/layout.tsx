@@ -1,7 +1,8 @@
 import React from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { getSession } from '@/lib/auth';
+import { getSession } from '@/server/auth/session';
 import { 
   BarChart3, 
   Users, 
@@ -10,7 +11,6 @@ import {
   Compass, 
   Sliders, 
   Activity, 
-  LogOut, 
   ShieldCheck,
   Flame,
   Package,
@@ -43,7 +43,7 @@ export default async function AdminLayout({
       <aside className="w-64 border-r border-stone-200 bg-stone-900 text-stone-300 flex flex-col shrink-0">
         {/* Brand Header */}
         <div className="flex h-16 items-center gap-2.5 px-5 border-b border-stone-850">
-          <img src="/logo.png" alt="Doces Prigor" className="h-9 w-auto object-contain" />
+          <Image src="/logo.png" alt="Doces Prigor" width={532} height={469} priority className="h-9 w-auto object-contain" />
           <div>
             <h1 className="font-black text-white text-xs tracking-tight uppercase leading-none">Doces Prigor</h1>
             <span className="text-[9px] text-amber-500 font-bold uppercase tracking-widest">OS Central</span>

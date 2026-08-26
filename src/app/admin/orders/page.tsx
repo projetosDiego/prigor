@@ -1,75 +1,101 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { 
   FileText, 
   Plus, 
-  Search, 
   Edit, 
   Trash2, 
   Loader2, 
   RefreshCw, 
   X, 
   Printer, 
-  Clock, 
-  CreditCard, 
   Calendar, 
-  DollarSign, 
-  User,
   AlertTriangle,
   Package
 } from 'lucide-react';
+import { responseErrorMessage } from '@/lib/errors';
 
+type StatusPedido = 'novo' | 'confirmado' | 'em_producao' | 'entregue' | 'faturado' | 'cancelado';
+
+/** Item de pedido devolvido pela API (OrderItemDTO). */
 interface PedidoItem {
-  produto_id: string;
-  produto_nome?: string;
-  quantidade: number;
-  preco_unitario: number;
-  desconto_item: number;
+  id?: string;
+  productId: string;
+  productName?: string | null;
+  quantity: number;
+  unitPrice: number;
+  discountItem: number;
   subtotal: number;
 }
 
+/** Pedido devolvido por `GET /api/orders` (OrderDTO). */
 interface Pedido {
   id: string;
   numero: number;
-  cliente_id: string;
-  cliente_nome?: string;
-  vendedor_id?: string;
-  vendedor_nome?: string;
-  status: 'novo' | 'confirmado' | 'em_producao' | 'entregue' | 'faturado' | 'cancelado';
-  forma_pagamento?: string;
-  data_pedido: string;
-  data_entrega?: string;
-  data_faturamento?: string;
-  data_vencimento?: string;
+  customerId: string;
+  customerName?: string | null;
+  sellerId?: string | null;
+  sellerName?: string | null;
+  status: StatusPedido;
+  paymentMethod?: string;
+  orderDate: string;
+  deliveryDate?: string | null;
+  billingDate?: string | null;
+  dueDate?: string | null;
   subtotal: number;
-  desconto: number;
-  frete: number;
-  outros_custos: number;
+  discount: number;
+  shipping: number;
+  otherCosts: number;
   total: number;
-  observacoes?: string;
-  itens: PedidoItem[];
+  notes?: string | null;
+  items: PedidoItem[];
 }
 
+/** Cliente devolvido por `GET /api/customers` (recorte de CustomerDTO). */
 interface Cliente {
   id: string;
-  nome: string;
-  is_revendedor: boolean;
+  tradeName: string;
+  isReseller: boolean;
 }
 
+/** Produto de venda devolvido por `GET /api/products` (recorte de ProductDTO). */
 interface Produto {
   id: string;
-  nome: string;
-  preco_venda: number;
-  preco_atacado?: number;
-  qtd_min_atacado?: number;
-  comissao_pct?: number;
+  name: string;
+  salePrice: number;
+  wholesalePrice: number;
+  minWholesaleQty: number;
+  commissionPct: number | null;
 }
 
+/** Vendedor devolvido por `GET /api/sellers` (`comissao_pct` chega como Decimal serializado). */
 interface Vendedor {
   id: string;
-  nome: string;
-  comissao_pct: number;
+  name: string;
+  commissionPct: number | string;
+}
+
+/** Envelope de paginação usado por todas as listagens da API. */
+interface Paginated<T> {
+  data: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
+
+
+/**
+ * Formata uma data civil (AAAA-MM-DD) como dd/mm/aaaa.
+ * `new Date('2026-01-05')` seria interpretada como meia-noite UTC e voltaria
+ * um dia atrás no fuso do Brasil, então a conversão é feita na mão.
+ */
+function formatarData(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const [ano, mes, dia] = iso.slice(0, 10).split('-');
+  return ano && mes && dia ? `${dia}/${mes}/${ano}` : '—';
 }
 
 export default function OrdersPage() {
@@ -94,7 +120,7 @@ export default function OrdersPage() {
   // Campos do Formulário
   const [clienteId, setClienteId] = useState('');
   const [vendedorId, setVendedorId] = useState('');
-  const [status, setStatus] = useState<Pedido['status']>('novo');
+  const [status, setStatus] = useState<StatusPedido>('novo');
   const [formaPagamento, setFormaPagamento] = useState('pix');
   const [dataPedido, setDataPedido] = useState(new Date().toISOString().split('T')[0]);
   const [dataEntrega, setDataEntrega] = useState('');
@@ -106,52 +132,58 @@ export default function OrdersPage() {
   const [outrosCustos, setOutrosCustos] = useState('0');
   
   // Itens do Pedido Temporários
-  const [itensTemp, setItensTemp] = useState<any[]>([]);
+  const [itensTemp, setItensTemp] = useState<PedidoItem[]>([]);
   const [selectedProdId, setSelectedProdId] = useState('');
   const [itemQty, setItemQty] = useState('1');
   const [itemDesc, setItemDesc] = useState('0');
 
-  useEffect(() => {
-    fetchBaseData();
-  }, []);
-
-  const fetchBaseData = async () => {
+  const fetchBaseData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       
+      // Listagens paginadas: pedidos aceitam no máximo 200 por página,
+      // produtos e clientes até 500.
       const [resPeds, resClis, resProds, resSells] = await Promise.all([
-        fetch('/api/erp/pedidos'),
-        fetch('/api/erp/clientes'),
-        fetch('/api/erp/produtos?tipo=venda'),
-        fetch('/api/erp/vendedores')
+        fetch('/api/orders?pageSize=200'),
+        fetch('/api/customers?pageSize=500'),
+        fetch('/api/products?type=venda&pageSize=500'),
+        fetch('/api/sellers')
       ]);
 
       if (!resPeds.ok || !resClis.ok || !resProds.ok || !resSells.ok) {
-        throw new Error('Erro ao carregar dados do ERP.');
+        const naoOk = [resPeds, resClis, resProds, resSells].find((r) => !r.ok)!;
+        throw new Error(await responseErrorMessage(naoOk, 'Erro ao carregar os dados.'));
       }
 
       const [peds, clis, prods, sells] = await Promise.all([
-        resPeds.json(),
-        resClis.json(),
-        resProds.json(),
-        resSells.json()
+        resPeds.json() as Promise<Paginated<Pedido>>,
+        resClis.json() as Promise<Paginated<Cliente>>,
+        resProds.json() as Promise<Paginated<Produto>>,
+        resSells.json() as Promise<{ data: Vendedor[] }>
       ]);
 
-      setPedidos(peds);
-      setClientes(clis);
-      setProdutos(prods);
-      setVendedores(sells);
-      
-      if (prods.length > 0) {
-        setSelectedProdId(prods[0].id);
+      setPedidos(peds.data);
+      setClientes(clis.data);
+      setProdutos(prods.data);
+      setVendedores(sells.data ?? []);
+
+      if (prods.data.length > 0) {
+        setSelectedProdId(prods.data[0].id);
       }
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao carregar os dados.');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // A carga roda fora do corpo síncrono do efeito para não encadear renders.
+    void (async () => {
+      await fetchBaseData();
+    })();
+  }, [fetchBaseData]);
 
   const handleOpenCreateModal = () => {
     setModalMode('create');
@@ -178,45 +210,45 @@ export default function OrdersPage() {
     
     // Busca detalhes do pedido completo
     try {
-      const res = await fetch(`/api/erp/pedidos/${pedido.id}`);
+      const res = await fetch(`/api/orders/${pedido.id}`);
       if (res.ok) {
-        const fullPed = await res.json();
-        setClienteId(fullPed.cliente_id);
-        setVendedorId(fullPed.vendedor_id || '');
+        const fullPed: Pedido = await res.json();
+        setClienteId(fullPed.customerId);
+        setVendedorId(fullPed.sellerId || '');
         setStatus(fullPed.status);
-        setFormaPagamento(fullPed.forma_pagamento || 'pix');
-        setDataPedido(fullPed.data_pedido.split('T')[0]);
-        setDataEntrega(fullPed.data_entrega ? fullPed.data_entrega.split('T')[0] : '');
-        setDataFaturamento(fullPed.data_faturamento ? fullPed.data_faturamento.split('T')[0] : '');
-        setDataVencimento(fullPed.data_vencimento ? fullPed.data_vencimento.split('T')[0] : '');
-        setObservacoes(fullPed.observacoes || '');
-        setDescontoGeral(String(fullPed.desconto));
-        setFrete(String(fullPed.frete));
-        setOutrosCustos(String(fullPed.outros_custos));
-        setItensTemp(fullPed.itens || []);
+        setFormaPagamento(fullPed.paymentMethod || 'pix');
+        setDataPedido(fullPed.orderDate);
+        setDataEntrega(fullPed.deliveryDate || '');
+        setDataFaturamento(fullPed.billingDate || '');
+        setDataVencimento(fullPed.dueDate || '');
+        setObservacoes(fullPed.notes || '');
+        setDescontoGeral(String(fullPed.discount));
+        setFrete(String(fullPed.shipping));
+        setOutrosCustos(String(fullPed.otherCosts));
+        setItensTemp(fullPed.items || []);
       }
     } catch {
-      // Fallback
-      setClienteId(pedido.cliente_id);
-      setVendedorId(pedido.vendedor_id || '');
+      // Fallback: usa o que já veio na listagem
+      setClienteId(pedido.customerId);
+      setVendedorId(pedido.sellerId || '');
       setStatus(pedido.status);
-      setFormaPagamento(pedido.forma_pagamento || 'pix');
-      setDataPedido(pedido.data_pedido.split('T')[0]);
-      setDataEntrega(pedido.data_entrega ? pedido.data_entrega.split('T')[0] : '');
-      setItensTemp(pedido.itens || []);
+      setFormaPagamento(pedido.paymentMethod || 'pix');
+      setDataPedido(pedido.orderDate);
+      setDataEntrega(pedido.deliveryDate || '');
+      setItensTemp(pedido.items || []);
     }
-    
+
     setIsModalOpen(true);
   };
 
   // Funções de Cálculo do Pedido (Varejo vs Atacado e Totais)
   const obterPrecoUnitario = (prod: Produto, qty: number, isRev: boolean) => {
     if (!prod) return 0;
-    if (isRev && prod.preco_atacado && prod.preco_atacado > 0) return prod.preco_atacado;
-    if (prod.qtd_min_atacado && prod.qtd_min_atacado > 0 && qty >= prod.qtd_min_atacado && prod.preco_atacado && prod.preco_atacado > 0) {
-      return prod.preco_atacado;
+    if (isRev && prod.wholesalePrice > 0) return prod.wholesalePrice;
+    if (prod.minWholesaleQty > 0 && qty >= prod.minWholesaleQty && prod.wholesalePrice > 0) {
+      return prod.wholesalePrice;
     }
-    return prod.preco_venda;
+    return prod.salePrice;
   };
 
   const handleAddItem = () => {
@@ -226,19 +258,19 @@ export default function OrdersPage() {
 
     // Verifica se o cliente selecionado é revendedor
     const client = clientes.find(c => c.id === clienteId);
-    const isRev = client ? !!client.is_revendedor : false;
-    
+    const isRev = client ? !!client.isReseller : false;
+
     const qty = parseFloat(itemQty);
     const pu = obterPrecoUnitario(prod, qty, isRev);
     const desc = parseFloat(itemDesc) || 0;
     const sub = Math.max(0, qty * pu - desc);
 
-    const novoItem = {
-      produto_id: prod.id,
-      produto_nome: prod.nome,
-      quantidade: qty,
-      preco_unitario: pu,
-      desconto_item: desc,
+    const novoItem: PedidoItem = {
+      productId: prod.id,
+      productName: prod.name,
+      quantity: qty,
+      unitPrice: pu,
+      discountItem: desc,
       subtotal: sub
     };
 
@@ -260,11 +292,14 @@ export default function OrdersPage() {
 
   // Calcula comissão estimada
   const activeSeller = vendedores.find(v => v.id === vendedorId);
-  const sellerPct = activeSeller ? activeSeller.comissao_pct : 0;
-  
+  const sellerPct = activeSeller ? Number(activeSeller.commissionPct) || 0 : 0;
+
   const totalComissao = itensTemp.reduce((sum, item) => {
-    const prod = produtos.find(p => p.id === item.produto_id);
-    const itemPct = (prod && prod.comissao_pct != null) ? prod.comissao_pct : sellerPct;
+    // A comissão específica do produto vem em `commissionPct`; antes a tela lia
+    // `comissao_pct`, um campo que a API nunca devolveu, e a comissão do
+    // produto nunca era aplicada.
+    const prod = produtos.find(p => p.id === item.productId);
+    const itemPct = (prod && prod.commissionPct != null) ? prod.commissionPct : sellerPct;
     return sum + (item.subtotal * (itemPct / 100));
   }, 0);
 
@@ -275,29 +310,30 @@ export default function OrdersPage() {
     if (!clienteId || itensTemp.length === 0) return;
 
     const payload = {
-      cliente_id: clienteId,
-      vendedor_id: vendedorId || null,
+      customerId: clienteId,
+      sellerId: vendedorId || null,
       status,
-      forma_pagamento: formaPagamento,
-      data_pedido: dataPedido,
-      data_entrega: dataEntrega || null,
-      data_faturamento: dataFaturamento || null,
-      data_vencimento: dataVencimento || null,
-      desconto: discountTotal,
-      frete: shippingTotal,
-      outros_custos: othersTotal,
-      observacoes: observacoes || null,
-      itens: itensTemp.map(i => ({
-        produto_id: i.produto_id,
-        quantidade: i.quantidade,
-        preco_unitario: i.preco_unitario,
-        desconto_item: i.desconto_item
+      paymentMethod: formaPagamento,
+      orderDate: dataPedido,
+      deliveryDate: dataEntrega || null,
+      billingDate: dataFaturamento || null,
+      dueDate: dataVencimento || null,
+      discount: discountTotal,
+      shipping: shippingTotal,
+      otherCosts: othersTotal,
+      notes: observacoes || null,
+      items: itensTemp.map(i => ({
+        productId: i.productId,
+        quantity: i.quantity,
+        unitPrice: i.unitPrice,
+        discountItem: i.discountItem
       }))
     };
 
     try {
-      const url = modalMode === 'create' ? '/api/erp/pedidos' : `/api/erp/pedidos/${selectedPedido?.id}`;
-      const method = modalMode === 'create' ? 'POST' : 'PUT';
+      const url = modalMode === 'create' ? '/api/orders' : `/api/orders/${selectedPedido?.id}`;
+      // A atualização de pedido é parcial e usa PATCH.
+      const method = modalMode === 'create' ? 'POST' : 'PATCH';
 
       const res = await fetch(url, {
         method,
@@ -305,46 +341,43 @@ export default function OrdersPage() {
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) {
-        const errJson = await res.json();
-        throw new Error(errJson.detail || 'Erro ao processar pedido.');
-      }
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao processar pedido.'));
 
       setIsModalOpen(false);
       fetchBaseData();
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erro ao processar pedido.');
     }
   };
 
   const handleDelete = async (id: string, num: number) => {
     if (!confirm(`Tem certeza que deseja cancelar o pedido #${num}?`)) return;
     try {
-      const res = await fetch(`/api/erp/pedidos/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Erro ao cancelar pedido.');
+      const res = await fetch(`/api/orders/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao cancelar pedido.'));
       fetchBaseData();
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erro ao cancelar pedido.');
     }
   };
 
   const handleDownloadPdf = async (id: string) => {
     try {
-      const res = await fetch(`/api/erp/pedidos/${id}/pdf`);
-      if (!res.ok) throw new Error('Erro ao gerar PDF do pedido.');
+      const res = await fetch(`/api/orders/${id}/pdf`);
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao gerar PDF do pedido.'));
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
       setTimeout(() => URL.revokeObjectURL(url), 60000);
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erro ao gerar PDF do pedido.');
     }
   };
 
   // Filtros aplicados localmente
   const filteredPedidos = pedidos.filter(p => {
     const matchesStatus = !statusFilter || p.status === statusFilter;
-    const date = p.data_pedido.split('T')[0];
+    const date = p.orderDate.slice(0, 10);
     const matchesFrom = !dateFrom || date >= dateFrom;
     const matchesTo = !dateTo || date <= dateTo;
     return matchesStatus && matchesFrom && matchesTo;
@@ -447,7 +480,7 @@ export default function OrdersPage() {
         <div className="text-center py-12 rounded-xl bg-white border border-stone-200 shadow-sm">
           <FileText className="h-12 w-12 text-stone-300 mx-auto mb-3" />
           <p className="text-stone-500 text-sm font-semibold">Nenhum pedido encontrado</p>
-          <p className="text-stone-400 text-xs mt-1">Clique em "Novo Pedido" para realizar uma venda.</p>
+          <p className="text-stone-400 text-xs mt-1">Clique em &quot;Novo Pedido&quot; para realizar uma venda.</p>
         </div>
       ) : (
         <div className="rounded-2xl bg-white shadow-sm border border-stone-200 overflow-hidden">
@@ -469,11 +502,11 @@ export default function OrdersPage() {
                 {filteredPedidos.map((ped) => (
                   <tr key={ped.id} className="hover:bg-stone-50/50">
                     <td className="py-4 px-6 font-bold text-amber-900">#{ped.numero}</td>
-                    <td className="py-4 px-6 text-stone-850 font-bold text-sm">{ped.cliente_nome}</td>
-                    <td className="py-4 px-6 text-stone-500">{ped.vendedor_nome || '—'}</td>
-                    <td className="py-4 px-6 text-stone-400">{new Date(ped.data_pedido).toLocaleDateString('pt-BR')}</td>
+                    <td className="py-4 px-6 text-stone-850 font-bold text-sm">{ped.customerName}</td>
+                    <td className="py-4 px-6 text-stone-500">{ped.sellerName || '—'}</td>
+                    <td className="py-4 px-6 text-stone-400">{formatarData(ped.orderDate)}</td>
                     <td className="py-4 px-6 text-stone-400">
-                      {ped.data_entrega ? new Date(ped.data_entrega).toLocaleDateString('pt-BR') : '—'}
+                      {formatarData(ped.deliveryDate)}
                     </td>
                     <td className="py-4 px-6 text-right font-black text-stone-850">
                       {ped.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
@@ -552,7 +585,7 @@ export default function OrdersPage() {
                   >
                     {clientes.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.nome} {c.is_revendedor ? '(Revendedor Atacado)' : ''}
+                        {c.tradeName} {c.isReseller ? '(Revendedor Atacado)' : ''}
                       </option>
                     ))}
                   </select>
@@ -568,7 +601,7 @@ export default function OrdersPage() {
                     <option value="">Sem Vendedor (Venda Direta)</option>
                     {vendedores.map((v) => (
                       <option key={v.id} value={v.id}>
-                        {v.nome} ({v.comissao_pct}%)
+                        {v.name} ({Number(v.commissionPct) || 0}%)
                       </option>
                     ))}
                   </select>
@@ -578,7 +611,7 @@ export default function OrdersPage() {
                   <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">Status da Produção</label>
                   <select 
                     value={status}
-                    onChange={(e) => setStatus(e.target.value as any)}
+                    onChange={(e) => setStatus(e.target.value as StatusPedido)}
                     className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs bg-stone-50/50 focus:ring-1 focus:ring-amber-500"
                   >
                     <option value="novo">Novo</option>
@@ -674,8 +707,8 @@ export default function OrdersPage() {
                     >
                       {produtos.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.nome} - Varejo: {p.preco_venda.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                          {p.preco_atacado ? ` (Atacado: ${p.preco_atacado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})` : ''}
+                          {p.name} - Varejo: {p.salePrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                          {p.wholesalePrice ? ` (Atacado: ${p.wholesalePrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})` : ''}
                         </option>
                       ))}
                     </select>
@@ -723,10 +756,10 @@ export default function OrdersPage() {
                       <tbody className="divide-y divide-stone-100 font-semibold text-stone-600">
                         {itensTemp.map((it, idx) => (
                           <tr key={idx} className="hover:bg-stone-50/50">
-                            <td className="py-2.5 px-4 text-stone-850 font-bold">{it.produto_name || produtos.find(p => p.id === it.produto_id)?.nome}</td>
-                            <td className="py-2.5 px-4 text-center font-bold text-stone-800">{it.quantidade}</td>
-                            <td className="py-2.5 px-4 text-right">{it.preco_unitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                            <td className="py-2.5 px-4 text-right text-red-650">-{it.desconto_item.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                            <td className="py-2.5 px-4 text-stone-850 font-bold">{it.productName || produtos.find(p => p.id === it.productId)?.name}</td>
+                            <td className="py-2.5 px-4 text-center font-bold text-stone-800">{it.quantity}</td>
+                            <td className="py-2.5 px-4 text-right">{it.unitPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                            <td className="py-2.5 px-4 text-right text-red-650">-{it.discountItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                             <td className="py-2.5 px-4 text-right font-black text-stone-850">{it.subtotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                             <td className="py-2.5 px-4 text-center">
                               <button 

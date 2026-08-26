@@ -1,26 +1,22 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  ArrowLeft, 
-  MapPin, 
-  Phone, 
-  Mail, 
-  Coffee, 
-  TrendingUp, 
-  Activity, 
-  CheckCircle, 
-  Calendar, 
-  Info,
-  ExternalLink,
+import {
+  ArrowLeft,
+  MapPin,
+  Phone,
+  Mail,
+  Coffee,
+  TrendingUp,
   Loader2,
   AlertCircle,
-  FileText,
   Clock,
   Sparkles
 } from 'lucide-react';
-import { PipelineStage, LossReason, ActivityType, SampleResult, MeetingStatus } from '@prisma/client';
+import { PipelineStage, LossReason, ActivityType, SampleResult } from '@prisma/client';
+
+import { errorMessage, apiErrorMessage } from '@/lib/errors';
 
 interface ActivityRecord {
   id: string;
@@ -29,6 +25,72 @@ interface ActivityRecord {
   date: string;
   result?: string;
   seller?: { name: string };
+}
+
+/** Detalhamento do Prigor Score gravado em `scoreBreakdown`. */
+interface ScoreBreakdown {
+  category: number;
+  compatibility: number;
+  commercial_potential: number;
+  region: number;
+  digital_presence: number;
+  nearby_customers: number;
+  data_quality: number;
+}
+
+interface MeetingRecord {
+  id: string;
+  date: string;
+  location: string | null;
+  observation: string | null;
+  status: string;
+}
+
+interface SampleRecord {
+  id: string;
+  date: string;
+  product: string;
+  quantity: number;
+  flavors: string | null;
+  observation: string | null;
+  result: SampleResult | null;
+}
+
+/** Resposta de `GET /api/leads/[id]/whatsapp`. */
+interface WhatsAppData {
+  leadPhone: string;
+  formattedPhone: string;
+  message: string;
+  whatsappUrl: string;
+  closestCustomer: {
+    id: string;
+    tradeName: string;
+    category: string | null;
+    distance: number;
+  } | null;
+}
+
+/** Corpo enviado ao atualizar a etapa do lead. */
+interface StagePayload {
+  pipelineStage: PipelineStage;
+  status?: string;
+  lossReason?: LossReason;
+  lossNotes?: string;
+}
+
+/** Corpo enviado ao registrar uma atividade. */
+interface ActivityPayload {
+  leadId: string;
+  type: ActivityType;
+  description: string;
+  result: string;
+  latitude?: number;
+  longitude?: number;
+  sampleQuantity?: string;
+  sampleFlavors?: string;
+  sampleResult?: SampleResult;
+  meetingDate?: string;
+  meetingLocation?: string;
 }
 
 interface Lead {
@@ -51,7 +113,7 @@ interface Lead {
   category: string;
   googlePlaceId?: string;
   score: number;
-  scoreBreakdown: any;
+  scoreBreakdown: ScoreBreakdown | null;
   sellerId?: string;
   regionId?: string;
   neighborhoodId?: string;
@@ -62,28 +124,29 @@ interface Lead {
   firstContactAt?: string;
   convertedCustomerId?: string;
   activities: ActivityRecord[];
-  meetings: any[];
-  samples: any[];
+  meetings: MeetingRecord[];
+  samples: SampleRecord[];
 }
 
 interface LeadDetailClientProps {
   initialLead: Lead;
-  regions: any[];
-  neighborhoods: any[];
-  currentUserRole: string;
 }
 
-export default function LeadDetailClient({ 
-  initialLead, 
-  regions, 
-  neighborhoods,
-  currentUserRole 
-}: LeadDetailClientProps) {
+interface LeadUpdateResponse {
+  lead?: Lead;
+  error?: string;
+}
+
+interface ActivityResponse {
+  error?: string;
+}
+
+export default function LeadDetailClient({ initialLead }: LeadDetailClientProps) {
   const router = useRouter();
   const [lead, setLead] = useState<Lead>(initialLead);
   
   // Estados de WhatsApp / Prova Social
-  const [waData, setWaData] = useState<any>(null);
+  const [waData, setWaData] = useState<WhatsAppData | null>(null);
   const [waLoading, setWaLoading] = useState(true);
   const [editedWaMessage, setEditedWaMessage] = useState('');
 
@@ -102,7 +165,6 @@ export default function LeadDetailClient({
   // Campos extras para Reunião
   const [meetingDate, setMeetingDate] = useState('');
   const [meetingLocation, setMeetingLocation] = useState('');
-  const [meetingObservation, setMeetingObservation] = useState('');
 
   // Estágio e Perda
   const [pipelineStage, setPipelineStage] = useState<PipelineStage>(lead.pipelineStage);
@@ -111,15 +173,11 @@ export default function LeadDetailClient({
   const [showLossFields, setShowLossFields] = useState(lead.pipelineStage === 'PERDIDO');
   const [updatingStage, setUpdatingStage] = useState(false);
 
-  useEffect(() => {
-    fetchWhatsAppSocialProof();
-  }, [lead.id]);
-
-  const fetchWhatsAppSocialProof = async () => {
+  const fetchWhatsAppSocialProof = useCallback(async (leadId: string) => {
     try {
       setWaLoading(true);
-      const res = await fetch(`/api/leads/${lead.id}/whatsapp`);
-      const data = await res.json();
+      const res = await fetch(`/api/leads/${leadId}/whatsapp`);
+      const data: WhatsAppData = await res.json();
       if (res.ok) {
         setWaData(data);
         setEditedWaMessage(data.message || '');
@@ -129,7 +187,15 @@ export default function LeadDetailClient({
     } finally {
       setWaLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const leadId = lead.id;
+    // A busca roda fora do corpo síncrono do efeito para não encadear renders.
+    void (async () => {
+      await fetchWhatsAppSocialProof(leadId);
+    })();
+  }, [lead.id, fetchWhatsAppSocialProof]);
 
   const handleStageChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const stage = e.target.value as PipelineStage;
@@ -151,7 +217,7 @@ export default function LeadDetailClient({
   const updateLeadStage = async (stage: PipelineStage, lossData?: { lossReason: LossReason; lossNotes: string }) => {
     try {
       setUpdatingStage(true);
-      const payload: any = { pipelineStage: stage };
+      const payload: StagePayload = { pipelineStage: stage };
       if (lossData) {
         payload.status = 'PERDIDO';
         payload.lossReason = lossData.lossReason;
@@ -164,10 +230,10 @@ export default function LeadDetailClient({
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
+      const data: LeadUpdateResponse = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || 'Erro ao atualizar estágio do lead.');
+        throw new Error(apiErrorMessage(data, 'Erro ao atualizar estágio do lead.'));
       }
 
       if (stage === 'NOVO_REVENDEDOR') {
@@ -178,12 +244,14 @@ export default function LeadDetailClient({
       }
 
       // Recarregar dados
-      setLead(data.lead);
-      setPipelineStage(data.lead.pipelineStage);
-      setShowLossFields(data.lead.pipelineStage === 'PERDIDO');
+      if (data.lead) {
+        setLead(data.lead);
+        setPipelineStage(data.lead.pipelineStage);
+        setShowLossFields(data.lead.pipelineStage === 'PERDIDO');
+      }
       router.refresh();
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(errorMessage(err));
     } finally {
       setUpdatingStage(false);
     }
@@ -202,7 +270,7 @@ export default function LeadDetailClient({
     if (activeForm === 'meeting') type = 'MEETING';
     if (activeForm === 'sample') type = 'SAMPLE';
 
-    const payload: any = {
+    const payload: ActivityPayload = {
       leadId: lead.id,
       type,
       description,
@@ -212,7 +280,7 @@ export default function LeadDetailClient({
     // Obter geolocalização do browser caso seja visita
     if (type === 'VISIT') {
       try {
-        const position: any = await new Promise((resolve, reject) => {
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
           navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
         });
         payload.latitude = position.coords.latitude;
@@ -231,7 +299,6 @@ export default function LeadDetailClient({
     if (type === 'MEETING') {
       payload.meetingDate = meetingDate;
       payload.meetingLocation = meetingLocation;
-      payload.meetingObservation = meetingObservation;
     }
 
     try {
@@ -241,8 +308,8 @@ export default function LeadDetailClient({
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao registrar atividade.');
+      const data: ActivityResponse = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(data, 'Erro ao registrar atividade.'));
 
       // Limpar formulário
       setDescription('');
@@ -255,29 +322,13 @@ export default function LeadDetailClient({
 
       // Recarregar os dados do Lead para atualizar a linha do tempo (atividades)
       window.location.reload();
-    } catch (err: any) {
-      setFormError(err.message);
+    } catch (err: unknown) {
+      setFormError(errorMessage(err));
     } finally {
       setFormLoading(false);
     }
   };
 
-  const getStageBadgeColor = (stage: PipelineStage) => {
-    switch (stage) {
-      case 'NOVO': return 'bg-blue-100 text-blue-800';
-      case 'QUALIFICADO': return 'bg-purple-100 text-purple-800';
-      case 'ATRIBUIDO': return 'bg-indigo-100 text-indigo-800';
-      case 'ABORDADO': return 'bg-yellow-100 text-yellow-900';
-      case 'CONTATO_REALIZADO': return 'bg-amber-100 text-amber-900';
-      case 'INTERESSADO': return 'bg-orange-100 text-orange-950';
-      case 'REUNIAO':
-      case 'AMOSTRA':
-      case 'NEGOCIACAO': return 'bg-pink-100 text-pink-900';
-      case 'NOVO_REVENDEDOR': return 'bg-emerald-100 text-emerald-900';
-      case 'PERDIDO': return 'bg-red-100 text-red-900';
-      default: return 'bg-stone-100 text-stone-900';
-    }
-  };
 
   return (
     <div className="max-w-md mx-auto space-y-6">

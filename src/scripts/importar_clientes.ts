@@ -5,14 +5,14 @@ const prisma = new PrismaClient();
 const finalPath = "C:\\Users\\igorc\\Downloads\\ListaClientes (1).xlsx";
 
 // Helper para higienizar strings e retornar nulo se vazio
-function s(v: any): string | null {
+function s(v: unknown): string | null {
   if (v === undefined || v === null) return null;
   const str = String(v).trim();
   return str.length > 0 ? str : null;
 }
 
 // Limpa CNPJ/CPF mantendo apenas números
-function cleanDoc(v: any): string | null {
+function cleanDoc(v: unknown): string | null {
   const str = s(v);
   if (!str) return null;
   return str.replace(/\D/g, '');
@@ -26,7 +26,7 @@ async function main() {
     const workbook = XLSX.readFile(finalPath);
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as unknown[][];
 
     if (rows.length <= 1) {
       console.error("❌ Planilha vazia ou sem linhas de dados!");
@@ -34,7 +34,7 @@ async function main() {
     }
 
     const headers = rows[0].map(h => String(h || '').trim().toLowerCase());
-    const getVal = (row: any[], headerName: string): any => {
+    const getVal = (row: unknown[], headerName: string): unknown => {
       const idx = headers.indexOf(headerName.toLowerCase());
       if (idx === -1 || idx >= row.length) return null;
       return row[idx];
@@ -120,7 +120,7 @@ async function main() {
             latitude: -22.9068,
             longitude: -43.1729,
             category: 'conveniências', // Categoria default
-            isRevendedor: true,        // Clientes importados por padrão são revendedores
+            isReseller: true,        // Clientes importados por padrão são revendedores
             status: 'ATIVO',
             sellerId: null,            // Fila de triagem para o admin poder mudar depois
           }
@@ -133,8 +133,9 @@ async function main() {
     console.log(`- Novos clientes criados: ${criados}`);
     console.log(`- Clientes existentes atualizados: ${atualizados}`);
 
-  } catch (error: any) {
-    console.error("❌ Ocorreu um erro durante a importação:", error.message);
+  } catch (error: unknown) {
+    const mensagem = error instanceof Error ? error.message : String(error);
+    console.error("❌ Ocorreu um erro durante a importação:", mensagem);
   } finally {
     await prisma.$disconnect();
   }

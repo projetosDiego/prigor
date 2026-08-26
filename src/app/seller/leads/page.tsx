@@ -1,19 +1,17 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { 
-  Search, 
-  Filter, 
-  Flame, 
-  MapPin, 
-  ChevronRight, 
+import {
+  Search,
+  MapPin,
+  ChevronRight,
   Coffee,
-  ListFilter,
-  Loader2,
-  SlidersHorizontal
+  Loader2
 } from 'lucide-react';
 import { PipelineStage } from '@prisma/client';
+
+import { errorMessage, apiErrorMessage } from '@/lib/errors';
 
 interface Lead {
   id: string;
@@ -24,6 +22,11 @@ interface Lead {
   score: number;
   pipelineStage: PipelineStage;
   priority: string;
+}
+
+interface LeadsResponse {
+  data?: Lead[];
+  error?: string;
 }
 
 export default function SellerLeadsPage() {
@@ -37,25 +40,28 @@ export default function SellerLeadsPage() {
   const [selectedStage, setSelectedStage] = useState('');
   const [scoreFilter, setScoreFilter] = useState(''); // 'hot' (>=80), 'warm' (50-79), 'cold' (<50)
 
-  useEffect(() => {
-    fetchLeads();
-  }, []);
-
-  const fetchLeads = async () => {
+  const fetchLeads = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       // Fazer requisição normal de leads (a API restringe automaticamente ao vendedor logado)
       const res = await fetch('/api/leads');
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao buscar leads.');
-      setLeads(data.leads || []);
-    } catch (err: any) {
-      setError(err.message);
+      const data: LeadsResponse = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(data, 'Erro ao buscar leads.'));
+      setLeads(data.data ?? []);
+    } catch (err: unknown) {
+      setError(errorMessage(err));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // A carga roda fora do corpo síncrono do efeito para não encadear renders.
+    void (async () => {
+      await fetchLeads();
+    })();
+  }, [fetchLeads]);
 
   // Filtragem local dos leads
   const filteredLeads = leads.filter((lead) => {

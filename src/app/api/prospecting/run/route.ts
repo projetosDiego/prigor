@@ -1,46 +1,52 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
+/**
+ * Disparo manual do motor de prospecção.
+ *
+ * O motor recusa rodar sem chave do Google quando o modo simulado está
+ * desligado — e a mensagem dele explica exatamente o que configurar. Ela sobe
+ * como 400, e não como 500 genérico: é erro de configuração, não falha do
+ * servidor.
+ */
+import { requireManager } from '@/server/auth/guard';
 import { runProspectingEngine } from '@/lib/places';
+import { badRequest, isAppError } from '@/server/http/errors';
+import { logger } from '@/server/http/logger';
+import { ok, readJson, route } from '@/server/http/respond';
+import { prospectingRunSchema } from '@/server/validation/crm';
 
-// POST /api/prospecting/run - Run prospecting engine manually for a neighborhood/category
-export async function POST(request: NextRequest) {
+export const POST = route('prospeccao.executar', async (request) => {
+  const session = await requireManager();
+  const input = prospectingRunSchema.parse(await readJson(request));
+
+  let stats: Awaited<ReturnType<typeof runProspectingEngine>>;
   try {
-    const session = await getSession();
-    if (!session || (session.role !== 'ADMIN' && session.role !== 'MANAGER')) {
-      return NextResponse.json({ error: 'Não autorizado.' }, { status: 403 });
-    }
-
-    const body = await request.json();
-    const { neighborhoodId, category, limit } = body;
-
-    if (!neighborhoodId || !category) {
-      return NextResponse.json(
-        { error: 'Bairro (neighborhoodId) e Categoria são campos obrigatórios.' },
-        { status: 400 }
-      );
-    }
-
-    const stats = await runProspectingEngine({
-      neighborhoodId,
-      category,
+    stats = await runProspectingEngine({
+      neighborhoodId: input.neighborhoodId,
+      category: input.category,
       manual: true,
-      limit: limit ? parseInt(limit) : 5,
+      limit: input.limit,
     });
-
-    if (!stats.success) {
-      return NextResponse.json(
-        { error: 'Falha ao executar prospecção. Verifique logs do servidor.' },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: `Prospecção concluída com sucesso! Encontrados: ${stats.resultsFound}, Novos Leads: ${stats.newLeads}, Duplicados pulados: ${stats.duplicates}, Clientes atuais ignorados: ${stats.existingCustomers}.`,
-      stats,
+  } catch (error) {
+    if (isAppError(error)) throw error;
+    logger.warn('motor de prospecção recusou executar', {
+      route: 'prospeccao.executar',
+      userId: session.userId,
+      neighborhoodId: input.neighborhoodId,
+      error,
     });
-  } catch (error: any) {
-    console.error('Error running manual prospecting:', error);
-    return NextResponse.json({ error: error.message || 'Erro interno ao rodar motor de prospecção.' }, { status: 500 });
+    throw badRequest(
+      error instanceof Error ? error.message : 'Não foi possível executar a prospecção.',
+    );
   }
-}
+
+  if (!stats.success) {
+    throw badRequest(
+      'A prospecção terminou sem sucesso. Verifique o histórico de execuções para o motivo.',
+    );
+  }
+
+  return ok({
+    success: true,
+    message: `Prospecção concluída com sucesso! Encontrados: ${stats.resultsFound}, Novos Leads: ${stats.newLeads}, Duplicados pulados: ${stats.duplicates}, Clientes atuais ignorados: ${stats.existingCustomers}.`,
+    stats,
+  });
+});

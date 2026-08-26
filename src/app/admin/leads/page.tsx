@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { 
   Search, 
   Trash2, 
@@ -13,12 +13,11 @@ import {
   ExternalLink,
   Phone,
   Mail,
-  Coffee,
-  Info,
-  TrendingUp,
-  AlertCircle
+  Coffee
 } from 'lucide-react';
-import { PipelineStage, Role } from '@prisma/client';
+import { PipelineStage } from '@prisma/client';
+
+import { errorMessage, apiErrorMessage } from '@/lib/errors';
 
 interface Seller {
   id: string;
@@ -28,6 +27,45 @@ interface Seller {
 interface Region {
   id: string;
   name: string;
+}
+
+/** Detalhamento do Prigor Score gravado em `scoreBreakdown`. */
+interface ScoreBreakdown {
+  category: number;
+  compatibility: number;
+  commercial_potential: number;
+  region: number;
+  digital_presence: number;
+  nearby_customers: number;
+  data_quality: number;
+}
+
+/** Cliente mais próximo devolvido por `GET /api/leads/[id]/whatsapp`. */
+interface ClosestCustomer {
+  id: string;
+  tradeName: string;
+  category: string | null;
+  distance: number;
+}
+
+interface WhatsAppResponse {
+  closestCustomer?: ClosestCustomer | null;
+}
+
+interface LeadsResponse {
+  data?: Lead[];
+}
+
+interface SellersResponse {
+  data?: Seller[];
+}
+
+interface RegionsResponse {
+  data?: Region[];
+}
+
+interface MutationResponse {
+  error?: string;
 }
 
 interface Lead {
@@ -48,7 +86,7 @@ interface Lead {
   category: string;
   googlePlaceId?: string | null;
   score: number;
-  scoreBreakdown?: any;
+  scoreBreakdown?: ScoreBreakdown | null;
   sellerId?: string | null;
   seller?: { name: string } | null;
   regionId?: string | null;
@@ -84,33 +122,29 @@ export default function AdminLeadsPage() {
 
   // Estado de detalhes do lead
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
-  const [closestCustomer, setClosestCustomer] = useState<any>(null);
+  // Guarda o lead a que o resultado pertence para derivar o valor durante a
+  // renderização, em vez de zerar o estado dentro de um efeito.
+  const [closestByLead, setClosestByLead] = useState<{
+    leadId: string;
+    customer: ClosestCustomer | null;
+  } | null>(null);
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  const closestCustomer =
+    selectedLead && closestByLead?.leadId === selectedLead.id ? closestByLead.customer : null;
 
-  useEffect(() => {
-    if (selectedLead) {
-      fetchClosestCustomer(selectedLead.id);
-    } else {
-      setClosestCustomer(null);
-    }
-  }, [selectedLead]);
-
-  const fetchClosestCustomer = async (leadId: string) => {
+  const fetchClosestCustomer = useCallback(async (leadId: string) => {
     try {
       const res = await fetch(`/api/leads/${leadId}/whatsapp`);
       if (res.ok) {
-        const json = await res.json();
-        setClosestCustomer(json.closestCustomer);
+        const json: WhatsAppResponse = await res.json();
+        setClosestByLead({ leadId, customer: json.closestCustomer ?? null });
       }
     } catch (err) {
       console.error('Erro ao buscar cliente próximo:', err);
     }
-  };
+  }, []);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -120,23 +154,38 @@ export default function AdminLeadsPage() {
         fetch('/api/regions'),
       ]);
 
-      const leadsJson = await leadsRes.json();
-      const sellersJson = await sellersRes.json();
-      const regionsJson = await regionsRes.json();
+      const leadsJson: LeadsResponse = await leadsRes.json();
+      const sellersJson: SellersResponse = await sellersRes.json();
+      const regionsJson: RegionsResponse = await regionsRes.json();
 
       if (!leadsRes.ok || !sellersRes.ok || !regionsRes.ok) {
         throw new Error('Erro ao carregar dados de leads, vendedores ou regiões.');
       }
 
-      setLeads(leadsJson.leads || []);
-      setSellers(sellersJson.sellers || []);
-      setRegions(regionsJson.regions || []);
-    } catch (err: any) {
-      setError(err.message);
+      setLeads(leadsJson.data ?? []);
+      setSellers(sellersJson.data ?? []);
+      setRegions(regionsJson.data ?? []);
+    } catch (err: unknown) {
+      setError(errorMessage(err));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // A carga roda fora do corpo síncrono do efeito para não encadear renders.
+    void (async () => {
+      await loadData();
+    })();
+  }, [loadData]);
+
+  useEffect(() => {
+    if (!selectedLead) return;
+    const leadId = selectedLead.id;
+    void (async () => {
+      await fetchClosestCustomer(leadId);
+    })();
+  }, [selectedLead, fetchClosestCustomer]);
 
   const handleReassign = async () => {
     if (!reassignLeadId) return;
@@ -147,8 +196,8 @@ export default function AdminLeadsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sellerId: reassignSellerId }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Erro ao reatribuir lead.');
+      const json: MutationResponse = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(json, 'Erro ao reatribuir lead.'));
 
       const newSeller = sellers.find(s => s.id === reassignSellerId) || null;
 
@@ -175,8 +224,8 @@ export default function AdminLeadsPage() {
       setReassignLeadId(null);
       setReassignSellerId('');
       alert('Lead reatribuído com sucesso!');
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(errorMessage(err));
     } finally {
       setReassignLoading(false);
     }
@@ -187,16 +236,16 @@ export default function AdminLeadsPage() {
     try {
       const res = await fetch(`/api/leads/${id}`, { method: 'DELETE' });
       if (!res.ok) {
-        const json = await res.json();
-        throw new Error(json.error || 'Erro ao excluir lead.');
+        const json: MutationResponse = await res.json();
+        throw new Error(apiErrorMessage(json, 'Erro ao excluir lead.'));
       }
       setLeads(leads.filter(l => l.id !== id));
       if (selectedLead && selectedLead.id === id) {
         setSelectedLead(null);
       }
       alert('Lead excluído do sistema.');
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(errorMessage(err));
     }
   };
 

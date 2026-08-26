@@ -1,30 +1,83 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { 
   Truck, 
-  Calendar, 
   Play, 
   Check, 
   ExternalLink, 
   Share2, 
-  MapPin, 
   RefreshCw, 
-  Loader2,
-  AlertTriangle
+  Loader2
 } from 'lucide-react';
+import { responseErrorMessage } from '@/lib/errors';
 
+/** Endereço de entrega que já vem junto de cada pedido na listagem. */
+interface EnderecoEntrega {
+  address: string | null;
+  number: string | null;
+  complement: string | null;
+  neighborhood: string | null;
+  city: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  phone: string | null;
+}
+
+/** Pedido devolvido por `GET /api/orders` (recorte de OrderDTO). */
 interface Pedido {
   id: string;
   numero: number;
-  cliente_nome: string;
+  customerName: string | null;
   total: number;
   status: string;
-  data_entrega?: string;
-  observacoes?: string;
-  endereco?: string;
-  bairro?: string;
+  deliveryDate: string | null;
+  notes: string | null;
+  deliveryAddress?: EnderecoEntrega;
 }
+
+/** Envelope de paginação usado por todas as listagens da API. */
+interface Paginated<T> {
+  data: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
+
+
+/** Monta o logradouro completo para exibir e para montar o link do Maps. */
+function enderecoDoPedido(p: Pedido): string {
+  const e = p.deliveryAddress;
+  if (!e) return 'Endereço não cadastrado na ficha do cliente';
+  const partes = [
+    [e.address, e.number].filter(Boolean).join(', '),
+    e.complement,
+    e.neighborhood,
+    e.city,
+  ].filter(Boolean);
+  return partes.length > 0 ? partes.join(' - ') : 'Endereço não cadastrado na ficha do cliente';
+}
+
+/** Bairro do cliente, usado para agrupar as paradas do roteiro. */
+function bairroDoPedido(p: Pedido): string {
+  return p.deliveryAddress?.neighborhood || 'Sem bairro';
+}
+
+/**
+ * Formata uma data civil (AAAA-MM-DD) como dd/mm/aaaa.
+ * `new Date('2026-01-05')` seria interpretada como meia-noite UTC e voltaria
+ * um dia atrás no fuso do Brasil, então a conversão é feita na mão.
+ */
+function formatarData(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const [ano, mes, dia] = iso.slice(0, 10).split('-');
+  return ano && mes && dia ? `${dia}/${mes}/${ano}` : '—';
+}
+
+/** Status que valem como carga do dia. */
+const STATUS_DE_CARGA = ['confirmado', 'em_producao', 'faturado'];
 
 export default function LogisticsPage() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
@@ -40,69 +93,46 @@ export default function LogisticsPage() {
   const [routing, setRouting] = useState(false);
   const [routeGenerated, setRouteGenerated] = useState(false);
 
-  useEffect(() => {
-    fetchPedidos();
-  }, [selectedDate]);
-
-  const fetchPedidos = async () => {
+  const fetchPedidos = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       
-      // Busca todos os pedidos do ERP
-      const res = await fetch('/api/erp/pedidos');
-      if (!res.ok) throw new Error('Falha ao carregar lista de pedidos do ERP.');
-      
-      const data: Pedido[] = await res.json();
-      
-      // Filtra pedidos ativos (confirmados, em produção ou faturados) para a data selecionada
-      const filtered = data.filter(p => {
-        if (!p.data_entrega) return false;
-        // Normaliza a data de entrega (aaaa-mm-dd)
-        const entregaDate = p.data_entrega.split('T')[0];
-        
-        const statusValido = p.status === 'confirmado' || p.status === 'em_producao' || p.status === 'faturado';
-        return entregaDate === selectedDate && statusValido;
+      // A data de entrega é filtrada no servidor. O endereço do cliente já vem
+      // dentro de cada pedido (`deliveryAddress`), então não há mais consulta
+      // extra por pedido.
+      const params = new URLSearchParams({
+        deliveryFrom: selectedDate,
+        deliveryTo: selectedDate,
+        pageSize: '200',
       });
 
-      // Busca dados cadastrais do cliente (endereço/bairro) para cada pedido
-      const hydrated = await Promise.all(filtered.map(async (p) => {
-        try {
-          const resCli = await fetch(`/api/erp/pedidos/${p.id}`);
-          if (resCli.ok) {
-            const detail = await resCli.json();
-            // Tenta obter o endereço/bairro do cadastro do cliente detalhado
-            const fullRes = await fetch(`/api/erp/clientes`);
-            if (fullRes.ok) {
-              const list = await fullRes.json();
-              const cli = list.find((c: any) => c.nome === detail.cliente_nome);
-              if (cli) {
-                return {
-                  ...p,
-                  endereco: cli.address || cli.endereco || 'Campo de São Cristóvão, SN',
-                  bairro: cli.neighborhood || cli.bairro || 'Centro'
-                };
-              }
-            }
-          }
-        } catch {}
-        return {
-          ...p,
-          endereco: 'Endereço cadastrado na ficha do cliente',
-          bairro: 'Zona Padrão'
-        };
-      }));
+      const res = await fetch(`/api/orders?${params.toString()}`);
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Falha ao carregar a lista de pedidos.'));
 
-      setPedidos(hydrated);
+      const json: Paginated<Pedido> = await res.json();
+
+      // O filtro de status fica no cliente porque a API aceita um status por
+      // vez e a carga do dia junta confirmado, em produção e faturado.
+      const daCarga = json.data.filter((p) => STATUS_DE_CARGA.includes(p.status));
+
+      setPedidos(daCarga);
       setSelectedPedidoIds([]);
       setRouteOrders([]);
       setRouteGenerated(false);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao carregar a lista de pedidos.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedDate]);
+
+  useEffect(() => {
+    // A carga roda fora do corpo síncrono do efeito para não encadear renders.
+    void (async () => {
+      await fetchPedidos();
+    })();
+  }, [fetchPedidos]);
 
   const handleSelectToggle = (id: string) => {
     if (selectedPedidoIds.includes(id)) {
@@ -122,11 +152,9 @@ export default function LogisticsPage() {
       const selected = pedidos.filter(p => selectedPedidoIds.includes(p.id));
       
       // Ordena logicamente para evitar entregas espalhadas (agrupa por bairro)
-      const sorted = [...selected].sort((a, b) => {
-        const bairroA = a.bairro || '';
-        const bairroB = b.bairro || '';
-        return bairroA.localeCompare(bairroB);
-      });
+      const sorted = [...selected].sort((a, b) =>
+        bairroDoPedido(a).localeCompare(bairroDoPedido(b)),
+      );
 
       setRouteOrders(sorted);
       setRouteGenerated(true);
@@ -140,20 +168,42 @@ export default function LogisticsPage() {
 
     try {
       setLoading(true);
-      
-      // Atualiza o status de todos os pedidos da rota para 'entregue'
-      await Promise.all(routeOrders.map(p => 
-        fetch(`/api/erp/pedidos/${p.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'entregue' })
-        })
-      ));
 
-      alert('Carga e roteiro entregues com sucesso! Estoque e lançamentos financeiros atualizados.');
+      // Atualiza o status de todos os pedidos da rota para 'entregue'.
+      // Cada resposta é conferida: antes a tela dizia "sucesso" mesmo quando a
+      // atualização falhava.
+      const resultados = await Promise.all(
+        routeOrders.map(async (p) => {
+          try {
+            const res = await fetch(`/api/orders/${p.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: 'entregue' })
+            });
+            if (res.ok) return null;
+            return `#${p.numero}: ${await responseErrorMessage(res, 'falha ao atualizar.')}`;
+          } catch (err) {
+            return `#${p.numero}: ${err instanceof Error ? err.message : 'falha de conexão.'}`;
+          }
+        })
+      );
+
+      const falhas = resultados.filter((r): r is string => r !== null);
+
+      if (falhas.length === 0) {
+        alert('Carga e roteiro entregues com sucesso! Estoque e lançamentos financeiros atualizados.');
+      } else if (falhas.length === routeOrders.length) {
+        alert(`Nenhum pedido foi confirmado:\n\n${falhas.join('\n')}`);
+      } else {
+        alert(
+          `${routeOrders.length - falhas.length} de ${routeOrders.length} pedidos confirmados. ` +
+          `Falharam:\n\n${falhas.join('\n')}`
+        );
+      }
+
       fetchPedidos();
-    } catch (err: any) {
-      alert('Erro ao confirmar entregas: ' + err.message);
+    } catch (err) {
+      alert('Erro ao confirmar entregas: ' + (err instanceof Error ? err.message : 'erro desconhecido.'));
     } finally {
       setLoading(false);
     }
@@ -162,14 +212,15 @@ export default function LogisticsPage() {
   const handleCopyRouteToClipboard = () => {
     if (routeOrders.length === 0) return;
 
-    const header = `🚚 *ROTEIRO DE ENTREGA DOCES PRIGOR*\n*Data*: ${new Date(selectedDate).toLocaleDateString('pt-BR')}\n*Total Cargas*: ${routeOrders.length} pedidos\n\n📍 *Saída*: Fábrica Doces Prigor (Campo de São Cristóvão)\n\n`;
+    const header = `🚚 *ROTEIRO DE ENTREGA DOCES PRIGOR*\n*Data*: ${formatarData(selectedDate)}\n*Total Cargas*: ${routeOrders.length} pedidos\n\n📍 *Saída*: Fábrica Doces Prigor (Campo de São Cristóvão)\n\n`;
 
     const text = routeOrders.map((p, idx) => {
-      const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(p.endereco || '')}`;
+      const endereco = enderecoDoPedido(p);
+      const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(endereco)}`;
       return `*Parada ${idx + 1}: Pedido #${p.numero}*\n` +
-             `   • Cliente: ${p.cliente_nome}\n` +
-             `   • Endereço: ${p.endereco}\n` +
-             `   • Bairro: ${p.bairro}\n` +
+             `   • Cliente: ${p.customerName ?? '—'}\n` +
+             `   • Endereço: ${endereco}\n` +
+             `   • Bairro: ${bairroDoPedido(p)}\n` +
              `   • Rota de Entrega: ${mapsUrl}`;
     }).join('\n\n');
 
@@ -242,7 +293,7 @@ export default function LogisticsPage() {
 
             {pedidos.length === 0 ? (
               <div className="text-center py-12 text-stone-400 text-xs italic font-semibold">
-                Nenhum pedido agendado para entrega em {new Date(selectedDate).toLocaleDateString('pt-BR')}.
+                Nenhum pedido agendado para entrega em {formatarData(selectedDate)}.
               </div>
             ) : (
               <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
@@ -260,9 +311,9 @@ export default function LogisticsPage() {
                     >
                       <div className="min-w-0 pr-3">
                         <span className="text-stone-850 font-bold text-sm block">Pedido #{p.numero}</span>
-                        <span className="text-stone-600 block mt-0.5">{p.cliente_nome}</span>
+                        <span className="text-stone-600 block mt-0.5">{p.customerName}</span>
                         <span className="text-[10px] text-stone-400 block font-medium mt-1">
-                          📍 {p.endereco} • Bairro: {p.bairro}
+                          📍 {enderecoDoPedido(p)} • Bairro: {bairroDoPedido(p)}
                         </span>
                       </div>
                       
@@ -332,12 +383,12 @@ export default function LogisticsPage() {
                         {idx + 1}
                       </span>
                       <span className="text-[10px] text-amber-800 font-bold block leading-none uppercase">ENTREGA #{p.numero}</span>
-                      <span className="text-stone-850 font-bold block mt-0.5">{p.cliente_nome}</span>
-                      <span className="text-[10px] text-stone-450 block font-medium">📍 {p.endereco} • Bairro: {p.bairro}</span>
-                      
+                      <span className="text-stone-850 font-bold block mt-0.5">{p.customerName}</span>
+                      <span className="text-[10px] text-stone-450 block font-medium">📍 {enderecoDoPedido(p)} • Bairro: {bairroDoPedido(p)}</span>
+
                       <div className="flex gap-2.5 mt-1.5 text-[10px] font-bold text-amber-700">
-                        <a 
-                          href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(p.endereco || '')}`}
+                        <a
+                          href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(enderecoDoPedido(p))}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="hover:underline flex items-center gap-0.5"

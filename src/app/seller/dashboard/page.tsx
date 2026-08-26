@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { 
   Navigation, 
@@ -17,6 +17,8 @@ import {
   DollarSign,
   Truck
 } from 'lucide-react';
+
+import { errorMessage, apiErrorMessage } from '@/lib/errors';
 
 interface NearbyOpportunity {
   id: string;
@@ -76,6 +78,14 @@ interface DashboardData {
     lead?: { tradeName: string };
   }[];
   weeklyDeliveries: Delivery[];
+  error?: string;
+}
+
+/** Resposta de `GET /api/maps/nearby`. */
+interface NearbyResponse {
+  leads?: NearbyOpportunity[];
+  customers?: NearbyCustomer[];
+  error?: string;
 }
 
 export default function SellerDashboardPage() {
@@ -90,23 +100,26 @@ export default function SellerDashboardPage() {
   const [nearbyCustomers, setNearbyCustomers] = useState<NearbyCustomer[]>([]);
   const [locError, setLocError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchDashboard();
-  }, []);
-
-  const fetchDashboard = async () => {
+  const fetchDashboard = useCallback(async () => {
     try {
       setLoading(true);
       const res = await fetch('/api/dashboard/seller');
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Erro ao carregar dados do painel.');
+      const json: DashboardData = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(json, 'Erro ao carregar dados do painel.'));
       setData(json);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(errorMessage(err));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // A carga roda fora do corpo síncrono do efeito para não encadear renders.
+    void (async () => {
+      await fetchDashboard();
+    })();
+  }, [fetchDashboard]);
 
   const handleGetLocation = () => {
     setLocLoading(true);
@@ -129,13 +142,13 @@ export default function SellerDashboardPage() {
         try {
           // Consultar a API de busca por proximidade
           const res = await fetch(`/api/maps/nearby?lat=${latitude}&lng=${longitude}&radius=5`);
-          const json = await res.json();
-          if (!res.ok) throw new Error(json.error || 'Erro ao buscar oportunidades na região.');
-          
+          const json: NearbyResponse = await res.json();
+          if (!res.ok) throw new Error(apiErrorMessage(json, 'Erro ao buscar oportunidades na região.'));
+
           setNearbyLeads(json.leads || []);
-          setNearbyCustomers(json.customers || []);
-        } catch (err: any) {
-          setLocError(err.message || 'Falha ao buscar estabelecimentos próximos.');
+          setNearbyCustomers(json.customers ?? []);
+        } catch (err: unknown) {
+          setLocError(errorMessage(err) || 'Falha ao buscar estabelecimentos próximos.');
         } finally {
           setLocLoading(false);
         }

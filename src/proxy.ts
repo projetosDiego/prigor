@@ -1,87 +1,71 @@
+/**
+ * Proxy do Next 16 (o que antes se chamava middleware).
+ *
+ * Faz o controle de acesso por rota antes de a página renderizar. Usa a MESMA
+ * verificação de token das rotas de API — antes havia duas implementações
+ * independentes, com risco de divergirem (e divergiram: os segredos eram
+ * diferentes).
+ */
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-function base64urlDecode(str: string): string {
-  let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
-  while (base64.length % 4) {
-    base64 += '=';
-  }
-  return atob(base64);
+import { SESSION_COOKIE, verifyToken } from './server/auth/session';
+
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/health'];
+
+function isPublic(pathname: string): boolean {
+  return PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
 }
 
-function base64urlToBuf(str: string): Uint8Array {
-  const decoded = base64urlDecode(str);
-  const buf = new Uint8Array(decoded.length);
-  for (let i = 0; i < decoded.length; i++) {
-    buf[i] = decoded.charCodeAt(i);
-  }
-  return buf;
+function homeFor(role: string): string {
+  return role === 'ADMIN' || role === 'MANAGER' ? '/admin/dashboard' : '/seller/dashboard';
 }
 
-// Edge-safe JWT verify function using Web Crypto API
-async function verifyJWT(token: string, secret: string): Promise<any | null> {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const [header, payload, signature] = parts;
-
-    const encoder = new TextEncoder();
-    const keyData = encoder.encode(secret);
-    const data = encoder.encode(`${header}.${payload}`);
-
-    const key = await crypto.subtle.importKey(
-      'raw',
-      keyData,
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['verify']
-    );
-
-    const sigBuf = base64urlToBuf(signature);
-    const isValid = await crypto.subtle.verify('HMAC', key, sigBuf as any, data as any);
-    if (!isValid) return null;
-
-    const decodedPayload = JSON.parse(base64urlDecode(payload));
-    return decodedPayload;
-  } catch (err) {
-    return null;
-  }
-}
-
-// In Next.js 16, Middleware is replaced by Proxy. The function must be named 'proxy'.
-export async function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
-  const sessionCookie = request.cookies.get('session')?.value;
-  const secret = process.env.JWT_SECRET || 'fallback-secret-for-development-only';
 
-  let session: any = null;
-  if (sessionCookie) {
-    session = await verifyJWT(sessionCookie, secret);
+  // O segredo é lido direto do ambiente: este código roda no runtime edge,
+  // onde não há acesso ao módulo de configuração completo.
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    // Sem segredo não há sessão possível. Falhar fechado é a única opção
+    // segura — o comportamento anterior era cair num segredo de exemplo.
+    return new NextResponse(
+      JSON.stringify({ error: { code: 'MISCONFIGURED', message: 'Servidor mal configurado.' } }),
+      { status: 500, headers: { 'content-type': 'application/json' } },
+    );
   }
 
-  // 1. If accessing login page
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  const session = token ? await verifyToken(token, secret) : null;
+
   if (pathname === '/login') {
-    if (session) {
-      if (session.role === 'ADMIN' || session.role === 'MANAGER') {
-        return NextResponse.redirect(new URL('/admin/dashboard', request.url));
-      }
-      return NextResponse.redirect(new URL('/seller/dashboard', request.url));
+    return session
+      ? NextResponse.redirect(new URL(homeFor(session.role), request.url))
+      : NextResponse.next();
+  }
+
+  if (pathname === '/') {
+    return NextResponse.redirect(
+      new URL(session ? homeFor(session.role) : '/login', request.url),
+    );
+  }
+
+  if (isPublic(pathname)) return NextResponse.next();
+
+  if (pathname.startsWith('/api/')) {
+    if (!session) {
+      return new NextResponse(
+        JSON.stringify({
+          error: { code: 'UNAUTHORIZED', message: 'Sessão expirada ou inválida.' },
+          detail: 'Sessão expirada ou inválida.',
+        }),
+        { status: 401, headers: { 'content-type': 'application/json' } },
+      );
     }
     return NextResponse.next();
   }
 
-  // 2. Redirect root path / based on role or to login
-  if (pathname === '/') {
-    if (!session) {
-      return NextResponse.redirect(new URL('/login', request.url));
-    }
-    if (session.role === 'ADMIN' || session.role === 'MANAGER') {
-      return NextResponse.redirect(new URL('/admin/dashboard', request.url));
-    }
-    return NextResponse.redirect(new URL('/seller/dashboard', request.url));
-  }
-
-  // 3. Protect Admin paths
   if (pathname.startsWith('/admin')) {
     if (!session) {
       const loginUrl = new URL('/login', request.url);
@@ -91,32 +75,21 @@ export async function proxy(request: NextRequest) {
     if (session.role !== 'ADMIN' && session.role !== 'MANAGER') {
       return NextResponse.redirect(new URL('/seller/dashboard', request.url));
     }
+    return NextResponse.next();
   }
 
-  // 4. Protect Seller paths
   if (pathname.startsWith('/seller')) {
     if (!session) {
       const loginUrl = new URL('/login', request.url);
       loginUrl.searchParams.set('redirect', pathname);
       return NextResponse.redirect(loginUrl);
     }
-  }
-
-  // 5. Protect API paths except auth login
-  if (pathname.startsWith('/api/') && !pathname.startsWith('/api/auth/login')) {
-    if (!session) {
-      return new NextResponse(
-        JSON.stringify({ error: 'Unauthorized - Session expired or invalid' }),
-        { status: 401, headers: { 'content-type': 'application/json' } }
-      );
-    }
+    return NextResponse.next();
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.png|.*\\.jpg|.*\\.svg).*)',
-  ],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.png|.*\\.jpg|.*\\.svg).*)'],
 };

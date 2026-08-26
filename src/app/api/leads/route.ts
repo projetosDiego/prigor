@@ -1,185 +1,140 @@
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/db';
-import { getSession } from '@/lib/auth';
-import { PipelineStage, Role } from '@prisma/client';
+/**
+ * Leads: listagem e cadastro manual.
+ *
+ * A listagem antes devolvia a base inteira sem paginar. O escopo por vendedor
+ * agora vem de `sellerScope()`, não de um `if` local — vendedor sem cadastro
+ * vinculado passa a não enxergar nada, em vez de cair num caminho especial.
+ */
+import { isManagement, requireUser, sellerScope } from '@/server/auth/guard';
+import { prisma } from '@/server/db';
+import { conflict } from '@/server/http/errors';
+import { created, ok, readJson, route } from '@/server/http/respond';
+import { paginated } from '@/server/services/serializers';
+import { parseQuery } from '@/server/validation/common';
+import { leadCreateSchema, leadListQuerySchema } from '@/server/validation/crm';
 
-// GET /api/leads - List all leads with filters and RBAC enforcement
-export async function GET(request: NextRequest) {
-  try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
-    }
+/** Centro do Rio: usado quando o cadastro manual não traz coordenada. */
+const DEFAULT_LATITUDE = -22.9068;
+const DEFAULT_LONGITUDE = -43.1729;
 
-    const { searchParams } = new URL(request.url);
-    const regionId = searchParams.get('regionId');
-    const neighborhoodId = searchParams.get('neighborhoodId');
-    const category = searchParams.get('category');
-    const pipelineStage = searchParams.get('pipelineStage') as PipelineStage | null;
-    const priority = searchParams.get('priority');
-    const status = searchParams.get('status');
-    const searchQuery = searchParams.get('q');
+const LEAD_INCLUDE = {
+  seller: { select: { id: true, name: true } },
+  region: { select: { id: true, name: true } },
+  neighborhoodRel: { select: { id: true, name: true } },
+  convertedCustomer: { select: { id: true, tradeName: true } },
+} as const;
 
-    const filter: any = {};
+export const GET = route('leads.listar', async (request) => {
+  const session = await requireUser();
+  const query = parseQuery(request, leadListQuerySchema);
 
-    // Segurança baseada em Perfil (RBAC):
-    // Se for Vendedor, forçar visualização apenas de seus próprios leads
-    if (session.role === Role.SELLER) {
-      if (!session.sellerId) {
-        return NextResponse.json({ leads: [] }); // vendedor sem perfil cadastrado vê lista vazia
-      }
-      filter.sellerId = session.sellerId;
-    } else {
-      // Admin/Gestor pode filtrar por vendedor
-      const sellerId = searchParams.get('sellerId');
-      if (sellerId) {
-        filter.sellerId = sellerId === 'null' ? null : sellerId;
-      }
-    }
+  const where: Record<string, unknown> = {
+    // Vendedor só enxerga a própria carteira; gestão enxerga tudo.
+    ...sellerScope(session),
+    ...(query.regionId ? { regionId: query.regionId } : {}),
+    ...(query.neighborhoodId ? { neighborhoodId: query.neighborhoodId } : {}),
+    ...(query.category ? { category: query.category } : {}),
+    ...(query.pipelineStage ? { pipelineStage: query.pipelineStage } : {}),
+    ...(query.priority ? { priority: query.priority } : {}),
+    ...(query.status ? { status: query.status } : {}),
+  };
 
-    if (regionId) filter.regionId = regionId;
-    if (neighborhoodId) filter.neighborhoodId = neighborhoodId;
-    if (category) filter.category = category;
-    if (pipelineStage) filter.pipelineStage = pipelineStage;
-    if (priority) filter.priority = priority;
-    if (status) filter.status = status;
+  // O filtro por vendedor da query só existe para gestão — para o vendedor ele
+  // seria uma forma de olhar a carteira alheia.
+  if (isManagement(session) && query.sellerId !== undefined) {
+    where.sellerId = query.sellerId;
+  }
 
-    if (searchQuery) {
-      filter.OR = [
-        { tradeName: { contains: searchQuery, mode: 'insensitive' } },
-        { address: { contains: searchQuery, mode: 'insensitive' } },
-        { phone: { contains: searchQuery, mode: 'insensitive' } },
-      ];
-    }
+  if (query.q) {
+    where.OR = [
+      { tradeName: { contains: query.q, mode: 'insensitive' } },
+      { address: { contains: query.q, mode: 'insensitive' } },
+      { phone: { contains: query.q, mode: 'insensitive' } },
+    ];
+  }
 
-    const leads = await prisma.lead.findMany({
-      where: filter,
+  const [rows, total] = await Promise.all([
+    prisma.lead.findMany({
+      where,
       orderBy: [{ score: 'desc' }, { createdAt: 'desc' }],
-      include: {
-        seller: { select: { id: true, name: true } },
-        region: { select: { id: true, name: true } },
-        neighborhoodRel: { select: { id: true, name: true } },
-        convertedCustomer: { select: { id: true, tradeName: true } },
-      },
-    });
+      include: LEAD_INCLUDE,
+      skip: (query.page - 1) * query.pageSize,
+      take: query.pageSize,
+    }),
+    prisma.lead.count({ where }),
+  ]);
 
-    return NextResponse.json({ leads });
-  } catch (error) {
-    console.error('Error fetching leads:', error);
-    return NextResponse.json({ error: 'Erro ao buscar leads.' }, { status: 500 });
+  return ok({
+    ...paginated(rows, total, query.page, query.pageSize),
+  });
+});
+
+export const POST = route('leads.criar', async (request) => {
+  const session = await requireUser();
+  const input = leadCreateSchema.parse(await readJson(request));
+
+  if (input.cnpj) {
+    const [leadWithCnpj, customerWithCnpj] = await Promise.all([
+      prisma.lead.findUnique({ where: { cnpj: input.cnpj }, select: { id: true } }),
+      prisma.customer.findUnique({ where: { cnpj: input.cnpj }, select: { id: true } }),
+    ]);
+    if (leadWithCnpj || customerWithCnpj) {
+      throw conflict('CNPJ já cadastrado no sistema.');
+    }
   }
-}
 
-// POST /api/leads - Create a lead manually
-export async function POST(request: NextRequest) {
-  try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
-    }
+  // Território correspondente, para atribuição automática do vendedor.
+  const matched = await prisma.neighborhood.findFirst({
+    where: {
+      name: { equals: input.neighborhood, mode: 'insensitive' },
+      city: { equals: input.city, mode: 'insensitive' },
+    },
+    select: { id: true, regionId: true, sellerId: true },
+  });
 
-    const body = await request.json();
-    const {
-      tradeName,
-      legalName,
-      cnpj,
-      phone,
-      mobile,
-      email,
-      address,
-      number,
-      complement,
-      neighborhood,
-      city,
-      state,
-      zipCode,
-      latitude,
-      longitude,
-      category,
-      priority,
-    } = body;
+  // Vendedor que cadastra à mão fica dono do lead; gestão respeita o território.
+  const ownerSellerId = isManagement(session)
+    ? (matched?.sellerId ?? null)
+    : session.sellerId;
 
-    if (!tradeName || !address || !neighborhood || !category) {
-      return NextResponse.json(
-        { error: 'Nome Fantasia, Endereço, Bairro e Categoria são obrigatórios.' },
-        { status: 400 }
-      );
-    }
+  const lead = await prisma.lead.create({
+    data: {
+      tradeName: input.tradeName,
+      legalName: input.legalName,
+      cnpj: input.cnpj,
+      phone: input.phone,
+      mobile: input.mobile,
+      email: input.email,
+      address: input.address,
+      number: input.number,
+      complement: input.complement,
+      neighborhood: input.neighborhood,
+      city: input.city,
+      state: input.state,
+      zipCode: input.zipCode,
+      latitude: input.latitude ?? DEFAULT_LATITUDE,
+      longitude: input.longitude ?? DEFAULT_LONGITUDE,
+      category: input.category.toLowerCase(),
+      sellerId: ownerSellerId,
+      regionId: matched?.regionId ?? null,
+      neighborhoodId: matched?.id ?? null,
+      pipelineStage: 'NOVO',
+      source: 'MANUAL',
+      priority: input.priority,
+      status: ownerSellerId ? 'ATIVO' : 'SEM_TERRITORIO',
+      score: 50,
+    },
+  });
 
-    // Verificar se já existe lead ou cliente com este Place ID ou CNPJ
-    if (cnpj) {
-      const existingLeadCnpj = await prisma.lead.findUnique({ where: { cnpj } });
-      const existingCustomerCnpj = await prisma.customer.findUnique({ where: { cnpj } });
-      if (existingLeadCnpj || existingCustomerCnpj) {
-        return NextResponse.json({ error: 'CNPJ já cadastrado no sistema.' }, { status: 400 });
-      }
-    }
+  await prisma.auditLog.create({
+    data: {
+      userId: session.userId,
+      action: 'CREATE_LEAD_MANUAL',
+      entity: 'Lead',
+      entityId: lead.id,
+      newValue: lead,
+    },
+  });
 
-    // Coordenadas padrão caso não enviadas
-    const lat = latitude ? parseFloat(latitude) : -22.9068;
-    const lng = longitude ? parseFloat(longitude) : -43.1729;
-
-    // Buscar território correspondente no BD para atribuição automática do vendedor
-    const matchedNeighborhood = await prisma.neighborhood.findFirst({
-      where: {
-        name: { equals: neighborhood.trim(), mode: 'insensitive' },
-        city: { equals: city?.trim() || 'Rio de Janeiro', mode: 'insensitive' },
-      },
-      include: { region: true },
-    });
-
-    const finalSellerId = matchedNeighborhood?.sellerId || null;
-    const finalRegionId = matchedNeighborhood?.regionId || null;
-    const finalNeighborhoodId = matchedNeighborhood?.id || null;
-    const finalStatus = finalSellerId ? 'ATIVO' : 'SEM_TERRITORIO';
-
-    // Se o vendedor logado for SELLER, e ele estiver criando o lead manualmente,
-    // ele vira o dono do lead por padrão (a menos que já pertença a outro território ativo)
-    const ownerSellerId = session.role === Role.SELLER ? session.sellerId : finalSellerId;
-
-    const lead = await prisma.lead.create({
-      data: {
-        tradeName,
-        legalName,
-        cnpj,
-        phone,
-        mobile,
-        email,
-        address,
-        number,
-        complement,
-        neighborhood,
-        city: city || 'Rio de Janeiro',
-        state: state || 'RJ',
-        zipCode,
-        latitude: lat,
-        longitude: lng,
-        category: category.toLowerCase(),
-        sellerId: ownerSellerId,
-        regionId: finalRegionId,
-        neighborhoodId: finalNeighborhoodId,
-        pipelineStage: PipelineStage.NOVO,
-        source: 'MANUAL',
-        priority: priority || 'MEDIA',
-        status: ownerSellerId ? 'ATIVO' : finalStatus,
-        score: 50, // Score manual padrão inicial
-      },
-    });
-
-    // Auditoria de Criação
-    await prisma.auditLog.create({
-      data: {
-        userId: session.userId,
-        action: 'CREATE_LEAD_MANUAL',
-        entity: 'Lead',
-        entityId: lead.id,
-        newValue: lead,
-      },
-    });
-
-    return NextResponse.json({ success: true, lead });
-  } catch (error) {
-    console.error('Error creating lead:', error);
-    return NextResponse.json({ error: 'Erro ao cadastrar lead manualmente.' }, { status: 500 });
-  }
-}
+  return created({ success: true, lead });
+});

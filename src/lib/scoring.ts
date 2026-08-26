@@ -1,5 +1,5 @@
 import { ScoreSettings } from '@prisma/client';
-import prisma from './db';
+import { prisma } from '@/server/db';
 import { calculateHaversineDistance } from './geocoding';
 
 export interface ScoreBreakdown {
@@ -17,27 +17,42 @@ export interface ScoreCalculationResult {
   breakdown: ScoreBreakdown;
 }
 
+/** Apenas os pesos usados no cálculo — aceita o registro completo de ScoreSettings. */
+export type ScoreWeights = Pick<
+  ScoreSettings,
+  | 'categoryWeight'
+  | 'compatibilityWeight'
+  | 'commercialWeight'
+  | 'regionWeight'
+  | 'digitalWeight'
+  | 'nearbyWeight'
+  | 'dataQualityWeight'
+>;
+
+/** Campos de um lead que alimentam o cálculo do score. */
+export interface LeadScoreInput {
+  category: string;
+  latitude: number;
+  longitude: number;
+  regionId: string | null;
+  tradeName?: string | null; // Adicionado para identificar nome fantasia
+  phone?: string | null;
+  email?: string | null;
+  cnpj?: string | null;
+  number?: string | null;
+  zipCode?: string | null;
+  googleRating?: number | null;
+  googleReviewsCount?: number | null;
+  website?: string | null;
+  hasPhotos?: boolean;
+}
+
 /**
  * Calcula o Prigor Score para um Lead específico com base nas configurações de pesos.
  */
 export async function calculateLeadScore(
-  lead: {
-    category: string;
-    latitude: number;
-    longitude: number;
-    regionId: string | null;
-    tradeName?: string | null; // Adicionado para identificar nome fantasia
-    phone?: string | null;
-    email?: string | null;
-    cnpj?: string | null;
-    number?: string | null;
-    zipCode?: string | null;
-    googleRating?: number | null;
-    googleReviewsCount?: number | null;
-    website?: string | null;
-    hasPhotos?: boolean;
-  },
-  weights: ScoreSettings,
+  lead: LeadScoreInput,
+  weights: ScoreWeights,
   activeCustomers: { latitude: number; longitude: number }[] = []
 ): Promise<ScoreCalculationResult> {
   
@@ -129,9 +144,13 @@ export async function calculateLeadScore(
       where: { status: 'ATIVO' },
       select: { latitude: true, longitude: true }
     });
-    nearbyCustomersCount = customers.filter(c => 
-      calculateHaversineDistance(lead.latitude, lead.longitude, c.latitude, c.longitude) <= 3.0
-    ).length;
+    nearbyCustomersCount = (customers as Array<{ latitude: number | null; longitude: number | null }>)
+      .filter(
+        (c) =>
+          c.latitude !== null &&
+          c.longitude !== null &&
+          calculateHaversineDistance(lead.latitude, lead.longitude, c.latitude, c.longitude) <= 3.0,
+      ).length;
   }
 
   let nearbyScore = 0;
@@ -192,18 +211,18 @@ export async function calculateLeadScore(
 /**
  * Recalcula e atualiza o score de todos os Leads pendentes (não convertidos a clientes)
  */
-export async function recalculateAllLeadsScores(updatedBy: string): Promise<number> {
-  const weights = await prisma.scoreSettings.findFirst();
+export async function recalculateAllLeadsScores(): Promise<number> {
+  const weights: ScoreWeights | null = await prisma.scoreSettings.findFirst();
   if (!weights) return 0;
 
-  const activeLeads = await prisma.lead.findMany({
+  const activeLeads: Array<LeadScoreInput & { id: string }> = await prisma.lead.findMany({
     where: {
       convertedCustomerId: null,
       status: { in: ['ATIVO', 'SEM_TERRITORIO'] }
     }
   });
 
-  const activeCustomers = await prisma.customer.findMany({
+  const activeCustomers: { latitude: number; longitude: number }[] = await prisma.customer.findMany({
     where: { status: 'ATIVO' },
     select: { latitude: true, longitude: true }
   });
@@ -215,7 +234,7 @@ export async function recalculateAllLeadsScores(updatedBy: string): Promise<numb
       where: { id: lead.id },
       data: {
         score,
-        scoreBreakdown: breakdown as any
+        scoreBreakdown: breakdown
       }
     });
     count++;

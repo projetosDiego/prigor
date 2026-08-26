@@ -1,8 +1,18 @@
 'use client';
 
 import React, { useState } from 'react';
+import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Lock, Mail, Loader2, AlertCircle } from 'lucide-react';
+
+import { errorMessage, apiErrorMessage } from '@/lib/errors';
+
+/** Resposta de `POST /api/auth/login`. */
+interface LoginResponse {
+  /** A rota sempre devolve o destino em caso de sucesso. */
+  redirectUrl: string;
+  error?: string;
+}
 
 export default function LoginClient() {
   const router = useRouter();
@@ -32,18 +42,18 @@ export default function LoginClient() {
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await response.json();
+      const data: LoginResponse = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Erro ao realizar login. Tente novamente.');
+        throw new Error(apiErrorMessage(data, 'Erro ao realizar login. Tente novamente.'));
       }
 
       // Redirecionar com base na resposta ou no parâmetro redirect
       const destination = redirect ? decodeURIComponent(redirect) : data.redirectUrl;
       router.push(destination);
       router.refresh();
-    } catch (err: any) {
-      setError(err.message || 'Ocorreu um erro inesperado.');
+    } catch (err: unknown) {
+      setError(errorMessage(err) || 'Ocorreu um erro inesperado.');
     } finally {
       setLoading(false);
     }
@@ -54,9 +64,12 @@ export default function LoginClient() {
       <div className="w-full max-w-md space-y-8">
         <div className="flex flex-col items-center">
           {/* Logo da Doces Prigor */}
-          <img 
-            src="/logo.png" 
-            alt="Doces Prigor Logo" 
+          <Image
+            src="/logo.png"
+            alt="Doces Prigor Logo"
+            width={532}
+            height={469}
+            priority
             className="h-28 w-auto object-contain drop-shadow-md"
           />
           

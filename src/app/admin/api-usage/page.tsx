@@ -1,19 +1,17 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { 
-  Activity, 
-  Settings, 
-  Loader2, 
-  AlertOctagon, 
-  CheckCircle, 
-  Coins, 
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Activity,
+  Settings,
+  Loader2,
   RefreshCw,
   ToggleLeft,
   ToggleRight,
-  TrendingDown,
   DollarSign
 } from 'lucide-react';
+
+import { errorMessage, apiErrorMessage } from '@/lib/errors';
 
 interface ApiUsageLog {
   id: string;
@@ -37,6 +35,17 @@ interface ApiSettings {
   monthlyPercent: number;
 }
 
+interface ApiUsageResponse {
+  settings?: ApiSettings | null;
+  data?: ApiUsageLog[];
+  error?: string;
+}
+
+interface MutationResponse {
+  error?: string;
+  message?: string;
+}
+
 export default function AdminApiUsagePage() {
   const [settings, setSettings] = useState<ApiSettings | null>(null);
   const [logs, setLogs] = useState<ApiUsageLog[]>([]);
@@ -49,32 +58,36 @@ export default function AdminApiUsagePage() {
   const [radiusKm, setRadiusKm] = useState('5');
   const [saveLoading, setSaveLoading] = useState(false);
 
-  useEffect(() => {
-    loadApiUsageData();
-  }, []);
-
-  const loadApiUsageData = async () => {
+  const loadApiUsageData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       const res = await fetch('/api/settings/api-usage');
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao obter dados de consumo de API.');
-      
-      setSettings(data.settings);
-      setLogs(data.recentUsage || []);
-      
+      const data: ApiUsageResponse = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(data, 'Erro ao obter dados de consumo de API.'));
+
+      setSettings(data.settings ?? null);
+      setLogs(data.data ?? []);
+
       if (data.settings) {
         setDailyLimit(data.settings.dailyCostLimit.toFixed(2));
         setMonthlyLimit(data.settings.monthlyCostLimit.toFixed(2));
         setRadiusKm(String(data.settings.nearbyRadiusKm));
       }
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(errorMessage(err));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // O carregamento roda fora do corpo síncrono do efeito para não
+    // encadear renders (react-hooks/set-state-in-effect).
+    void (async () => {
+      await loadApiUsageData();
+    })();
+  }, [loadApiUsageData]);
 
   const handleUpdateLimits = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,13 +103,13 @@ export default function AdminApiUsagePage() {
         }),
       });
 
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Erro ao atualizar limites.');
+      const json: MutationResponse = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(json, 'Erro ao atualizar limites.'));
 
       alert(json.message);
       await loadApiUsageData();
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(errorMessage(err));
     } finally {
       setSaveLoading(false);
     }
@@ -111,13 +124,13 @@ export default function AdminApiUsagePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ apiPaused: targetState }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Erro ao alterar estado da API.');
-      
+      const json: MutationResponse = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(json, 'Erro ao alterar estado da API.'));
+
       await loadApiUsageData();
       alert(`API ${targetState ? 'PAUSADA' : 'REATIVADA'} com sucesso.`);
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(errorMessage(err));
     }
   };
 
@@ -129,13 +142,13 @@ export default function AdminApiUsagePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resetCosts: true }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Erro ao redefinir contadores.');
+      const json: MutationResponse = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(json, 'Erro ao redefinir contadores.'));
 
       await loadApiUsageData();
       alert('Custos acumulados zerados e API reativada!');
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(errorMessage(err));
     }
   };
 
