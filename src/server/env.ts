@@ -63,13 +63,25 @@ function load(): Env {
   const env = parsed.data;
 
   if (isProduction) {
+    // Isto derruba o boot: com a flag ligada, a prospecção gravaria
+    // estabelecimentos inventados no banco real.
     if (env.ALLOW_MOCK_PLACES) {
       throw new Error(
         'ALLOW_MOCK_PLACES não pode ficar ligado em produção: geraria leads fictícios no banco real.',
       );
     }
+
+    // A chave do Google, ao contrário, só avisa. O ERP inteiro — pedidos,
+    // estoque, financeiro — não depende dela; só a prospecção depende, e
+    // `searchGooglePlaces` já se recusa a rodar sem chave, com mensagem
+    // explicando. Derrubar a aplicação toda por causa de um módulo era
+    // acoplamento indevido.
     if (!env.GOOGLE_MAPS_API_KEY || env.GOOGLE_MAPS_API_KEY.includes('Mock')) {
-      throw new Error('GOOGLE_MAPS_API_KEY ausente ou de desenvolvimento em produção.');
+      console.warn(
+        '[config] GOOGLE_MAPS_API_KEY ausente ou de desenvolvimento. ' +
+          'O ERP funciona normalmente; a prospecção de leads ficará indisponível ' +
+          'até uma chave válida ser configurada.',
+      );
     }
   }
 

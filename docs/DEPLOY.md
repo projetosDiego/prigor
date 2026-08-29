@@ -130,7 +130,7 @@ LETSENCRYPT_EMAIL=voce@docesprigor.com.br
 
 PRIGOR_DB_PASSWORD=<a senha gerada no passo 3>
 JWT_SECRET=<openssl rand -hex 32>
-GOOGLE_MAPS_API_KEY=<chave real do Google Places>
+GOOGLE_MAPS_API_KEY=<chave real do Google Places, ou deixe vazio por ora>
 
 # só nesta primeira subida:
 RUN_SEED=true
@@ -139,9 +139,14 @@ ADMIN_PASSWORD=<senha forte, mínimo 12 caracteres>
 ```
 
 > A aplicação **se recusa a subir** se `JWT_SECRET` tiver menos de 32
-> caracteres, se `GOOGLE_MAPS_API_KEY` estiver vazia ou for de
-> desenvolvimento, ou se `ALLOW_MOCK_PLACES` estiver ligado. É proposital:
-> subir mal configurado é pior do que não subir.
+> caracteres ou se `ALLOW_MOCK_PLACES` estiver ligado (a segunda geraria
+> leads fictícios no banco real). É proposital: subir mal configurado é pior
+> do que não subir.
+>
+> A `GOOGLE_MAPS_API_KEY` **não** bloqueia o boot. Sem ela o ERP funciona
+> inteiro — pedidos, estoque, financeiro — e apenas a prospecção de leads
+> fica indisponível, com mensagem explicando o motivo. Dá para subir hoje e
+> configurar a chave depois.
 
 ## 5. Subir
 
