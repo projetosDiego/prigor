@@ -1,0 +1,65 @@
+# ============================================================================
+#  Doces Prigor OS — deploy automático em produção
+#
+#  Mesmo formato do workflow do ActPost: push em `main` conecta na VPS por
+#  SSH e roda /opt/prigor/deploy.sh.
+#
+#  Segredos necessários no repositório (Settings → Secrets → Actions):
+#    VPS_HOST     IP ou host da VPS
+#    VPS_USER     usuário de deploy
+#    VPS_SSH_KEY  chave privada com acesso a esse usuário
+# ============================================================================
+
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  verificar:
+    name: Verificação
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      # Tipos, uso do Prisma contra o schema, lint e testes de regra de
+      # negócio. Deploy só acontece se isso passar.
+      - run: npm run verify
+
+  deploy:
+    name: Deploy na VPS
+    needs: verificar
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Commit sendo deployado
+        run: |
+          echo "Commit: ${{ github.sha }}"
+          echo "Autor:  ${{ github.actor }}"
+          echo "Msg:    ${{ github.event.head_commit.message }}"
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          command_timeout: 15m
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd /opt/prigor
+            ./deploy.sh

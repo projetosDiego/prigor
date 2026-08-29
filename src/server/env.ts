@@ -25,7 +25,10 @@ const schema = z.object({
 
   SESSION_TTL_HOURS: z.coerce.number().int().positive().max(24 * 30).default(12),
 
-  NEXT_PUBLIC_APP_URL: z.string().url().default('http://localhost:3000'),
+  // Sem o prefixo NEXT_PUBLIC_ de propósito: essa variável é lida só no
+  // servidor. O prefixo faria o valor ser embutido no build e congelado,
+  // o que é o oposto do que se quer numa URL que muda por ambiente.
+  APP_URL: z.string().url().default('http://localhost:3000'),
 
   GOOGLE_MAPS_API_KEY: z.string().default(''),
   ALLOW_MOCK_PLACES: z
