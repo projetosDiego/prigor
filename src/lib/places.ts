@@ -2,6 +2,8 @@ import { prisma } from '@/server/db';
 import { errorMessage } from './errors';
 import { calculateLeadScore, type ScoreWeights } from './scoring';
 import { PipelineStage, Prisma } from '@prisma/client';
+import { dec } from '@/server/domain/money';
+import { num } from '@/server/services/serializers';
 
 /**
  * O modo simulado precisa ser LIGADO DE PROPOSITO. Sem esta flag, qualquer
@@ -115,14 +117,22 @@ interface GooglePlacesSearchResponse {
   places?: GooglePlaceResult[];
 }
 
-/** Configurações globais usadas pelo motor de prospecção. */
+/**
+ * Configurações globais usadas pelo motor de prospecção.
+ *
+ * Os quatro campos de custo são colunas Decimal. Aqui eles são `unknown` de
+ * propósito: tipá-los como `number` fazia o TypeScript aceitar
+ * `settings.currentDailyCost + custo`, que com um Decimal do driver é
+ * concatenação de string — "0.5" + 0.017 vira "0.50.017", não 0,517.
+ * A conversão passa por `num()`/`dec()`, como no resto do sistema.
+ */
 interface SystemSettingsRow {
   id: string;
-  monthlyCostLimit: number;
-  dailyCostLimit: number;
+  monthlyCostLimit: unknown;
+  dailyCostLimit: unknown;
   apiPaused: boolean;
-  currentDailyCost: number;
-  currentMonthlyCost: number;
+  currentDailyCost: unknown;
+  currentMonthlyCost: unknown;
 }
 
 /**
@@ -257,10 +267,10 @@ export async function runProspectingEngine(params: {
 
   // 1. Carregar configurações do sistema
   const settings: SystemSettingsRow | null = await prisma.systemSettings.findFirst();
-  const monthlyLimit = settings?.monthlyCostLimit || 150.0;
+  const monthlyLimit = num(settings?.monthlyCostLimit) || 150.0;
   // O teto diário existia na configuração mas nunca era comparado com nada:
   // só o mensal pausava a API. Agora os dois valem.
-  const dailyLimit = settings?.dailyCostLimit || 10.0;
+  const dailyLimit = num(settings?.dailyCostLimit) || 10.0;
   const isApiPaused = settings?.apiPaused || false;
 
   // Se a API estiver travada por limite de gastos, abortar
@@ -465,15 +475,22 @@ export async function runProspectingEngine(params: {
 
       // Atualizar o consumo de hoje/mês nas configurações globais
       if (settings) {
+        // A coluna é Decimal(10,4); o acumulado é somado em Decimal e gravado
+        // como string com as mesmas 4 casas.
+        const novoDiario = dec(num(settings.currentDailyCost))
+          .plus(dec(searchResult.apiCostUsd))
+          .toDecimalPlaces(4);
+        const novoMensal = dec(num(settings.currentMonthlyCost))
+          .plus(dec(searchResult.apiCostUsd))
+          .toDecimalPlaces(4);
+
         await prisma.systemSettings.update({
           where: { id: settings.id },
           data: {
-            currentDailyCost: settings.currentDailyCost + searchResult.apiCostUsd,
-            currentMonthlyCost: settings.currentMonthlyCost + searchResult.apiCostUsd,
+            currentDailyCost: novoDiario.toFixed(4),
+            currentMonthlyCost: novoMensal.toFixed(4),
             // Pausa ao estourar o teto diário OU o mensal.
-            apiPaused:
-              settings.currentMonthlyCost + searchResult.apiCostUsd >= monthlyLimit ||
-              settings.currentDailyCost + searchResult.apiCostUsd >= dailyLimit,
+            apiPaused: novoMensal.gte(monthlyLimit) || novoDiario.gte(dailyLimit),
           },
         });
       }
