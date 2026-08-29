@@ -16,8 +16,11 @@ Pré-requisitos: Node 22+, Docker.
 cp .env.example .env          # preencha JWT_SECRET, ADMIN_EMAIL e ADMIN_PASSWORD
 npm run db:up                 # sobe o Postgres em container
 npm run setup                 # instala, gera o client, migra e cria o admin
+npm run db:seed:demo          # opcional: cenário de teste com dados
 npm run dev                   # http://localhost:3000
 ```
+
+Roteiro completo de verificação em [`docs/TESTE-LOCAL.md`](docs/TESTE-LOCAL.md).
 
 Para gerar o `JWT_SECRET`:
 
@@ -30,7 +33,9 @@ openssl rand -hex 32
 | Comando | O que faz |
 |---|---|
 | `npm run dev` | Servidor de desenvolvimento |
-| `npm run verify` | Tipos + lint + testes. **Rode antes de todo commit.** |
+| `npm run verify` | Tipos + uso do Prisma + lint + testes. **Rode antes de todo commit.** |
+| `npm run check:prisma` | Confere as consultas contra o `schema.prisma` sem subir banco |
+| `npm run db:seed:demo` | Popula um cenário de teste (recusa em produção) |
 | `npm run typecheck` | Só o TypeScript |
 | `npm run test` | Testes das regras de negócio |
 | `npm run test:coverage` | Testes com cobertura (mínimo 90% no domínio) |
@@ -96,6 +101,8 @@ aparece na resposta da API, para o front formatar.
 
 ## Documentação
 
+- [`docs/TESTE-LOCAL.md`](docs/TESTE-LOCAL.md) — subir na sua máquina e o
+  roteiro de verificação
 - [`docs/DECISOES.md`](docs/DECISOES.md) — por que o sistema é assim, o que
   mudou de comportamento e quais bugs foram corrigidos
 - [`docs/DEPLOY.md`](docs/DEPLOY.md) — subir na VPS, passo a passo
