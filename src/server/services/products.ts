@@ -7,6 +7,7 @@ import { prisma, prismaErrorCode, uniqueViolationFields, UNIQUE_VIOLATION } from
 import { badRequest, conflict, notFound } from '../http/errors';
 import type { ProductInput } from '../validation/catalog';
 import { paginated, toProductDTO, type Paginated, type ProductDTO } from './serializers';
+import type { Tx } from '../tx';
 
 const RECIPE_INCLUDE = {
   ingredients: {
@@ -66,7 +67,7 @@ export async function getProduct(id: string): Promise<ProductDTO> {
 async function resolveCost(
   input: ProductInput,
   currentCost: string | null,
-  tx: typeof prisma,
+  tx: Tx,
 ): Promise<string> {
   const recipe = input.recipe ?? [];
 
@@ -145,7 +146,7 @@ function handleUniqueError(error: unknown): never {
 
 export async function createProduct(input: ProductInput): Promise<ProductDTO> {
   try {
-    const created = await prisma.$transaction(async (tx: typeof prisma) => {
+    const created = await prisma.$transaction(async (tx: Tx) => {
       const cost = await resolveCost(input, null, tx);
 
       const product = await tx.product.create({ data: toPersistable(input, cost) });
@@ -198,7 +199,7 @@ export async function updateProduct(id: string, input: ProductInput): Promise<Pr
   }
 
   try {
-    const updated = await prisma.$transaction(async (tx: typeof prisma) => {
+    const updated = await prisma.$transaction(async (tx: Tx) => {
       const cost = await resolveCost(
         { ...input, recipe: effectiveRecipe },
         String(existing.cost),

@@ -21,6 +21,7 @@ import {
   activityListQuerySchema,
   type ActivityTypeValue,
 } from '@/server/validation/crm';
+import type { Tx } from '@/server/tx';
 
 /** Estágio para o qual cada tipo de atividade empurra o lead. */
 const STAGE_BY_ACTIVITY: Partial<Record<ActivityTypeValue, string>> = {
@@ -113,7 +114,7 @@ export const POST = route('atividades.criar', async (request) => {
     throw badRequest('Amostras e reuniões exigem um vendedor responsável associado.');
   }
 
-  const activity = await prisma.$transaction(async (tx: typeof prisma) => {
+  const activity = await prisma.$transaction(async (tx: Tx) => {
     const record = await tx.activity.create({
       data: {
         leadId: input.leadId,

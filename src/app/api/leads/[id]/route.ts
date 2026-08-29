@@ -14,6 +14,7 @@ import { prisma } from '@/server/db';
 import { forbidden, notFound } from '@/server/http/errors';
 import { ok, readJson, route } from '@/server/http/respond';
 import { leadUpdateSchema } from '@/server/validation/crm';
+import type { Tx } from '@/server/tx';
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -92,7 +93,7 @@ export const PUT = route<Context>('leads.atualizar', async (request, { params })
     updateData.lossNotes = input.lossNotes ?? null;
   }
 
-  const result = await prisma.$transaction(async (tx: typeof prisma) => {
+  const result = await prisma.$transaction(async (tx: Tx) => {
     const updatedLead = await tx.lead.update({
       where: { id },
       data: updateData,

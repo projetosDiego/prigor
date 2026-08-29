@@ -11,6 +11,7 @@ import { conflict, notFound } from '../http/errors';
 import { hashPassword } from '../auth/password';
 import { num, timestamp } from './serializers';
 import type { sellerInputSchema, sellerUpdateSchema } from '../validation/sales';
+import type { Tx } from '../tx';
 
 type SellerInput = z.infer<typeof sellerInputSchema>;
 type SellerUpdate = z.infer<typeof sellerUpdateSchema>;
@@ -105,7 +106,7 @@ export async function createSeller(
   if (!input.email) throw conflict('E-mail é obrigatório para criar o acesso do vendedor.');
 
   try {
-    const created = await prisma.$transaction(async (tx: typeof prisma) => {
+    const created = await prisma.$transaction(async (tx: Tx) => {
       const user = await tx.user.create({
         data: {
           name: input.name,
@@ -148,7 +149,7 @@ export async function updateSeller(
   const existing = await prisma.seller.findUnique({ where: { id }, select: { id: true, userId: true } });
   if (!existing) throw notFound('Vendedor');
 
-  const updated = await prisma.$transaction(async (tx: typeof prisma) => {
+  const updated = await prisma.$transaction(async (tx: Tx) => {
     const userData: Record<string, unknown> = {};
     if (input.name !== undefined) userData.name = input.name;
     if (input.email !== undefined && input.email !== null) userData.email = input.email;
@@ -189,7 +190,7 @@ export async function deactivateSeller(id: string): Promise<void> {
     );
   }
 
-  await prisma.$transaction(async (tx: typeof prisma) => {
+  await prisma.$transaction(async (tx: Tx) => {
     await tx.seller.update({ where: { id }, data: { active: false } });
     await tx.user.update({ where: { id: existing.userId }, data: { active: false } });
   });

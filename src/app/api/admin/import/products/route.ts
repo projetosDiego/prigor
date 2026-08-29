@@ -24,6 +24,7 @@ import {
   type ImportIssue,
   type ImportedProduct,
 } from '@/server/validation/crm';
+import type { Tx } from '@/server/tx';
 
 type SheetRow = Record<string, unknown>;
 
@@ -254,7 +255,7 @@ export const POST = route('admin.importar-produtos', async (request) => {
     toCreate.push(data);
   }
 
-  await prisma.$transaction(async (tx: typeof prisma) => {
+  await prisma.$transaction(async (tx: Tx) => {
     if (toCreate.length > 0) await tx.product.createMany({ data: toCreate });
     for (const item of toUpdate) {
       await tx.product.update({ where: { id: item.id }, data: item.data });

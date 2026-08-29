@@ -6,6 +6,7 @@ import { qty } from '../domain/money';
 import { prisma } from '../db';
 import { conflict, notFound } from '../http/errors';
 import { num, timestamp } from './serializers';
+import type { Tx } from '../tx';
 
 export interface StockLookupDTO {
   id: string;
@@ -78,7 +79,7 @@ export async function registerMovement(input: {
   observation: string | null;
   allowNegative?: boolean;
 }): Promise<MovementResultDTO> {
-  return prisma.$transaction(async (tx: typeof prisma) => {
+  return prisma.$transaction(async (tx: Tx) => {
     const product = await tx.product.findUnique({
       where: { id: input.productId },
       select: { id: true, name: true, stock: true, unit: true, trackStock: true, active: true },

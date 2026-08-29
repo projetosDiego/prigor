@@ -25,6 +25,7 @@ import {
   type ImportIssue,
   type ImportedCustomer,
 } from '@/server/validation/crm';
+import type { Tx } from '@/server/tx';
 
 /** Fábrica, usada como coordenada padrão de quem vem da planilha. */
 const DEFAULT_LATITUDE = -22.9068;
@@ -189,7 +190,7 @@ export const POST = route('admin.importar-clientes', async (request) => {
     else toCreate.push(data);
   }
 
-  await prisma.$transaction(async (tx: typeof prisma) => {
+  await prisma.$transaction(async (tx: Tx) => {
     if (toCreate.length > 0) await tx.customer.createMany({ data: toCreate });
     for (const item of toUpdate) {
       await tx.customer.update({ where: { id: item.id }, data: item.data });

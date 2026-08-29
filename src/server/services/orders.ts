@@ -14,6 +14,7 @@ import { isManagement, sellerScope, type SessionPayload } from '../auth/guard';
 import { syncOrderFinancials } from './financial-sync';
 import { paginated, toOrderDTO, type OrderDTO, type Paginated } from './serializers';
 import type { OrderCreateInput, OrderUpdateInput } from '../validation/sales';
+import type { Tx } from '../tx';
 
 const ORDER_INCLUDE = {
   customer: {
@@ -131,7 +132,7 @@ interface PricingContext {
 
 /** Carrega produtos do pedido junto com a ficha técnica dos itens. */
 async function loadPricingContext(
-  tx: typeof prisma,
+  tx: Tx,
   productIds: string[],
   customerId: string,
 ): Promise<PricingContext> {
@@ -196,7 +197,7 @@ async function loadPricingContext(
 
 /** Aplica os movimentos planejados: grava histórico e atualiza o saldo. */
 async function applyStock(
-  tx: typeof prisma,
+  tx: Tx,
   orderId: string,
   orderNumber: number,
   items: Array<{ productId: string; quantity: string }>,
@@ -246,7 +247,7 @@ export async function createOrder(
 ): Promise<OrderDTO> {
   const sellerId = resolveSellerId(session, input.sellerId);
 
-  const created = await prisma.$transaction(async (tx: typeof prisma) => {
+  const created = await prisma.$transaction(async (tx: Tx) => {
     const productIds = input.items.map((item) => item.productId);
     const context = await loadPricingContext(tx, productIds, input.customerId);
 
@@ -344,7 +345,7 @@ export async function updateOrder(
   id: string,
   input: OrderUpdateInput,
 ): Promise<OrderDTO> {
-  const updated = await prisma.$transaction(async (tx: typeof prisma) => {
+  const updated = await prisma.$transaction(async (tx: Tx) => {
     const current = await tx.order.findUnique({
       where: { id },
       include: {
@@ -515,7 +516,7 @@ export async function updateOrder(
 }
 
 /** Recarrega o saldo atual dos produtos no contexto em memória. */
-async function refreshStock(tx: typeof prisma, products: PricingContext['products']): Promise<void> {
+async function refreshStock(tx: Tx, products: PricingContext['products']): Promise<void> {
   const ids = [...products.keys()];
   if (ids.length === 0) return;
 
@@ -531,7 +532,7 @@ async function refreshStock(tx: typeof prisma, products: PricingContext['product
 }
 
 export async function cancelOrder(session: SessionPayload, id: string): Promise<OrderDTO> {
-  const cancelled = await prisma.$transaction(async (tx: typeof prisma) => {
+  const cancelled = await prisma.$transaction(async (tx: Tx) => {
     const current = await tx.order.findUnique({
       where: { id },
       include: {

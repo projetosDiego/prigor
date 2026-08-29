@@ -12,6 +12,7 @@ import { conflict, notFound } from '@/server/http/errors';
 import { ok, readJson, route } from '@/server/http/respond';
 import { logger } from '@/server/http/logger';
 import { neighborhoodUpdateSchema } from '@/server/validation/crm';
+import type { Tx } from '@/server/tx';
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -47,7 +48,7 @@ export const PUT = route<Context>('bairros.atualizar', async (request, { params 
     ? (destSeller?.name ?? 'Novo Vendedor')
     : 'Fila de Triagem (Sem Vendedor)';
 
-  const { updated, reassignedCount } = await prisma.$transaction(async (tx: typeof prisma) => {
+  const { updated, reassignedCount } = await prisma.$transaction(async (tx: Tx) => {
     const row = await tx.neighborhood.update({
       where: { id },
       data: { name, city, state, regionId: input.regionId ?? existing.regionId, sellerId: newSellerId, active: input.active ?? existing.active },

@@ -19,6 +19,7 @@ import {
   type CustomerImportRow,
   type ImportIssue,
 } from '@/server/validation/crm';
+import type { Tx } from '@/server/tx';
 
 /** Centro do Rio: usado quando a linha não traz coordenada. */
 const DEFAULT_LATITUDE = -22.9068;
@@ -229,7 +230,7 @@ export const POST = route('clientes.importar', async (request) => {
       };
     });
 
-  await prisma.$transaction(async (tx: typeof prisma) => {
+  await prisma.$transaction(async (tx: Tx) => {
     if (toCreate.length > 0) {
       await tx.customer.createMany({ data: toCreate });
     }
