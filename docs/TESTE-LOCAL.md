@@ -10,36 +10,24 @@ Leva uns 10 minutos.
 ```bash
 cd prigor-os
 
-cp .env.example .env
-```
-
-Abra o `.env` e preencha **duas coisas**:
-
-```env
-JWT_SECRET="cole-aqui-o-resultado-do-comando-abaixo"
-ALLOW_MOCK_PLACES=true
-```
-
-```bash
-openssl rand -hex 32     # cole o resultado no JWT_SECRET
-```
-
-> `JWT_SECRET` com menos de 32 caracteres derruba a aplicação no boot, de
-> propósito. `ALLOW_MOCK_PLACES=true` deixa a prospecção rodar simulada
-> enquanto você não tem chave do Google.
-
-Agora:
-
-```bash
-npm run db:up        # Postgres no Docker
 npm install
-npx prisma generate  # gera o client (não rodou no ambiente onde o código foi escrito)
-npm run db:deploy    # cria as 21 tabelas
-npm run db:seed:demo # popula o cenário de teste
+npm run env:init      # cria o .env já com JWT_SECRET gerado
+npm run db:up         # Postgres no Docker
+npx prisma generate   # gera o client do Prisma
+npm run db:deploy     # cria as 21 tabelas
+npm run db:seed:demo  # popula o cenário de teste
 npm run dev
 ```
 
 Abra <http://localhost:3000>.
+
+> `npm run env:init` gera o segredo de sessão sozinho. Se preferir fazer à
+> mão, copie `.env.example` para `.env` e preencha `JWT_SECRET` com o
+> resultado de `openssl rand -hex 32` — abaixo de 32 caracteres a aplicação
+> se recusa a subir, de propósito.
+
+Antes de subir, o `npm run dev` confere o `.env` e avisa se faltar alguma
+coisa, em vez de deixar virar erro no navegador.
 
 ### Se a porta 5432 estiver ocupada
 
@@ -181,6 +169,7 @@ Se der erro **antes de subir**:
 | Mensagem | Causa |
 |---|---|
 | `Configuração inválida: JWT_SECRET...` | Falta o segredo no `.env`, ou tem menos de 32 caracteres |
+| `MISCONFIGURED` no navegador | Mesma causa: `JWT_SECRET` vazio. Rode `npm run check:env` — ele diz exatamente o que falta |
 | `Can't reach database server` | O Postgres não subiu: `docker compose ps` |
 | `@prisma/client did not initialize` | Faltou `npx prisma generate` |
 | `The table ... does not exist` | Faltou `npm run db:deploy` |

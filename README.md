@@ -13,7 +13,7 @@ banco.
 Pré-requisitos: Node 22+, Docker.
 
 ```bash
-cp .env.example .env          # preencha JWT_SECRET, ADMIN_EMAIL e ADMIN_PASSWORD
+npm run env:init              # cria o .env com JWT_SECRET já gerado
 npm run db:up                 # sobe o Postgres em container
 npm run setup                 # instala, gera o client, migra e cria o admin
 npm run db:seed:demo          # opcional: cenário de teste com dados
@@ -22,11 +22,6 @@ npm run dev                   # http://localhost:3000
 
 Roteiro completo de verificação em [`docs/TESTE-LOCAL.md`](docs/TESTE-LOCAL.md).
 
-Para gerar o `JWT_SECRET`:
-
-```bash
-openssl rand -hex 32
-```
 
 ## Comandos
 
@@ -35,6 +30,8 @@ openssl rand -hex 32
 | `npm run dev` | Servidor de desenvolvimento |
 | `npm run verify` | Tipos + uso do Prisma + lint + testes. **Rode antes de todo commit.** |
 | `npm run check:prisma` | Confere as consultas contra o `schema.prisma` sem subir banco |
+| `npm run env:init` | Cria o `.env` com o segredo de sessão gerado |
+| `npm run check:env` | Diz o que falta no `.env` |
 | `npm run db:seed:demo` | Popula um cenário de teste (recusa em produção) |
 | `npm run typecheck` | Só o TypeScript |
 | `npm run test` | Testes das regras de negócio |
