@@ -22,9 +22,10 @@ import {
   type ActivityTypeValue,
 } from '@/server/validation/crm';
 import type { Tx } from '@/server/tx';
+import type { PipelineStage } from '@prisma/client';
 
 /** Estágio para o qual cada tipo de atividade empurra o lead. */
-const STAGE_BY_ACTIVITY: Partial<Record<ActivityTypeValue, string>> = {
+const STAGE_BY_ACTIVITY: Partial<Record<ActivityTypeValue, PipelineStage>> = {
   VISIT: 'ABORDADO',
   MEETING: 'REUNIAO',
   SAMPLE: 'AMOSTRA',

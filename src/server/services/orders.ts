@@ -12,7 +12,7 @@ import { prisma } from '../db';
 import { badRequest, conflict, notFound } from '../http/errors';
 import { isManagement, sellerScope, type SessionPayload } from '../auth/guard';
 import { syncOrderFinancials } from './financial-sync';
-import { paginated, toOrderDTO, type OrderDTO, type Paginated } from './serializers';
+import { paginated, toOrderDTO, type OrderDTO, type OrderRow, type Paginated } from './serializers';
 import type { OrderCreateInput, OrderUpdateInput } from '../validation/sales';
 import type { Tx } from '../tx';
 
@@ -101,7 +101,7 @@ export async function listOrders(
   ]);
 
   return paginated(
-    rows.map((row: never) => toOrderDTO(row, { withAddress: true })),
+    rows.map((row: OrderRow) => toOrderDTO(row, { withAddress: true })),
     total,
     params.page,
     params.pageSize,
@@ -334,7 +334,9 @@ export async function createOrder(
       sellerName: order.seller?.name ?? null,
     });
 
-    return tx.order.findUnique({ where: { id: order.id }, include: ORDER_INCLUDE });
+    // `OrElseThrow`: a linha acabou de ser criada dentro desta mesma transacao.
+    // Com `findUnique` o retorno era `| null` e o serializador quebrava adiante.
+    return tx.order.findUniqueOrThrow({ where: { id: order.id }, include: ORDER_INCLUDE });
   });
 
   return toOrderDTO(created, { withAddress: true });
@@ -509,7 +511,7 @@ export async function updateOrder(
       sellerName: seller?.name ?? null,
     });
 
-    return tx.order.findUnique({ where: { id }, include: ORDER_INCLUDE });
+    return tx.order.findUniqueOrThrow({ where: { id }, include: ORDER_INCLUDE });
   });
 
   return toOrderDTO(updated, { withAddress: true });
@@ -585,7 +587,7 @@ export async function cancelOrder(session: SessionPayload, id: string): Promise<
 
     await tx.order.update({ where: { id }, data: { status: 'cancelado' } });
 
-    return tx.order.findUnique({ where: { id }, include: ORDER_INCLUDE });
+    return tx.order.findUniqueOrThrow({ where: { id }, include: ORDER_INCLUDE });
   });
 
   return toOrderDTO(cancelled, { withAddress: true });

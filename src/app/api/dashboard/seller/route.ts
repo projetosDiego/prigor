@@ -8,6 +8,8 @@
  * O modelo de pedido chama-se `order` (tabela `pedidos`); as consultas antes
  * apontavam para um `prisma.pedido` que não existe no schema.
  */
+import type { Prisma } from '@prisma/client';
+
 import { requireSeller } from '@/server/auth/guard';
 import { prisma } from '@/server/db';
 import { notFound } from '@/server/http/errors';
@@ -54,9 +56,11 @@ export const GET = route('painel.vendedor', async () => {
   const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekStart.getDate() + 7);
 
+  // `satisfies` mantem os literais: sem ele o TypeScript alarga para `string`
+  // e o Prisma recusa, porque `pipelineStage` e uma coluna enum.
   const stillOpen = {
     NOT: { OR: [{ pipelineStage: 'NOVO_REVENDEDOR' }, { status: 'PERDIDO' }] },
-  };
+  } satisfies Prisma.LeadWhereInput;
 
   const [
     totalLeads,

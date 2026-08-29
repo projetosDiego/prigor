@@ -5,6 +5,7 @@
  * anterior a tela do vendedor enviava esses campos com outro nome e o backend
  * os descartava em silêncio, então o telefone digitado simplesmente sumia.
  */
+import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 
 import { prisma, prismaErrorCode, UNIQUE_VIOLATION } from '../db';
@@ -81,7 +82,9 @@ function handleUnique(error: unknown): never {
   throw error;
 }
 
-function toPersistable(input: CustomerInput | CustomerUpdate): Record<string, unknown> {
+function toPersistable(
+  input: CustomerInput | CustomerUpdate,
+): Prisma.CustomerUncheckedCreateInput {
   const data: Record<string, unknown> = {};
   const keys: Array<keyof CustomerInput> = [
     'tradeName',
@@ -114,7 +117,11 @@ function toPersistable(input: CustomerInput | CustomerUpdate): Record<string, un
   }
 
   if (typeof data.state === 'string') data.state = (data.state as string).toUpperCase();
-  return data;
+
+  // A copia e feita por lista de chaves, entao o TypeScript so ve
+  // `Record<string, unknown>`. Quem garante os campos obrigatorios e o zod,
+  // na fronteira da rota: `customerInputSchema` exige `tradeName`.
+  return data as Prisma.CustomerUncheckedCreateInput;
 }
 
 export async function createCustomer(

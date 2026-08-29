@@ -86,7 +86,7 @@ export interface ProductDTO {
   recipe: RecipeLineDTO[];
 }
 
-interface RecipeRow {
+export interface RecipeRow {
   id: string;
   ingredientId: string;
   quantity: NumericInput;
@@ -94,7 +94,7 @@ interface RecipeRow {
   ingredient?: { name: string; unit: string; cost: NumericInput } | null;
 }
 
-interface ProductRow {
+export interface ProductRow {
   id: string;
   sku: string | null;
   barCode: string | null;
@@ -214,7 +214,7 @@ export interface OrderDTO {
   };
 }
 
-interface OrderRow {
+export interface OrderRow {
   id: string;
   numero: number;
   customerId: string;
@@ -338,7 +338,7 @@ export interface CustomerDTO {
   createdAt: string | null;
 }
 
-interface CustomerRow extends Omit<CustomerDTO, 'sellerName' | 'createdAt'> {
+export interface CustomerRow extends Omit<CustomerDTO, 'sellerName' | 'createdAt'> {
   createdAt: Date | string;
   seller?: { name: string } | null;
 }
@@ -391,7 +391,7 @@ export interface TransactionDTO {
   createdAt: string | null;
 }
 
-interface TransactionRow {
+export interface TransactionRow {
   id: string;
   type: string;
   description: string;

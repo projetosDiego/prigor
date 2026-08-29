@@ -1,6 +1,8 @@
 /**
  * Produtos, insumos e ficha técnica.
  */
+import type { Prisma } from '@prisma/client';
+
 import { calculateRecipeCost } from '../domain/stock';
 import { dec, money } from '../domain/money';
 import { prisma, prismaErrorCode, uniqueViolationFields, UNIQUE_VIOLATION } from '../db';
@@ -93,7 +95,7 @@ async function resolveCost(
   return money(calculateRecipeCost(recipe, costs)).toFixed(2);
 }
 
-function toPersistable(input: ProductInput, cost: string): Record<string, unknown> {
+function toPersistable(input: ProductInput, cost: string): Prisma.ProductUncheckedCreateInput {
   return {
     sku: input.sku,
     barCode: input.barCode,
@@ -162,7 +164,7 @@ export async function createProduct(input: ProductInput): Promise<ProductDTO> {
         });
       }
 
-      return tx.product.findUnique({ where: { id: product.id }, include: RECIPE_INCLUDE });
+      return tx.product.findUniqueOrThrow({ where: { id: product.id }, include: RECIPE_INCLUDE });
     });
 
     return toProductDTO(created);
@@ -222,7 +224,7 @@ export async function updateProduct(id: string, input: ProductInput): Promise<Pr
         }
       }
 
-      return tx.product.findUnique({ where: { id }, include: RECIPE_INCLUDE });
+      return tx.product.findUniqueOrThrow({ where: { id }, include: RECIPE_INCLUDE });
     });
 
     return toProductDTO(updated);

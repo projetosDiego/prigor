@@ -5,6 +5,8 @@
  * "faturamento do mês" somava pedidos ainda não faturados e a janela era
  * aberta à direita, então pedido com data futura entrava na conta.
  */
+import type { Prisma } from '@prisma/client';
+
 import { prisma } from '../db';
 import { num } from './serializers';
 import { CATEGORY_COMMISSION } from './financial-sync';
@@ -58,14 +60,23 @@ export async function getDashboard(session: SessionPayload): Promise<DashboardSt
   const orderScope = scope.sellerId ? { sellerId: scope.sellerId } : {};
   const customerScope = scope.sellerId ? { sellerId: scope.sellerId } : {};
 
-  const notCancelled = { status: { not: 'cancelado' } };
-  const monthFilter = { ...orderScope, ...notCancelled, orderDate: { gte: start, lte: end } };
-  const openFilter = { ...orderScope, status: { in: ['novo', 'confirmado', 'em_producao'] } };
+  // `as const` preserva os literais: sem isso o TypeScript alarga para
+  // `string` e o Prisma recusa, porque a coluna é enum.
+  const notCancelled = { status: { not: 'cancelado' } } as const;
+  const monthFilter = {
+    ...orderScope,
+    ...notCancelled,
+    orderDate: { gte: start, lte: end },
+  } satisfies Prisma.OrderWhereInput;
+  const openFilter = {
+    ...orderScope,
+    status: { in: ['novo', 'confirmado', 'em_producao'] },
+  } satisfies Prisma.OrderWhereInput;
   const billedFilter = {
     ...orderScope,
     status: { in: ['entregue', 'faturado'] },
     orderDate: { gte: start, lte: end },
-  };
+  } satisfies Prisma.OrderWhereInput;
 
   // Gestão vê o financeiro consolidado; vendedor não vê contas da empresa.
   const showsFinancial = isManagement(session);
@@ -101,13 +112,19 @@ export async function getDashboard(session: SessionPayload): Promise<DashboardSt
     prisma.order.aggregate({ where: billedFilter, _sum: { total: true } }),
     showsFinancial
       ? prisma.financialTransaction.aggregate({
-          where: { type: 'receita', status: { in: ['pendente', 'atrasado'] } },
+          where: {
+            type: 'receita',
+            status: { in: ['pendente', 'atrasado'] },
+          } satisfies Prisma.FinancialTransactionWhereInput,
           _sum: { value: true },
         })
       : null,
     showsFinancial
       ? prisma.financialTransaction.aggregate({
-          where: { type: 'despesa', status: { in: ['pendente', 'atrasado'] } },
+          where: {
+            type: 'despesa',
+            status: { in: ['pendente', 'atrasado'] },
+          } satisfies Prisma.FinancialTransactionWhereInput,
           _sum: { value: true },
         })
       : null,
@@ -117,7 +134,7 @@ export async function getDashboard(session: SessionPayload): Promise<DashboardSt
             type: 'receita',
             status: { in: ['pendente', 'atrasado'] },
             dueDate: { lt: today() },
-          },
+          } satisfies Prisma.FinancialTransactionWhereInput,
           _sum: { value: true },
         })
       : null,
@@ -127,7 +144,7 @@ export async function getDashboard(session: SessionPayload): Promise<DashboardSt
         category: CATEGORY_COMMISSION,
         status: { in: ['pendente', 'atrasado'] },
         ...(scope.sellerId ? { order: { sellerId: scope.sellerId } } : {}),
-      },
+      } satisfies Prisma.FinancialTransactionWhereInput,
       _sum: { value: true },
     }),
     prisma.orderItem.groupBy({
@@ -169,22 +186,22 @@ export async function getDashboard(session: SessionPayload): Promise<DashboardSt
     orders: {
       inMonth: monthOrders,
       open: openOrders,
-      openValue: num(openValue._sum.total),
-      monthGrossValue: num(monthGross._sum.total),
-      monthBilledValue: num(billedValue._sum.total),
+      openValue: num(openValue._sum?.total),
+      monthGrossValue: num(monthGross._sum?.total),
+      monthBilledValue: num(billedValue._sum?.total),
     },
     financial: {
-      receivable: num(receivable?._sum.value),
-      payable: num(payable?._sum.value),
-      overdueReceivable: num(overdueReceivable?._sum.value),
-      pendingCommissions: num(pendingCommissions._sum.value),
+      receivable: num(receivable?._sum?.value),
+      payable: num(payable?._sum?.value),
+      overdueReceivable: num(overdueReceivable?._sum?.value),
+      pendingCommissions: num(pendingCommissions?._sum?.value),
     },
     topProducts: topProductRows.map(
-      (row: { productId: string; _sum: { quantity: unknown; subtotal: unknown } }) => ({
+      (row: { productId: string; _sum: { quantity: unknown; subtotal: unknown } | null }) => ({
         productId: row.productId,
         name: nameById.get(row.productId) ?? '—',
-        quantity: num(row._sum.quantity),
-        total: num(row._sum.subtotal),
+        quantity: num(row._sum?.quantity),
+        total: num(row._sum?.subtotal),
       }),
     ),
     latestOrders: latestOrders.map(

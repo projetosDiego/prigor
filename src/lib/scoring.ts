@@ -1,4 +1,4 @@
-import { ScoreSettings } from '@prisma/client';
+import { Prisma, ScoreSettings } from '@prisma/client';
 import { prisma } from '@/server/db';
 import { calculateHaversineDistance } from './geocoding';
 
@@ -222,10 +222,17 @@ export async function recalculateAllLeadsScores(): Promise<number> {
     }
   });
 
-  const activeCustomers: { latitude: number; longitude: number }[] = await prisma.customer.findMany({
-    where: { status: 'ATIVO' },
-    select: { latitude: true, longitude: true }
-  });
+  // Coordenada e opcional no cadastro: cliente sem lat/lng entrava na conta
+  // de distancia como NaN e envenenava o criterio "clientes por perto".
+  const activeCustomers = (
+    await prisma.customer.findMany({
+      where: { status: 'ATIVO' },
+      select: { latitude: true, longitude: true },
+    })
+  ).filter(
+    (c: { latitude: number | null; longitude: number | null }): c is { latitude: number; longitude: number } =>
+      c.latitude !== null && c.longitude !== null,
+  );
 
   let count = 0;
   for (const lead of activeLeads) {
@@ -234,7 +241,7 @@ export async function recalculateAllLeadsScores(): Promise<number> {
       where: { id: lead.id },
       data: {
         score,
-        scoreBreakdown: breakdown
+        scoreBreakdown: breakdown as unknown as Prisma.InputJsonValue,
       }
     });
     count++;

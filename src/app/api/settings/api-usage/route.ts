@@ -6,6 +6,8 @@
  * e não como o objeto Decimal do driver, sobre o qual a tela chamava
  * `.toFixed()`.
  */
+import type { Prisma } from '@prisma/client';
+
 import { requireAdmin } from '@/server/auth/guard';
 import { prisma } from '@/server/db';
 import { badRequest } from '@/server/http/errors';
@@ -135,8 +137,8 @@ export const POST = route('consumo-api.atualizar', async (request) => {
       action: 'UPDATE_SYSTEM_SETTINGS',
       entity: 'SystemSettings',
       entityId: current.id,
-      oldValue: current,
-      newValue: updated,
+      oldValue: current as unknown as Prisma.InputJsonValue,
+      newValue: updated as unknown as Prisma.InputJsonValue,
     },
   });
 

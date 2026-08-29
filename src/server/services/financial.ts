@@ -7,7 +7,13 @@ import { dec } from '../domain/money';
 import { prisma } from '../db';
 import { conflict, notFound } from '../http/errors';
 import { CATEGORY_COMMISSION } from './financial-sync';
-import { paginated, toTransactionDTO, type Paginated, type TransactionDTO } from './serializers';
+import {
+  paginated,
+  toTransactionDTO,
+  type Paginated,
+  type TransactionDTO,
+  type TransactionRow,
+} from './serializers';
 import type {
   transactionInputSchema,
   transactionListQuerySchema,
@@ -198,7 +204,7 @@ export async function listSellerCommissions(sellerId: string): Promise<Commissio
     orderBy: { dueDate: 'desc' },
   });
 
-  return rows.map((row: never) => {
+  return rows.map((row: TransactionRow) => {
     const dto = toTransactionDTO(row);
     return {
       transactionId: dto.id,

@@ -5,6 +5,8 @@
  * fechar 100 — regra que agora vive no schema, não num `if` no meio da rota —
  * e toda alteração grava histórico e recalcula os leads ativos.
  */
+import type { Prisma } from '@prisma/client';
+
 import { requireAdmin } from '@/server/auth/guard';
 import { recalculateAllLeadsScores } from '@/lib/scoring';
 import { prisma } from '@/server/db';
@@ -84,8 +86,8 @@ export const POST = route('score.calibrar', async (request) => {
       action: 'CHANGE_SCORE_WEIGHTS',
       entity: 'ScoreSettings',
       entityId: updated.id,
-      oldValue: current,
-      newValue: updated,
+      oldValue: current as unknown as Prisma.InputJsonValue,
+      newValue: updated as unknown as Prisma.InputJsonValue,
     },
   });
 

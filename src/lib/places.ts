@@ -1,7 +1,7 @@
 import { prisma } from '@/server/db';
 import { errorMessage } from './errors';
 import { calculateLeadScore, type ScoreWeights } from './scoring';
-import { PipelineStage } from '@prisma/client';
+import { PipelineStage, Prisma } from '@prisma/client';
 
 /**
  * O modo simulado precisa ser LIGADO DE PROPOSITO. Sem esta flag, qualquer
@@ -333,10 +333,17 @@ export async function runProspectingEngine(params: {
     let existingCustCount = 0;
 
     const scoreSettings: ScoreWeights | null = await prisma.scoreSettings.findFirst();
-    const activeCustomers: { latitude: number; longitude: number }[] = await prisma.customer.findMany({
-      where: { status: 'ATIVO' },
-      select: { latitude: true, longitude: true },
-    });
+    // Idem `scoring.ts`: coordenada e opcional, e cliente sem ela nao pode
+    // participar do calculo de proximidade.
+    const activeCustomers = (
+      await prisma.customer.findMany({
+        where: { status: 'ATIVO' },
+        select: { latitude: true, longitude: true },
+      })
+    ).filter(
+      (c: { latitude: number | null; longitude: number | null }): c is { latitude: number; longitude: number } =>
+        c.latitude !== null && c.longitude !== null,
+    );
 
     // 5. Normalizar, Deduplicar e Inserir
     for (const place of searchResult.places) {
@@ -429,7 +436,7 @@ export async function runProspectingEngine(params: {
           category: place.category,
           googlePlaceId: place.googlePlaceId,
           score,
-          scoreBreakdown: breakdown,
+          scoreBreakdown: breakdown as unknown as Prisma.InputJsonValue,
           sellerId,
           regionId: neighborhood.regionId,
           neighborhoodId: neighborhood.id,
