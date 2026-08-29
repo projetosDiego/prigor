@@ -19,6 +19,13 @@ interface Neighborhood {
   seller?: { name: string } | null;
 }
 
+/**
+ * Execução devolvida por `GET /api/prospecting/runs`.
+ *
+ * `estimatedCost` é uma coluna Decimal que a rota devolve crua, sem passar
+ * por `num()`: no JSON ela chega como string. Chamar `.toFixed()` direto
+ * quebrava a tela, então o valor é convertido na hora de exibir.
+ */
 interface ProspectingRun {
   id: string;
   startedAt: string;
@@ -29,7 +36,7 @@ interface ProspectingRun {
   duplicates: number;
   existingCust: number;
   errors?: string | null;
-  estimatedCost: number;
+  estimatedCost: number | string;
   status: string;
 }
 
@@ -303,7 +310,7 @@ export default function AdminProspectingPage() {
                       <td className="p-3 capitalize">{run.category || 'busca geral'}</td>
                       <td className="p-3 text-center text-stone-600">{run.resultsFound}</td>
                       <td className="p-3 text-center text-emerald-700">{run.newLeads}</td>
-                      <td className="p-3 text-center text-stone-550">${run.estimatedCost.toFixed(3)}</td>
+                      <td className="p-3 text-center text-stone-550">${Number(run.estimatedCost).toFixed(3)}</td>
                       <td className="p-3">
                         <span className={`inline-block rounded font-extrabold text-[9px] px-2 py-0.5 border ${getRunStatusBadge(run.status)}`}>
                           {run.status}

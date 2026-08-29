@@ -19,6 +19,7 @@ import {
   ArrowDownRight
 } from 'lucide-react';
 import { responseErrorMessage } from '@/lib/errors';
+import type { DashboardStats } from '@/lib/api-types';
 
 // CRM Types (Expansão)
 interface CRMData {
@@ -53,42 +54,6 @@ interface CRMData {
   }[];
 }
 
-// ERP Types (Operações/Financeiro) — resposta de `GET /api/dashboard/erp`
-interface ERPStats {
-  period: { from: string; to: string };
-  customers: { active: number };
-  products: { forSale: number; supplies: number; lowStock: number };
-  orders: {
-    inMonth: number;
-    open: number;
-    openValue: number;
-    monthGrossValue: number;
-    monthBilledValue: number;
-  };
-  financial: {
-    receivable: number;
-    payable: number;
-    overdueReceivable: number;
-    pendingCommissions: number;
-  };
-  topProducts: {
-    productId: string;
-    name: string;
-    quantity: number;
-    total: number;
-  }[];
-  latestOrders: {
-    id: string;
-    numero: number;
-    customerName: string;
-    orderDate: string | null;
-    total: number;
-    status: string;
-  }[];
-}
-
-
-
 /**
  * Formata uma data civil (AAAA-MM-DD) como dd/mm/aaaa.
  * `new Date('2026-01-05')` seria interpretada como meia-noite UTC e voltaria
@@ -102,7 +67,7 @@ function formatarData(iso: string | null | undefined): string {
 
 export default function AdminDashboardPage() {
   const [crmData, setCrmData] = useState<CRMData | null>(null);
-  const [erpData, setErpData] = useState<ERPStats | null>(null);
+  const [erpData, setErpData] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -129,7 +94,7 @@ export default function AdminDashboardPage() {
       }
 
       const crmJson: CRMData = await resCrm.json();
-      const erpJson: ERPStats = await resErp.json();
+      const erpJson: DashboardStats = await resErp.json();
 
       setCrmData(crmJson);
       setErpData(erpJson);

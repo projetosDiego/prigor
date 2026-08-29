@@ -116,11 +116,21 @@ que esteja aqui.
       geram comissão, mesmo o vendedor tendo 5%
 - [ ] Marcar um pedido como **faturado** cria a conta a pagar da comissão
 
-### Estoque
+### Estoque e scanner de produção
 
-- [ ] **★** Tentar dar baixa de 999 kg de chocolate é recusado por saldo
-      insuficiente *(antes ia a negativo em silêncio)*
-- [ ] O histórico de movimentação mostra as baixas com saldo antes e depois
+Menu **Scanner de Produção** (`/admin/stock`). Essa tela existia no sistema
+antigo e não tinha sido portada — foi reconstruída.
+
+- [ ] Escolher a operação com as teclas `1` a `4` e confirmar com `Enter`
+- [ ] Digitar `7890000000017` (código do Brownie tradicional) e dar Enter:
+      mostra nome, unidade e saldo atual
+- [ ] Confirmar a quantidade grava o movimento e mostra saldo antes → depois
+- [ ] O foco volta sozinho para o campo de código, sem clique
+- [ ] **★** Baixa de 999 kg de chocolate é recusada por saldo insuficiente
+      *(antes o estoque ia a negativo em silêncio)*
+- [ ] Código inexistente mostra erro legível, sem travar a tela
+- [ ] `Esc` reinicia e volta para a escolha de operação
+- [ ] O histórico do dia lista os movimentos com saldo antes e depois
 
 ### Isolamento por vendedor
 

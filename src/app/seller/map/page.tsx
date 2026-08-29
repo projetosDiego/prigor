@@ -8,13 +8,15 @@ import {
   Compass
 } from 'lucide-react';
 
+import type { CustomerDTO, Paginated } from '@/lib/api-types';
+
 interface MapPoint {
   id: string;
   tradeName: string;
   category: string;
   address: string;
-  latitude: number;
-  longitude: number;
+  latitude: number | null;
+  longitude: number | null;
   type: 'LEAD' | 'CUSTOMER';
   score?: number;
 }
@@ -34,23 +36,8 @@ interface LeadRow {
   convertedCustomerId?: string | null;
 }
 
-/** Cliente devolvido por `GET /api/customers`. */
-interface CustomerRow {
-  id: string;
-  tradeName: string;
-  category: string;
-  address: string;
-  latitude: number;
-  longitude: number;
-  status: string;
-}
-
 interface LeadsResponse {
   data?: LeadRow[];
-}
-
-interface CustomersResponse {
-  data?: CustomerRow[];
 }
 
 export default function SellerMapPage() {
@@ -75,7 +62,7 @@ export default function SellerMapPage() {
       ]);
 
       const leadsJson: LeadsResponse = await leadsRes.json();
-      const customersJson: CustomersResponse = await customersRes.json();
+      const customersJson: Paginated<CustomerDTO> = await customersRes.json();
 
       if (!leadsRes.ok || !customersRes.ok) {
         throw new Error('Erro ao buscar dados geográficos.');
@@ -99,8 +86,8 @@ export default function SellerMapPage() {
         .map((c) => ({
           id: c.id,
           tradeName: c.tradeName,
-          category: c.category,
-          address: c.address,
+          category: c.category ?? '',
+          address: c.address ?? '',
           latitude: c.latitude,
           longitude: c.longitude,
           type: 'CUSTOMER',

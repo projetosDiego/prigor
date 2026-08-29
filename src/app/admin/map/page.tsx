@@ -9,48 +9,29 @@ import {
   Navigation
 } from 'lucide-react';
 
-interface Seller {
-  id: string;
-  name: string;
-}
+import type { CustomerDTO, Paginated, SellerDTO } from '@/lib/api-types';
 
-/** Cliente devolvido por `GET /api/customers` (recorte de CustomerDTO). */
-interface CustomerRow {
-  id: string;
-  tradeName: string;
-  category: string;
-  address: string;
-  number?: string | null;
-  neighborhood: string;
-  latitude: number;
-  longitude: number;
-  sellerId?: string | null;
-  seller?: { name: string } | null;
-}
-
-interface CustomersResponse {
-  data?: CustomerRow[];
-}
-
+/** `GET /api/sellers` devolve `{ data }`: esta listagem não é paginada. */
 interface SellersResponse {
-  data?: Seller[];
+  data?: SellerDTO[];
 }
 
+/** Ponto desenhado no mapa, derivado do cliente devolvido pela API. */
 interface Point {
   id: string;
   tradeName: string;
   category: string;
   address: string;
   neighborhood: string;
-  latitude: number;
-  longitude: number;
-  sellerId?: string | null;
-  sellerName?: string;
+  latitude: number | null;
+  longitude: number | null;
+  sellerId: string | null;
+  sellerName: string;
 }
 
 export default function AdminMapPage() {
   const [points, setPoints] = useState<Point[]>([]);
-  const [sellers, setSellers] = useState<Seller[]>([]);
+  const [sellers, setSellers] = useState<SellerDTO[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filtros
@@ -68,7 +49,7 @@ export default function AdminMapPage() {
         fetch('/api/sellers')
       ]);
 
-      const custData: CustomersResponse = await custRes.json();
+      const custData: Paginated<CustomerDTO> = await custRes.json();
       const sellData: SellersResponse = await sellRes.json();
 
       if (!custRes.ok || !sellRes.ok) {
@@ -77,16 +58,18 @@ export default function AdminMapPage() {
 
       setSellers(sellData.data ?? []);
 
-      const normalized: Point[] = (custData.data ?? []).map((c: CustomerRow) => ({
+      // A API manda o nome do vendedor em `sellerName`; não existe objeto
+      // `seller` aninhado no cliente.
+      const normalized: Point[] = (custData.data ?? []).map((c: CustomerDTO) => ({
         id: c.id,
         tradeName: c.tradeName,
-        category: c.category,
-        address: `${c.address}, ${c.number || 'S/N'}`,
-        neighborhood: c.neighborhood,
+        category: c.category ?? '',
+        address: `${c.address ?? ''}, ${c.number || 'S/N'}`,
+        neighborhood: c.neighborhood ?? '',
         latitude: c.latitude,
         longitude: c.longitude,
         sellerId: c.sellerId,
-        sellerName: c.seller?.name || 'Carteira Livre'
+        sellerName: c.sellerName || 'Carteira Livre'
       }));
 
       setPoints(normalized);

@@ -13,13 +13,20 @@ import {
 
 import { errorMessage, apiErrorMessage } from '@/lib/errors';
 
+/**
+ * Linha de consumo devolvida por `GET /api/settings/api-usage`.
+ *
+ * `estimatedCost` é uma coluna Decimal que a rota devolve crua, sem passar
+ * por `num()`: no JSON ela chega como string. Chamar `.toFixed()` direto
+ * quebrava a tela, então o valor é convertido na hora de exibir.
+ */
 interface ApiUsageLog {
   id: string;
   date: string;
   service: string;
   endpoint: string;
   callCount: number;
-  estimatedCost: number;
+  estimatedCost: number | string;
   region?: string | null;
 }
 
@@ -326,7 +333,7 @@ export default function AdminApiUsagePage() {
                             <span className="text-[9px] text-stone-400 font-bold uppercase">{log.endpoint}</span>
                           </td>
                           <td className="p-3 text-center text-stone-700">{log.callCount}</td>
-                          <td className="p-3 text-right font-black text-amber-900">${log.estimatedCost.toFixed(4)}</td>
+                          <td className="p-3 text-right font-black text-amber-900">${Number(log.estimatedCost).toFixed(4)}</td>
                         </tr>
                       ))}
                     </tbody>

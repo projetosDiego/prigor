@@ -11,44 +11,12 @@ import {
   Loader2
 } from 'lucide-react';
 import { responseErrorMessage } from '@/lib/errors';
-
-/** Endereço de entrega que já vem junto de cada pedido na listagem. */
-interface EnderecoEntrega {
-  address: string | null;
-  number: string | null;
-  complement: string | null;
-  neighborhood: string | null;
-  city: string | null;
-  latitude: number | null;
-  longitude: number | null;
-  phone: string | null;
-}
-
-/** Pedido devolvido por `GET /api/orders` (recorte de OrderDTO). */
-interface Pedido {
-  id: string;
-  numero: number;
-  customerName: string | null;
-  total: number;
-  status: string;
-  deliveryDate: string | null;
-  notes: string | null;
-  deliveryAddress?: EnderecoEntrega;
-}
-
-/** Envelope de paginação usado por todas as listagens da API. */
-interface Paginated<T> {
-  data: T[];
-  page: number;
-  pageSize: number;
-  total: number;
-  totalPages: number;
-}
+import type { OrderDTO, Paginated } from '@/lib/api-types';
 
 
 
 /** Monta o logradouro completo para exibir e para montar o link do Maps. */
-function enderecoDoPedido(p: Pedido): string {
+function enderecoDoPedido(p: OrderDTO): string {
   const e = p.deliveryAddress;
   if (!e) return 'Endereço não cadastrado na ficha do cliente';
   const partes = [
@@ -61,7 +29,7 @@ function enderecoDoPedido(p: Pedido): string {
 }
 
 /** Bairro do cliente, usado para agrupar as paradas do roteiro. */
-function bairroDoPedido(p: Pedido): string {
+function bairroDoPedido(p: OrderDTO): string {
   return p.deliveryAddress?.neighborhood || 'Sem bairro';
 }
 
@@ -80,7 +48,7 @@ function formatarData(iso: string | null | undefined): string {
 const STATUS_DE_CARGA = ['confirmado', 'em_producao', 'faturado'];
 
 export default function LogisticsPage() {
-  const [pedidos, setPedidos] = useState<Pedido[]>([]);
+  const [pedidos, setPedidos] = useState<OrderDTO[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split('T')[0]
   );
@@ -89,7 +57,7 @@ export default function LogisticsPage() {
   
   // Pedidos selecionados para a carga do dia
   const [selectedPedidoIds, setSelectedPedidoIds] = useState<string[]>([]);
-  const [routeOrders, setRouteOrders] = useState<Pedido[]>([]);
+  const [routeOrders, setRouteOrders] = useState<OrderDTO[]>([]);
   const [routing, setRouting] = useState(false);
   const [routeGenerated, setRouteGenerated] = useState(false);
 
@@ -110,7 +78,7 @@ export default function LogisticsPage() {
       const res = await fetch(`/api/orders?${params.toString()}`);
       if (!res.ok) throw new Error(await responseErrorMessage(res, 'Falha ao carregar a lista de pedidos.'));
 
-      const json: Paginated<Pedido> = await res.json();
+      const json: Paginated<OrderDTO> = await res.json();
 
       // O filtro de status fica no cliente porque a API aceita um status por
       // vez e a carga do dia junta confirmado, em produção e faturado.

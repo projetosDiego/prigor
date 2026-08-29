@@ -14,34 +14,11 @@ import {
   Scale
 } from 'lucide-react';
 import { responseErrorMessage } from '@/lib/errors';
-
-/** Insumo devolvido por `GET /api/products?type=insumo` (recorte de ProductDTO). */
-interface Insumo {
-  id: string;
-  sku: string | null;
-  barCode: string | null;
-  name: string;
-  category: string | null;
-  unit: string;
-  cost: number;
-  stock: number;
-  minStock: number;
-  active: boolean;
-}
-
-/** Envelope de paginação usado por todas as listagens da API. */
-interface Paginated<T> {
-  data: T[];
-  page: number;
-  pageSize: number;
-  total: number;
-  totalPages: number;
-}
-
+import type { Paginated, ProductDTO } from '@/lib/api-types';
 
 
 export default function RawMaterialsPage() {
-  const [insumos, setInsumos] = useState<Insumo[]>([]);
+  const [insumos, setInsumos] = useState<ProductDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -70,7 +47,7 @@ export default function RawMaterialsPage() {
       // A listagem é paginada; a tela precisa de todos os insumos de uma vez.
       const res = await fetch('/api/products?type=insumo&pageSize=500');
       if (!res.ok) throw new Error(await responseErrorMessage(res, 'Falha ao carregar insumos.'));
-      const json: Paginated<Insumo> = await res.json();
+      const json: Paginated<ProductDTO> = await res.json();
       const lista = json.data;
       setInsumos(lista);
 
@@ -107,7 +84,7 @@ export default function RawMaterialsPage() {
     setIsModalOpen(true);
   };
 
-  const handleOpenEditModal = (insumo: Insumo) => {
+  const handleOpenEditModal = (insumo: ProductDTO) => {
     setModalMode('edit');
     setSelectedId(insumo.id);
     setNome(insumo.name);

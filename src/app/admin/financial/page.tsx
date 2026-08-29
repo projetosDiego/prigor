@@ -10,36 +10,11 @@ import {
   ArrowUpRight, 
   ArrowDownRight, 
   Check, 
+  Undo2,
   AlertTriangle
 } from 'lucide-react';
 import { responseErrorMessage } from '@/lib/errors';
-
-/** Lançamento devolvido por `GET /api/financial/transactions` (TransactionDTO). */
-interface Lancamento {
-  id: string;
-  type: 'receita' | 'despesa';
-  description: string;
-  category: string | null;
-  value: number;
-  issueDate: string | null;
-  dueDate: string | null;
-  paymentDate: string | null;
-  status: 'pendente' | 'pago' | 'atrasado' | 'cancelado';
-  orderId: string | null;
-  orderNumber: number | null;
-  notes: string | null;
-}
-
-/** Envelope de paginação usado por todas as listagens da API. */
-interface Paginated<T> {
-  data: T[];
-  page: number;
-  pageSize: number;
-  total: number;
-  totalPages: number;
-}
-
-
+import type { Paginated, TransactionDTO } from '@/lib/api-types';
 
 /**
  * Formata uma data civil (AAAA-MM-DD) como dd/mm/aaaa.
@@ -53,7 +28,7 @@ function formatarData(iso: string | null | undefined): string {
 }
 
 export default function FinancialPage() {
-  const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
+  const [lancamentos, setLancamentos] = useState<TransactionDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -89,7 +64,7 @@ export default function FinancialPage() {
 
       const res = await fetch(`/api/financial/transactions?${params.toString()}`);
       if (!res.ok) throw new Error(await responseErrorMessage(res, 'Falha ao carregar dados financeiros.'));
-      const json: Paginated<Lancamento> = await res.json();
+      const json: Paginated<TransactionDTO> = await res.json();
       setLancamentos(json.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao carregar dados financeiros.');
@@ -160,6 +135,22 @@ export default function FinancialPage() {
       fetchLancamentos();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Erro ao baixar lançamento.');
+    }
+  };
+
+  /**
+   * Estorna uma baixa. Necessário porque um lançamento pago trava a alteração
+   * do pedido de origem — sem estorno não havia como corrigir uma venda já
+   * baixada por engano.
+   */
+  const handleReverse = async (id: string, desc: string) => {
+    if (!confirm(`Estornar a baixa de "${desc}"? O lançamento volta para pendente.`)) return;
+    try {
+      const res = await fetch(`/api/financial/transactions/${id}/reverse`, { method: 'POST' });
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao estornar a baixa.'));
+      fetchLancamentos();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erro ao estornar a baixa.');
     }
   };
 
@@ -365,13 +356,21 @@ export default function FinancialPage() {
                     </td>
                     <td className="py-4 px-6 text-center">
                       <div className="flex items-center justify-center gap-1.5">
-                        {l.status !== 'pago' && (
+                        {l.status !== 'pago' ? (
                           <button 
                             onClick={() => handlePay(l.id, l.description)}
                             className="p-1.5 border border-emerald-200 rounded-lg hover:bg-emerald-50 text-emerald-700 transition-all cursor-pointer"
                             title="Confirmar Liquidação (Baixar)"
                           >
                             <Check className="h-4 w-4" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleReverse(l.id, l.description)}
+                            className="p-1.5 border border-amber-200 rounded-lg hover:bg-amber-50 text-amber-700 transition-all cursor-pointer"
+                            title="Estornar baixa (volta para pendente)"
+                          >
+                            <Undo2 className="h-4 w-4" />
                           </button>
                         )}
                         <button 

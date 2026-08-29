@@ -17,7 +17,6 @@ type SellerUpdate = z.infer<typeof sellerUpdateSchema>;
 
 export interface SellerDTO {
   id: string;
-  userId: string;
   name: string;
   phone: string | null;
   email: string | null;
@@ -25,7 +24,15 @@ export interface SellerDTO {
   goal: number;
   active: boolean;
   notes: string | null;
-  createdAt: string | null;
+  /** Quando o vendedor entrou (a data de criação do cadastro). */
+  startDate: string | null;
+  /** Conta de acesso vinculada. Um vendedor sempre tem uma. */
+  user: {
+    id: string;
+    email: string;
+    phone: string | null;
+    active: boolean;
+  };
   neighborhoods: Array<{ id: string; name: string; regionName: string | null }>;
 }
 
@@ -48,13 +55,13 @@ interface SellerRow {
   active: boolean;
   notes: string | null;
   createdAt: Date;
+  user?: { id: string; email: string; phone: string | null; active: boolean } | null;
   neighborhoods?: Array<{ id: string; name: string; region?: { name: string } | null }>;
 }
 
 function toDTO(row: SellerRow): SellerDTO {
   return {
     id: row.id,
-    userId: row.userId,
     name: row.name,
     phone: row.phone,
     email: row.email,
@@ -62,7 +69,13 @@ function toDTO(row: SellerRow): SellerDTO {
     goal: row.goal,
     active: row.active,
     notes: row.notes,
-    createdAt: timestamp(row.createdAt),
+    startDate: timestamp(row.createdAt),
+    user: {
+      id: row.user?.id ?? row.userId,
+      email: row.user?.email ?? row.email ?? '',
+      phone: row.user?.phone ?? row.phone,
+      active: row.user?.active ?? row.active,
+    },
     neighborhoods: (row.neighborhoods ?? []).map((n) => ({
       id: n.id,
       name: n.name,

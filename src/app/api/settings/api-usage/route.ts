@@ -11,7 +11,7 @@ import { prisma } from '@/server/db';
 import { badRequest } from '@/server/http/errors';
 import { logger } from '@/server/http/logger';
 import { ok, readJson, route } from '@/server/http/respond';
-import { num, paginated } from '@/server/services/serializers';
+import { num, paginated, timestamp } from '@/server/services/serializers';
 import { parseQuery } from '@/server/validation/common';
 import { apiUsageQuerySchema, apiUsageUpdateSchema } from '@/server/validation/crm';
 
@@ -73,11 +73,33 @@ export const GET = route('consumo-api.obter', async (request) => {
     prisma.apiUsage.count(),
   ]);
 
+  // Colunas Decimal precisam passar por `num()`: cruas viram string no JSON,
+  // e a tela chamava `.toFixed()` em cima.
+  const linhas = recentUsage.map(
+    (linha: {
+      id: string;
+      date: Date;
+      service: string;
+      endpoint: string;
+      callCount: number;
+      estimatedCost: unknown;
+      region: string | null;
+      executionId: string | null;
+    }) => ({
+      id: linha.id,
+      date: timestamp(linha.date),
+      service: linha.service,
+      endpoint: linha.endpoint,
+      callCount: linha.callCount,
+      estimatedCost: num(linha.estimatedCost),
+      region: linha.region,
+      executionId: linha.executionId,
+    }),
+  );
+
   return ok({
     settings: toSettingsDTO(settings),
-    ...paginated(recentUsage, total, query.page, query.pageSize),
-    // Alias de compatibilidade com a tela de custos.
-    recentUsage,
+    ...paginated(linhas, total, query.page, query.pageSize),
   });
 });
 

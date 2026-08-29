@@ -9,6 +9,13 @@ import {
   Package
 } from 'lucide-react';
 import { responseErrorMessage } from '@/lib/errors';
+import type {
+  CustomerDTO,
+  OrderDTO,
+  OrderItemDTO,
+  Paginated,
+  ProductDTO,
+} from '@/lib/api-types';
 
 const formatPhone = (value: string) => {
   if (!value) return value;
@@ -26,55 +33,13 @@ const formatPhone = (value: string) => {
   return `(${phone.substring(0, 2)}) ${phone.substring(2, 7)}-${phone.substring(7, 11)}`;
 };
 
-/** Item de pedido devolvido pela API (OrderItemDTO). */
-interface PedidoItem {
-  id?: string;
-  productId: string;
-  productName?: string | null;
-  quantity: number;
-  unitPrice: number;
-  discountItem: number;
-  subtotal: number;
-}
-
-/** Pedido devolvido por `GET /api/orders` (recorte de OrderDTO). */
-interface Pedido {
-  id: string;
-  numero: number;
-  customerName?: string | null;
-  sellerName?: string | null;
-  status: 'novo' | 'confirmado' | 'em_producao' | 'entregue' | 'faturado' | 'cancelado';
-  paymentMethod?: string;
-  orderDate: string;
-  total: number;
-  items: PedidoItem[];
-}
-
-/** Cliente devolvido por `GET /api/customers` (recorte de CustomerDTO). */
-interface Cliente {
-  id: string;
-  tradeName: string;
-  isReseller: boolean;
-}
-
-/** Produto de venda devolvido por `GET /api/products` (recorte de ProductDTO). */
-interface Produto {
-  id: string;
-  name: string;
-  salePrice: number;
-  wholesalePrice: number;
-  minWholesaleQty: number;
-}
-
-/** Envelope de paginação usado por todas as listagens da API. */
-interface Paginated<T> {
-  data: T[];
-  page: number;
-  pageSize: number;
-  total: number;
-  totalPages: number;
-}
-
+/**
+ * Item do pedido enquanto está sendo montado na tela.
+ *
+ * É o `OrderItemDTO` com uma diferença: o item que o vendedor acabou de
+ * adicionar ainda não foi gravado, então não tem `id`.
+ */
+type PedidoItem = Omit<OrderItemDTO, 'id'> & { id?: string };
 
 
 /** Resposta da consulta de CNPJ (BrasilAPI, via `/api/tools/cnpj`). */
@@ -107,9 +72,9 @@ function formatarData(iso: string | null | undefined): string {
 }
 
 export default function SellerOrdersPage() {
-  const [pedidos, setPedidos] = useState<Pedido[]>([]);
-  const [clientes, setClientes] = useState<Cliente[]>([]);
-  const [produtos, setProdutos] = useState<Produto[]>([]);
+  const [pedidos, setPedidos] = useState<OrderDTO[]>([]);
+  const [clientes, setClientes] = useState<CustomerDTO[]>([]);
+  const [produtos, setProdutos] = useState<ProductDTO[]>([]);
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -169,9 +134,9 @@ export default function SellerOrdersPage() {
         throw new Error(await responseErrorMessage(naoOk, 'Falha ao obter dados da carteira do vendedor.'));
       }
 
-      const peds: Paginated<Pedido> = await pedsRes.json();
-      const clis: Paginated<Cliente> = await clisRes.json();
-      const prods: Paginated<Produto> = await prodsRes.json();
+      const peds: Paginated<OrderDTO> = await pedsRes.json();
+      const clis: Paginated<CustomerDTO> = await clisRes.json();
+      const prods: Paginated<ProductDTO> = await prodsRes.json();
 
       setPedidos(peds.data);
       setClientes(clis.data);
@@ -195,7 +160,7 @@ export default function SellerOrdersPage() {
   }, [loadData]);
 
   // Cálculo de Preço Unitário dinâmico do Atacado vs Varejo
-  const obterPrecoUnitario = (prod: Produto, quantidade: number, isRevendedor: boolean) => {
+  const obterPrecoUnitario = (prod: ProductDTO, quantidade: number, isRevendedor: boolean) => {
     if (isRevendedor && prod.wholesalePrice > 0) {
       return prod.wholesalePrice;
     }
@@ -372,9 +337,10 @@ export default function SellerOrdersPage() {
 
       if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao cadastrar cliente.'));
 
-      const newCli: Cliente = await res.json();
+      // `POST /api/customers` devolve o cliente completo (CustomerDTO).
+      const newCli: CustomerDTO = await res.json();
 
-      const updatedClients = [...clientes, { id: newCli.id, tradeName: newCli.tradeName, isReseller: newCli.isReseller }];
+      const updatedClients = [...clientes, newCli];
       setClientes(updatedClients);
 
       setClienteId(newCli.id);

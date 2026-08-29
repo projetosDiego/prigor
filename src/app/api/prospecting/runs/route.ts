@@ -7,7 +7,7 @@
 import { requireManager } from '@/server/auth/guard';
 import { prisma } from '@/server/db';
 import { ok, route } from '@/server/http/respond';
-import { paginated } from '@/server/services/serializers';
+import { num, paginated, timestamp } from '@/server/services/serializers';
 import { parseQuery } from '@/server/validation/common';
 import { prospectingRunsQuerySchema } from '@/server/validation/crm';
 
@@ -24,7 +24,40 @@ export const GET = route('prospeccao.execucoes', async (request) => {
     prisma.prospectingRun.count(),
   ]);
 
+  // `estimatedCost` é Decimal: sem `num()` sai como string no JSON.
+  const execucoes = rows.map(
+    (linha: {
+      id: string;
+      startedAt: Date;
+      finishedAt: Date | null;
+      category: string | null;
+      query: string | null;
+      resultsFound: number;
+      newLeads: number;
+      duplicates: number;
+      existingCust: number;
+      errors: string | null;
+      estimatedCost: unknown;
+      simulated: boolean;
+      status: string;
+    }) => ({
+      id: linha.id,
+      startedAt: timestamp(linha.startedAt),
+      finishedAt: timestamp(linha.finishedAt),
+      category: linha.category,
+      query: linha.query,
+      resultsFound: linha.resultsFound,
+      newLeads: linha.newLeads,
+      duplicates: linha.duplicates,
+      existingCust: linha.existingCust,
+      errors: linha.errors,
+      estimatedCost: num(linha.estimatedCost),
+      simulated: linha.simulated,
+      status: linha.status,
+    }),
+  );
+
   return ok({
-    ...paginated(rows, total, query.page, query.pageSize),
+    ...paginated(execucoes, total, query.page, query.pageSize),
   });
 });

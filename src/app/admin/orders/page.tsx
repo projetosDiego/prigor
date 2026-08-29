@@ -16,76 +16,43 @@ import {
 } from 'lucide-react';
 import { responseErrorMessage } from '@/lib/errors';
 
-type StatusPedido = 'novo' | 'confirmado' | 'em_producao' | 'entregue' | 'faturado' | 'cancelado';
+import type {
+  CustomerDTO,
+  OrderDTO,
+  OrderItemDTO,
+  Paginated,
+  ProductDTO,
+  SellerDTO,
+} from '@/lib/api-types';
 
-/** Item de pedido devolvido pela API (OrderItemDTO). */
-interface PedidoItem {
-  id?: string;
-  productId: string;
-  productName?: string | null;
-  quantity: number;
-  unitPrice: number;
-  discountItem: number;
-  subtotal: number;
+/** Status que o formulário de pedido sabe editar. */
+const STATUS_PEDIDO = [
+  'novo',
+  'confirmado',
+  'em_producao',
+  'entregue',
+  'faturado',
+  'cancelado',
+] as const;
+
+type StatusPedido = (typeof STATUS_PEDIDO)[number];
+
+/**
+ * O `OrderDTO` tipa `status` como `string`, mas o `select` do formulário só
+ * trabalha com os status conhecidos. Um valor fora da lista cai em 'novo' em
+ * vez de deixar o campo num estado que o formulário não sabe representar.
+ */
+function paraStatusPedido(valor: string): StatusPedido {
+  return (STATUS_PEDIDO as readonly string[]).includes(valor) ? (valor as StatusPedido) : 'novo';
 }
 
-/** Pedido devolvido por `GET /api/orders` (OrderDTO). */
-interface Pedido {
-  id: string;
-  numero: number;
-  customerId: string;
-  customerName?: string | null;
-  sellerId?: string | null;
-  sellerName?: string | null;
-  status: StatusPedido;
-  paymentMethod?: string;
-  orderDate: string;
-  deliveryDate?: string | null;
-  billingDate?: string | null;
-  dueDate?: string | null;
-  subtotal: number;
-  discount: number;
-  shipping: number;
-  otherCosts: number;
-  total: number;
-  notes?: string | null;
-  items: PedidoItem[];
-}
-
-/** Cliente devolvido por `GET /api/customers` (recorte de CustomerDTO). */
-interface Cliente {
-  id: string;
-  tradeName: string;
-  isReseller: boolean;
-}
-
-/** Produto de venda devolvido por `GET /api/products` (recorte de ProductDTO). */
-interface Produto {
-  id: string;
-  name: string;
-  salePrice: number;
-  wholesalePrice: number;
-  minWholesaleQty: number;
-  commissionPct: number | null;
-}
-
-/** Vendedor devolvido por `GET /api/sellers` (`comissao_pct` chega como Decimal serializado). */
-interface Vendedor {
-  id: string;
-  name: string;
-  commissionPct: number | string;
-}
-
-/** Envelope de paginação usado por todas as listagens da API. */
-interface Paginated<T> {
-  data: T[];
-  page: number;
-  pageSize: number;
-  total: number;
-  totalPages: number;
-}
-
-
+/**
+ * Item do pedido enquanto está sendo montado na tela.
+ *
+ * É o `OrderItemDTO` com uma diferença: o item que o usuário acabou de
+ * adicionar ainda não foi gravado, então não tem `id`.
+ */
+type PedidoItem = Omit<OrderItemDTO, 'id'> & { id?: string };
 
 /**
  * Formata uma data civil (AAAA-MM-DD) como dd/mm/aaaa.
@@ -99,10 +66,10 @@ function formatarData(iso: string | null | undefined): string {
 }
 
 export default function OrdersPage() {
-  const [pedidos, setPedidos] = useState<Pedido[]>([]);
-  const [clientes, setClientes] = useState<Cliente[]>([]);
-  const [produtos, setProdutos] = useState<Produto[]>([]);
-  const [vendedores, setVendedores] = useState<Vendedor[]>([]);
+  const [pedidos, setPedidos] = useState<OrderDTO[]>([]);
+  const [clientes, setClientes] = useState<CustomerDTO[]>([]);
+  const [produtos, setProdutos] = useState<ProductDTO[]>([]);
+  const [vendedores, setVendedores] = useState<SellerDTO[]>([]);
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -115,7 +82,7 @@ export default function OrdersPage() {
   // Estado do Modal (Formulário)
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
-  const [selectedPedido, setSelectedPedido] = useState<Pedido | null>(null);
+  const [selectedPedido, setSelectedPedido] = useState<OrderDTO | null>(null);
 
   // Campos do Formulário
   const [clienteId, setClienteId] = useState('');
@@ -157,10 +124,11 @@ export default function OrdersPage() {
       }
 
       const [peds, clis, prods, sells] = await Promise.all([
-        resPeds.json() as Promise<Paginated<Pedido>>,
-        resClis.json() as Promise<Paginated<Cliente>>,
-        resProds.json() as Promise<Paginated<Produto>>,
-        resSells.json() as Promise<{ data: Vendedor[] }>
+        resPeds.json() as Promise<Paginated<OrderDTO>>,
+        resClis.json() as Promise<Paginated<CustomerDTO>>,
+        resProds.json() as Promise<Paginated<ProductDTO>>,
+        // `GET /api/sellers` devolve `{ data }`: esta listagem não é paginada.
+        resSells.json() as Promise<{ data: SellerDTO[] }>
       ]);
 
       setPedidos(peds.data);
@@ -204,7 +172,7 @@ export default function OrdersPage() {
     setIsModalOpen(true);
   };
 
-  const handleOpenEditModal = async (pedido: Pedido) => {
+  const handleOpenEditModal = async (pedido: OrderDTO) => {
     setModalMode('edit');
     setSelectedPedido(pedido);
     
@@ -212,12 +180,12 @@ export default function OrdersPage() {
     try {
       const res = await fetch(`/api/orders/${pedido.id}`);
       if (res.ok) {
-        const fullPed: Pedido = await res.json();
+        const fullPed: OrderDTO = await res.json();
         setClienteId(fullPed.customerId);
         setVendedorId(fullPed.sellerId || '');
-        setStatus(fullPed.status);
+        setStatus(paraStatusPedido(fullPed.status));
         setFormaPagamento(fullPed.paymentMethod || 'pix');
-        setDataPedido(fullPed.orderDate);
+        setDataPedido(fullPed.orderDate ?? '');
         setDataEntrega(fullPed.deliveryDate || '');
         setDataFaturamento(fullPed.billingDate || '');
         setDataVencimento(fullPed.dueDate || '');
@@ -231,9 +199,9 @@ export default function OrdersPage() {
       // Fallback: usa o que já veio na listagem
       setClienteId(pedido.customerId);
       setVendedorId(pedido.sellerId || '');
-      setStatus(pedido.status);
+      setStatus(paraStatusPedido(pedido.status));
       setFormaPagamento(pedido.paymentMethod || 'pix');
-      setDataPedido(pedido.orderDate);
+      setDataPedido(pedido.orderDate ?? '');
       setDataEntrega(pedido.deliveryDate || '');
       setItensTemp(pedido.items || []);
     }
@@ -242,7 +210,7 @@ export default function OrdersPage() {
   };
 
   // Funções de Cálculo do Pedido (Varejo vs Atacado e Totais)
-  const obterPrecoUnitario = (prod: Produto, qty: number, isRev: boolean) => {
+  const obterPrecoUnitario = (prod: ProductDTO, qty: number, isRev: boolean) => {
     if (!prod) return 0;
     if (isRev && prod.wholesalePrice > 0) return prod.wholesalePrice;
     if (prod.minWholesaleQty > 0 && qty >= prod.minWholesaleQty && prod.wholesalePrice > 0) {
@@ -377,7 +345,7 @@ export default function OrdersPage() {
   // Filtros aplicados localmente
   const filteredPedidos = pedidos.filter(p => {
     const matchesStatus = !statusFilter || p.status === statusFilter;
-    const date = p.orderDate.slice(0, 10);
+    const date = p.orderDate?.slice(0, 10) ?? '';
     const matchesFrom = !dateFrom || date >= dateFrom;
     const matchesTo = !dateTo || date <= dateTo;
     return matchesStatus && matchesFrom && matchesTo;

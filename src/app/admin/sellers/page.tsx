@@ -16,35 +16,11 @@ import {
 } from 'lucide-react';
 
 import { errorMessage, apiErrorMessage } from '@/lib/errors';
+import type { SellerDTO } from '@/lib/api-types';
 
-interface Neighborhood {
-  id: string;
-  name: string;
-}
-
-interface Seller {
-  id: string;
-  name: string;
-  phone?: string | null;
-  active: boolean;
-  startDate: string;
-  goal: number;
-  user: {
-    id: string;
-    email: string;
-    phone?: string | null;
-    active: boolean;
-  };
-  neighborhoods: Neighborhood[];
-}
-
+/** `GET /api/sellers` devolve `{ data }`: esta listagem não é paginada. */
 interface SellersResponse {
-  data?: Seller[];
-  error?: string;
-}
-
-interface MutationResponse {
-  error?: string;
+  data?: SellerDTO[];
 }
 
 /** Corpo enviado ao criar/editar vendedor. A senha só vai quando informada. */
@@ -59,7 +35,7 @@ interface SellerPayload {
 }
 
 export default function AdminSellersPage() {
-  const [sellers, setSellers] = useState<Seller[]>([]);
+  const [sellers, setSellers] = useState<SellerDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -116,7 +92,7 @@ export default function AdminSellersPage() {
         body: JSON.stringify(payload),
       });
 
-      const json: MutationResponse = await res.json();
+      const json: unknown = await res.json();
       if (!res.ok) throw new Error(apiErrorMessage(json, 'Erro ao salvar vendedor.'));
 
       // Reset form
@@ -143,7 +119,7 @@ export default function AdminSellersPage() {
     if (!confirm('Deseja realmente excluir este vendedor permanentemente?')) return;
     try {
       const res = await fetch(`/api/sellers/${id}`, { method: 'DELETE' });
-      const json: MutationResponse = await res.json();
+      const json: unknown = await res.json();
       if (!res.ok) throw new Error(apiErrorMessage(json, 'Erro ao excluir vendedor.'));
       
       await loadSellers();
@@ -215,7 +191,7 @@ export default function AdminSellersPage() {
                       setPhone(seller.phone || ''); 
                       setGoal(String(seller.goal)); 
                       setActive(seller.active); 
-                      setStartDate(seller.startDate.split('T')[0]);
+                      setStartDate(seller.startDate?.split('T')[0] ?? '');
                       setShowForm(true); 
                     }}
                     className="p-1 text-stone-400 hover:text-amber-700 hover:bg-stone-50 rounded transition-all cursor-pointer"
@@ -247,7 +223,7 @@ export default function AdminSellersPage() {
                 </p>
                 <p className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-stone-400 shrink-0" />
-                  <span>Contratado em: {new Date(seller.startDate).toLocaleDateString('pt-BR')}</span>
+                  <span>Contratado em: {seller.startDate ? new Date(seller.startDate).toLocaleDateString('pt-BR') : '—'}</span>
                 </p>
               </div>
 

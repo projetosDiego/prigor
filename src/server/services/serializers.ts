@@ -7,6 +7,18 @@
  * cada rota.
  */
 import { toNumber, type NumericInput } from '../domain/money';
+import type { OrderStatus } from '../domain/orders';
+
+/** Formas de pagamento aceitas, iguais ao enum do banco. */
+export type PaymentMethod =
+  | 'dinheiro'
+  | 'pix'
+  | 'debito'
+  | 'credito'
+  | 'boleto'
+  | 'transferencia';
+
+export type { OrderStatus };
 
 /**
  * Converte para número na fronteira da API.
@@ -173,8 +185,8 @@ export interface OrderDTO {
   customerName: string | null;
   sellerId: string | null;
   sellerName: string | null;
-  status: string;
-  paymentMethod: string;
+  status: OrderStatus;
+  paymentMethod: PaymentMethod;
   orderDate: string | null;
   deliveryDate: string | null;
   billingDate: string | null;
@@ -207,8 +219,8 @@ interface OrderRow {
   numero: number;
   customerId: string;
   sellerId: string | null;
-  status: string;
-  paymentMethod: string;
+  status: OrderStatus;
+  paymentMethod: PaymentMethod;
   orderDate: Date | string;
   deliveryDate: Date | string | null;
   billingDate: Date | string | null;

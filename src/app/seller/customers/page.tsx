@@ -12,6 +12,7 @@ import {
   Navigation
 } from 'lucide-react';
 import { responseErrorMessage } from '@/lib/errors';
+import type { CustomerDTO, Paginated } from '@/lib/api-types';
 
 const formatPhone = (value: string) => {
   if (!value) return value;
@@ -28,31 +29,6 @@ const formatPhone = (value: string) => {
   }
   return `(${phone.substring(0, 2)}) ${phone.substring(2, 7)}-${phone.substring(7, 11)}`;
 };
-
-/** Cliente devolvido por `GET /api/customers` (recorte de CustomerDTO). */
-interface Cliente {
-  id: string;
-  tradeName: string;
-  legalName: string | null;
-  isReseller: boolean;
-  cnpj: string | null;
-  cpf: string | null;
-  phone: string | null;
-  mobile: string | null;
-  address: string | null;
-  neighborhood: string | null;
-  city: string | null;
-}
-
-/** Envelope de paginação usado por todas as listagens da API. */
-interface Paginated<T> {
-  data: T[];
-  page: number;
-  pageSize: number;
-  total: number;
-  totalPages: number;
-}
-
 
 
 /** Resposta da consulta de CNPJ (BrasilAPI, via `/api/tools/cnpj`). */
@@ -71,7 +47,7 @@ interface RespostaCnpj {
 }
 
 export default function SellerCustomersPage() {
-  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [clientes, setClientes] = useState<CustomerDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -105,7 +81,7 @@ export default function SellerCustomersPage() {
       // A listagem é paginada; a carteira inteira cabe numa página grande.
       const res = await fetch('/api/customers?pageSize=500');
       if (!res.ok) throw new Error(await responseErrorMessage(res, 'Falha ao buscar carteira de clientes.'));
-      const json: Paginated<Cliente> = await res.json();
+      const json: Paginated<CustomerDTO> = await res.json();
       setClientes(json.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao buscar carteira de clientes.');

@@ -13,15 +13,30 @@ import {
 } from 'lucide-react';
 
 import { errorMessage, apiErrorMessage } from '@/lib/errors';
+import type { SellerDTO } from '@/lib/api-types';
 
-interface Neighborhood {
+/**
+ * Bairro como vem dentro da região em `GET /api/regions`: a rota faz
+ * `select: { id, name, active }`, e mais nada. Cidade, estado e vendedor só
+ * existem em `GET /api/neighborhoods`.
+ */
+interface NeighborhoodChip {
+  id: string;
+  name: string;
+  active: boolean;
+}
+
+/** Bairro completo, devolvido por `GET /api/neighborhoods`. */
+interface NeighborhoodRow {
   id: string;
   name: string;
   city: string;
   state: string;
-  sellerId?: string | null;
-  seller?: { name: string } | null;
   active: boolean;
+  regionId: string;
+  region?: { id: string; name: string } | null;
+  sellerId: string | null;
+  seller?: { id: string; name: string } | null;
 }
 
 interface Region {
@@ -29,29 +44,26 @@ interface Region {
   name: string;
   description?: string;
   active: boolean;
-  neighborhoods: Neighborhood[];
-}
-
-interface Seller {
-  id: string;
-  name: string;
+  neighborhoods: NeighborhoodChip[];
 }
 
 interface RegionsResponse {
   data?: Region[];
 }
 
-interface SellersResponse {
-  data?: Seller[];
+interface NeighborhoodsResponse {
+  data?: NeighborhoodRow[];
 }
 
-interface MutationResponse {
-  error?: string;
+/** `GET /api/sellers` devolve `{ data }`: esta listagem não é paginada. */
+interface SellersResponse {
+  data?: SellerDTO[];
 }
 
 export default function AdminRegionsPage() {
   const [regions, setRegions] = useState<Region[]>([]);
-  const [sellers, setSellers] = useState<Seller[]>([]);
+  const [neighborhoods, setNeighborhoods] = useState<NeighborhoodRow[]>([]);
+  const [sellers, setSellers] = useState<SellerDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -78,19 +90,24 @@ export default function AdminRegionsPage() {
     try {
       setLoading(true);
       setError(null);
-      const [regRes, sellersRes] = await Promise.all([
+      // A região só devolve o id/nome dos bairros; cidade, estado e vendedor
+      // atribuído vêm da listagem de bairros.
+      const [regRes, neighRes, sellersRes] = await Promise.all([
         fetch('/api/regions'),
+        fetch('/api/neighborhoods'),
         fetch('/api/sellers'),
       ]);
 
       const regJson: RegionsResponse = await regRes.json();
+      const neighJson: NeighborhoodsResponse = await neighRes.json();
       const sellersJson: SellersResponse = await sellersRes.json();
 
-      if (!regRes.ok || !sellersRes.ok) {
+      if (!regRes.ok || !neighRes.ok || !sellersRes.ok) {
         throw new Error('Erro ao carregar dados territoriais.');
       }
 
       setRegions(regJson.data ?? []);
+      setNeighborhoods(neighJson.data ?? []);
       setSellers(sellersJson.data ?? []);
     } catch (err: unknown) {
       setError(errorMessage(err));
@@ -120,7 +137,7 @@ export default function AdminRegionsPage() {
         body: JSON.stringify(payload),
       });
 
-      const json: MutationResponse = await res.json();
+      const json: unknown = await res.json();
       if (!res.ok) throw new Error(apiErrorMessage(json, 'Erro ao salvar região.'));
 
       // Reset form
@@ -144,7 +161,7 @@ export default function AdminRegionsPage() {
     if (!confirm('Deseja realmente excluir esta região? Isso falhará se houver bairros associados.')) return;
     try {
       const res = await fetch(`/api/regions/${id}`, { method: 'DELETE' });
-      const json: MutationResponse = await res.json();
+      const json: unknown = await res.json();
       if (!res.ok) throw new Error(apiErrorMessage(json, 'Erro ao excluir região.'));
       
       await loadData();
@@ -175,7 +192,7 @@ export default function AdminRegionsPage() {
         body: JSON.stringify(payload),
       });
 
-      const json: MutationResponse = await res.json();
+      const json: unknown = await res.json();
       if (!res.ok) throw new Error(apiErrorMessage(json, 'Erro ao salvar bairro.'));
 
       // Reset
@@ -199,7 +216,7 @@ export default function AdminRegionsPage() {
     if (!confirm('Deseja realmente excluir este bairro?')) return;
     try {
       const res = await fetch(`/api/neighborhoods/${id}`, { method: 'DELETE' });
-      const json: MutationResponse = await res.json();
+      const json: unknown = await res.json();
       if (!res.ok) throw new Error(apiErrorMessage(json, 'Erro ao excluir bairro.'));
       
       await loadData();
@@ -208,6 +225,12 @@ export default function AdminRegionsPage() {
       alert(errorMessage(err));
     }
   };
+
+  // A tabela mantém o agrupamento por região que a tela já mostrava.
+  const bairrosOrdenados = [...neighborhoods].sort((a, b) => {
+    const porRegiao = (a.region?.name ?? '').localeCompare(b.region?.name ?? '');
+    return porRegiao !== 0 ? porRegiao : a.name.localeCompare(b.name);
+  });
 
   return (
     <div className="space-y-6">
@@ -323,13 +346,13 @@ export default function AdminRegionsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-100">
-                    {regions.flatMap(r => r.neighborhoods.map(n => ({ ...n, regionName: r.name, regionId: r.id }))).map((n) => (
+                    {bairrosOrdenados.map((n) => (
                       <tr key={n.id} className="hover:bg-stone-50/50">
                         <td className="p-3">
                           <span className="font-bold text-stone-850 block">{n.name}</span>
                           <span className="text-[9px] text-stone-400 font-medium">{n.city} - {n.state}</span>
                         </td>
-                        <td className="p-3 text-stone-500 font-semibold">{n.regionName}</td>
+                        <td className="p-3 text-stone-500 font-semibold">{n.region?.name ?? '—'}</td>
                         <td className="p-3">
                           {n.sellerId ? (
                             <span className="rounded bg-emerald-50 text-emerald-800 border border-emerald-100 font-extrabold text-[10px] px-2 py-0.5">{n.seller?.name}</span>

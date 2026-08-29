@@ -17,58 +17,24 @@ import {
   DollarSign
 } from 'lucide-react';
 import { responseErrorMessage } from '@/lib/errors';
+import type { Paginated, ProductDTO, RecipeLineDTO } from '@/lib/api-types';
 
-/** Linha da ficha técnica devolvida pela API (RecipeLineDTO). */
-interface LinhaReceita {
+/**
+ * Linha da ficha técnica enquanto está sendo editada na tela.
+ *
+ * É o `RecipeLineDTO` da API com uma diferença: a linha que o usuário acabou
+ * de adicionar ainda não foi gravada, então não tem `id` nem `observation`
+ * vindos do servidor.
+ */
+type LinhaReceita = Omit<RecipeLineDTO, 'id' | 'observation'> & {
   id?: string;
-  ingredientId: string;
-  ingredientName: string | null;
-  ingredientUnit: string | null;
-  ingredientCost: number | null;
-  quantity: number;
   observation?: string | null;
-}
-
-/** Produto de venda devolvido por `GET /api/products?type=venda` (ProductDTO). */
-interface Produto {
-  id: string;
-  sku: string | null;
-  barCode: string | null;
-  name: string;
-  category: string | null;
-  unit: string;
-  salePrice: number;
-  wholesalePrice: number;
-  minWholesaleQty: number;
-  cost: number;
-  stock: number;
-  minStock: number;
-  active: boolean;
-  recipe?: LinhaReceita[];
-}
-
-/** Insumo usado para montar a ficha técnica. */
-interface Insumo {
-  id: string;
-  name: string;
-  unit: string;
-  cost: number;
-}
-
-/** Envelope de paginação usado por todas as listagens da API. */
-interface Paginated<T> {
-  data: T[];
-  page: number;
-  pageSize: number;
-  total: number;
-  totalPages: number;
-}
-
+};
 
 
 export default function ProductsPage() {
-  const [produtos, setProdutos] = useState<Produto[]>([]);
-  const [insumosList, setInsumosList] = useState<Insumo[]>([]); // Para montar as fichas técnicas
+  const [produtos, setProdutos] = useState<ProductDTO[]>([]);
+  const [insumosList, setInsumosList] = useState<ProductDTO[]>([]); // Para montar as fichas técnicas
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -106,14 +72,14 @@ export default function ProductsPage() {
       // Carrega produtos de venda (listagem paginada; a tela mostra todos)
       const resProd = await fetch('/api/products?type=venda&pageSize=500');
       if (!resProd.ok) throw new Error(await responseErrorMessage(resProd, 'Falha ao carregar produtos.'));
-      const jsonProd: Paginated<Produto> = await resProd.json();
+      const jsonProd: Paginated<ProductDTO> = await resProd.json();
       const listaProd = jsonProd.data;
       setProdutos(listaProd);
 
       // Carrega insumos disponíveis
       const resInsumo = await fetch('/api/products?type=insumo&pageSize=500');
       if (resInsumo.ok) {
-        const jsonInsumo: Paginated<Insumo> = await resInsumo.json();
+        const jsonInsumo: Paginated<ProductDTO> = await resInsumo.json();
         const listaInsumo = jsonInsumo.data;
         setInsumosList(listaInsumo);
         if (listaInsumo.length > 0) {
@@ -159,7 +125,7 @@ export default function ProductsPage() {
     setIsModalOpen(true);
   };
 
-  const handleOpenEditModal = async (produto: Produto) => {
+  const handleOpenEditModal = async (produto: ProductDTO) => {
     setModalMode('edit');
     setSelectedId(produto.id);
     setNome(produto.name);
@@ -177,7 +143,7 @@ export default function ProductsPage() {
     try {
       const res = await fetch(`/api/products/${produto.id}`);
       if (res.ok) {
-        const fullProd: Produto = await res.json();
+        const fullProd: ProductDTO = await res.json();
         setIngredientes(fullProd.recipe || []);
       } else {
         setIngredientes(produto.recipe || []);

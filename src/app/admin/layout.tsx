@@ -18,7 +18,8 @@ import {
   FileText,
   DollarSign,
   Truck,
-  Upload
+  Upload,
+  ScanLine
 } from 'lucide-react';
 import LogoutButton from '@/components/shared/LogoutButton';
 
@@ -104,6 +105,11 @@ export default async function AdminLayout({
             <Link href="/admin/raw-materials" className="flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold hover:bg-stone-800 hover:text-white transition-all">
               <Scale className="h-4 w-4 text-amber-755" />
               <span>Matérias-primas / Insumos</span>
+            </Link>
+
+            <Link href="/admin/stock" className="flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold hover:bg-stone-800 hover:text-white transition-all">
+              <ScanLine className="h-4 w-4 text-amber-755" />
+              <span>Scanner de Produção</span>
             </Link>
 
             <Link href="/admin/financial" className="flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold hover:bg-stone-800 hover:text-white transition-all">

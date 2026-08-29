@@ -16,18 +16,7 @@ import {
 } from 'lucide-react';
 
 import { errorMessage, apiErrorMessage } from '@/lib/errors';
-
-interface Customer {
-  id: string;
-  tradeName: string;
-  legalName?: string;
-  cnpj?: string;
-  phone?: string;
-  address: string;
-  neighborhood: string;
-  category: string;
-  seller?: { name: string } | null;
-}
+import type { CustomerDTO, Paginated, SellerDTO } from '@/lib/api-types';
 
 interface ImportPreviewRow {
   row: {
@@ -42,11 +31,6 @@ interface ImportPreviewRow {
   };
   status: 'VALID' | 'DUPLICATE' | 'CONFLICT' | 'INVALID';
   message: string;
-}
-
-interface SellerOption {
-  id: string;
-  name: string;
 }
 
 /** Resumo da pré-visualização (`action: 'preview'`). */
@@ -65,13 +49,9 @@ interface CommitSummary {
   skipped: number;
 }
 
-interface CustomersResponse {
-  data?: Customer[];
-  error?: string;
-}
-
+/** `GET /api/sellers` devolve `{ data }`: esta listagem não é paginada. */
 interface SellersResponse {
-  data?: SellerOption[];
+  data?: SellerDTO[];
 }
 
 interface PreviewResponse {
@@ -121,8 +101,8 @@ const formatPhone = (value: string) => {
 
 export default function AdminCustomersPage() {
   const [activeTab, setActiveTab] = useState<'list' | 'import'>('list');
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [sellers, setSellers] = useState<SellerOption[]>([]);
+  const [customers, setCustomers] = useState<CustomerDTO[]>([]);
+  const [sellers, setSellers] = useState<SellerDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -166,7 +146,7 @@ export default function AdminCustomersPage() {
       setLoading(true);
       setError(null);
       const res = await fetch('/api/customers');
-      const data: CustomersResponse = await res.json();
+      const data: Paginated<CustomerDTO> = await res.json();
       if (!res.ok) throw new Error(apiErrorMessage(data, 'Erro ao carregar clientes.'));
       setCustomers(data.data ?? []);
     } catch (err: unknown) {
@@ -349,7 +329,7 @@ export default function AdminCustomersPage() {
         body: JSON.stringify(payload)
       });
 
-      const data: CustomersResponse = await res.json();
+      const data: unknown = await res.json();
 
       if (!res.ok) {
         throw new Error(apiErrorMessage(data, 'Erro ao cadastrar cliente.'));
@@ -501,8 +481,8 @@ export default function AdminCustomersPage() {
                           </span>
                         </td>
                         <td className="p-4 font-bold text-stone-800">
-                          {cust.seller ? (
-                            <span className="text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100 text-[10px]">{cust.seller.name}</span>
+                          {cust.sellerName ? (
+                            <span className="text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100 text-[10px]">{cust.sellerName}</span>
                           ) : (
                             <span className="text-stone-400 font-medium italic text-[10px]">Sem Vendedor</span>
                           )}

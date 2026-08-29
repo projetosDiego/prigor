@@ -18,11 +18,7 @@ import {
 import { PipelineStage } from '@prisma/client';
 
 import { errorMessage, apiErrorMessage } from '@/lib/errors';
-
-interface Seller {
-  id: string;
-  name: string;
-}
+import type { SellerDTO } from '@/lib/api-types';
 
 interface Region {
   id: string;
@@ -56,8 +52,9 @@ interface LeadsResponse {
   data?: Lead[];
 }
 
+/** `GET /api/sellers` devolve `{ data }`: esta listagem não é paginada. */
 interface SellersResponse {
-  data?: Seller[];
+  data?: SellerDTO[];
 }
 
 interface RegionsResponse {
@@ -102,7 +99,7 @@ interface Lead {
 
 export default function AdminLeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [sellers, setSellers] = useState<Seller[]>([]);
+  const [sellers, setSellers] = useState<SellerDTO[]>([]);
   const [regions, setRegions] = useState<Region[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
