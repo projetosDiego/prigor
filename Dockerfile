@@ -5,11 +5,12 @@
 #  roda como usuário sem privilégio e usa o output standalone do Next, que
 #  traz só as dependências realmente alcançadas pelo código.
 #
-#  Além do standalone, o runtime precisa de três coisas para as migrations:
+#  Além do standalone, o runtime precisa destas coisas para as migrations:
 #    prisma/                 schema + histórico de migrations
 #    node_modules/.prisma    client gerado
 #    node_modules/@prisma    client e engines (o schema-engine roda o deploy)
-#    node_modules/prisma     o CLI, que é um bundle autocontido
+#    o CLI do Prisma com a árvore de dependências dele — ver
+#    docker/collect-prisma-cli.mjs
 #
 #  O seed é pré-compilado para JavaScript no build, então o runtime não
 #  precisa de tsx nem de TypeScript.
@@ -48,6 +49,9 @@ RUN ./node_modules/.bin/esbuild prisma/seed.ts \
       --external:@prisma/client \
       --outfile=prisma/seed.js
 
+# CLI do Prisma + dependências dele, reunidos numa árvore só para o runtime.
+RUN node docker/collect-prisma-cli.mjs
+
 # ─── 3. Runtime ─────────────────────────────────────────────────────────────
 FROM node:22-alpine AS runner
 RUN apk add --no-cache openssl curl
@@ -68,7 +72,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/prisma ./node_modules/prisma
+COPY --from=builder --chown=nextjs:nodejs /prisma-cli/node_modules ./node_modules
 
 COPY --chown=nextjs:nodejs docker/entrypoint.sh ./entrypoint.sh
 RUN chmod +x ./entrypoint.sh
