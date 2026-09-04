@@ -10,7 +10,10 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: prigor
     ports:
-      - '5432:5432'
+      # Porta no HOST. Se a 5432 ja estiver ocupada na sua maquina (outro
+      # Postgres instalado, outro projeto), ponha DB_PORT=5433 no .env e ajuste
+      # DATABASE_URL e DIRECT_URL para a mesma porta.
+      - '${DB_PORT:-5432}:5432'
     volumes:
       - pgdata-dev:/var/lib/postgresql/data
     healthcheck:

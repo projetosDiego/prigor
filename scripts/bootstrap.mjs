@@ -133,17 +133,29 @@ passo('Subindo o Postgres');
 try {
   rodar('docker compose up -d');
 } catch {
+  const comoVerAPorta =
+    process.platform === 'win32'
+      ? '  docker ps\n  netstat -ano | findstr :5432\n  Get-Process -Id <o PID da ultima coluna>'
+      : '  docker ps\n  lsof -i :5432';
+
   parar(
     'o container do banco nao subiu',
-    `A causa mais comum e a porta 5432 ja estar ocupada por outro Postgres.
-Veja quem esta usando:
+    `A causa quase sempre e a porta 5432 ja estar ocupada por outro Postgres
+na sua maquina. Veja quem esta usando:
 
-  docker ps
-  lsof -i :5432
+${comoVerAPorta}
 
-Se for um container antigo do proprio projeto:
+Se for um container antigo do proprio projeto, derrube:
 
-  docker stop prigor-db && docker rm prigor-db`,
+  docker stop prigor-db && docker rm prigor-db
+
+Se for um Postgres instalado direto na maquina (e voce quer manter ele),
+nao precisa desinstalar nada: rode este banco em outra porta. No .env,
+troque as tres linhas para 5433 e rode o bootstrap de novo:
+
+  DATABASE_URL="postgresql://postgres:postgres@localhost:5433/prigor"
+  DIRECT_URL="postgresql://postgres:postgres@localhost:5433/prigor"
+  DB_PORT=5433`,
   );
 }
 
