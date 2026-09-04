@@ -10,23 +10,27 @@ banco.
 
 ## Como rodar (desenvolvimento)
 
-Pré-requisitos: Node 22+, Docker.
+Pré-requisitos: Node 22+ e Docker Desktop aberto.
 
 ```bash
-npm run env:init              # cria o .env com JWT_SECRET já gerado
-npm run db:up                 # sobe o Postgres em container
-npm run setup                 # instala, gera o client, migra e cria o admin
-npm run db:seed:demo          # opcional: cenário de teste com dados
+npm run bootstrap             # confere tudo, cria o .env, sobe o banco e popula
 npm run dev                   # http://localhost:3000
 ```
 
-Roteiro completo de verificação em [`docs/TESTE-LOCAL.md`](docs/TESTE-LOCAL.md).
+O `bootstrap` é idempotente: pode rodar de novo sem medo, ele não sobrescreve
+o `.env` nem duplica dado. Se preferir passo a passo, os comandos avulsos estão
+na tabela abaixo.
+
+Chegando agora no projeto? Comece por
+[`docs/ONBOARDING.md`](docs/ONBOARDING.md). Roteiro de verificação tela a tela
+em [`docs/TESTE-LOCAL.md`](docs/TESTE-LOCAL.md).
 
 
 ## Comandos
 
 | Comando | O que faz |
 |---|---|
+| `npm run bootstrap` | Monta o ambiente do zero: pré-requisitos, `.env`, banco, tabelas e dados de teste |
 | `npm run dev` | Servidor de desenvolvimento |
 | `npm run verify` | Tipos + uso do Prisma + lint + testes. **Rode antes de todo commit.** |
 | `npm run check:prisma` | Confere as consultas contra o `schema.prisma` sem subir banco |
@@ -98,6 +102,8 @@ aparece na resposta da API, para o front formatar.
 
 ## Documentação
 
+- [`docs/ONBOARDING.md`](docs/ONBOARDING.md) — primeiro dia de quem chega
+  agora: acessos, o que instalar, como subir e as regras que sustentam o código
 - [`docs/TESTE-LOCAL.md`](docs/TESTE-LOCAL.md) — subir na sua máquina e o
   roteiro de verificação
 - [`docs/DECISOES.md`](docs/DECISOES.md) — por que o sistema é assim, o que

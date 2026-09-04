@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "bootstrap": "node scripts/bootstrap.mjs",
     "dev": "next dev",
     "predev": "node scripts/check-env.mjs",
     "build": "prisma generate && next build",
