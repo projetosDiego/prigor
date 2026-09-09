@@ -23,6 +23,7 @@ export interface SellerDTO {
   email: string | null;
   commissionPct: number;
   goal: number;
+  goalRevenue: number;
   active: boolean;
   notes: string | null;
   /** Quando o vendedor entrou (a data de criação do cadastro). */
@@ -53,6 +54,7 @@ interface SellerRow {
   email: string | null;
   commissionPct: unknown;
   goal: number;
+  goalRevenue: unknown;
   active: boolean;
   notes: string | null;
   createdAt: Date;
@@ -68,6 +70,7 @@ function toDTO(row: SellerRow): SellerDTO {
     email: row.email,
     commissionPct: num(row.commissionPct),
     goal: row.goal,
+    goalRevenue: num(row.goalRevenue),
     active: row.active,
     notes: row.notes,
     startDate: timestamp(row.createdAt),
@@ -126,6 +129,7 @@ export async function createSeller(
           email: input.email,
           commissionPct: input.commissionPct,
           goal: input.goal,
+          goalRevenue: input.goalRevenue,
           notes: input.notes,
           active: input.active,
         },
@@ -162,7 +166,7 @@ export async function updateSeller(
     }
 
     const sellerData: Record<string, unknown> = {};
-    for (const key of ['name', 'phone', 'email', 'commissionPct', 'goal', 'notes', 'active'] as const) {
+    for (const key of ['name', 'phone', 'email', 'commissionPct', 'goal', 'goalRevenue', 'notes', 'active'] as const) {
       const value = (input as Record<string, unknown>)[key];
       if (value !== undefined) sellerData[key] = value;
     }

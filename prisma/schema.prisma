@@ -126,6 +126,18 @@ enum PaymentMethod {
   transferencia
 }
 
+model PaymentOption {
+  id        String   @id @default(uuid())
+  name      String   @unique @map("nome")
+  active    Boolean  @default(true) @map("ativo")
+  sortOrder Int      @default(0) @map("ordem")
+  netDays   Int?     @map("prazo_dias")
+  createdAt DateTime @default(now()) @map("criado_em")
+  updatedAt DateTime @updatedAt @map("atualizado_em")
+
+  @@map("formas_pagamento")
+}
+
 enum ProspectingRunStatus {
   RUNNING
   SUCCESS
@@ -162,6 +174,7 @@ model Seller {
   email         String?  @map("email")
   active        Boolean  @default(true) @map("ativo")
   goal          Int      @default(0) @map("meta")
+  goalRevenue   Decimal  @default(0) @map("meta_faturamento") @db.Decimal(12, 2)
   commissionPct Decimal  @default(0) @map("comissao_pct") @db.Decimal(5, 2)
   notes         String?  @map("observacoes")
   createdAt     DateTime @default(now()) @map("criado_em")
@@ -262,6 +275,8 @@ model Customer {
   website      String?   @map("site")
   birthDate    DateTime? @map("data_nascimento") @db.Date
   isReseller   Boolean   @default(false) @map("is_revendedor")
+  creditLimit  Decimal   @default(0) @map("limite_credito") @db.Decimal(12, 2)
+  addresses    CustomerAddress[]
   active       Boolean   @default(true) @map("ativo")
 
   createdAt DateTime @default(now()) @map("criado_em")
@@ -501,7 +516,7 @@ model Order {
   seller     Seller?  @relation(fields: [sellerId], references: [id])
 
   status        OrderStatus   @default(novo) @map("status")
-  paymentMethod PaymentMethod @default(pix) @map("forma_pagamento")
+  paymentMethod String @default("Pix") @map("forma_pagamento")
 
   orderDate    DateTime  @map("data_pedido") @db.Date
   deliveryDate DateTime? @map("data_entrega") @db.Date
@@ -514,6 +529,9 @@ model Order {
   subtotal      Decimal @default(0) @map("subtotal") @db.Decimal(12, 2)
   total         Decimal @default(0) @map("total") @db.Decimal(12, 2)
   commissionVal Decimal @default(0) @map("comissao_valor") @db.Decimal(12, 2)
+  commissionPct Decimal? @map("comissao_pct") @db.Decimal(5, 2) // null = herda o % do vendedor
+  deliveryAddressId String? @map("endereco_entrega_id")
+  deliveryAddress   CustomerAddress? @relation(fields: [deliveryAddressId], references: [id], onDelete: SetNull)
 
   notes String? @map("observacoes")
 
@@ -669,4 +687,61 @@ model AuditLog {
   @@index([userId, createdAt])
   @@index([entity, entityId])
   @@map("logs_auditoria")
+}
+
+// ─── Endereços de entrega do cliente ─────────────────────────────────────────
+model CustomerAddress {
+  id           String   @id @default(uuid())
+  customerId   String   @map("cliente_id")
+  customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  label        String?  @map("apelido")
+  address      String?  @map("endereco")
+  number       String?  @map("numero")
+  complement   String?  @map("complemento")
+  neighborhood String?  @map("bairro")
+  city         String?  @map("cidade")
+  state        String?  @map("estado")
+  zipCode      String?  @map("cep")
+  isDefault    Boolean  @default(false) @map("padrao")
+  createdAt    DateTime @default(now()) @map("criado_em")
+  updatedAt    DateTime @updatedAt @map("atualizado_em")
+
+  orders Order[]
+
+  @@index([customerId])
+  @@map("enderecos_cliente")
+}
+
+
+// ─── Custos & Equipe ─────────────────────────────────────────────────────────
+model Employee {
+  id              String   @id @default(uuid())
+  name            String   @map("nome")
+  role            String?  @map("funcao")
+  payType         String   @map("tipo_pagamento") // 'diarista' | 'mensalista'
+  dailyRate       Decimal  @default(0) @map("valor_diaria") @db.Decimal(12, 2)
+  monthlySalary   Decimal  @default(0) @map("salario_mensal") @db.Decimal(12, 2)
+  transportPerDay Decimal  @default(0) @map("passagem_dia") @db.Decimal(12, 2)
+  workDays        String   @default("") @map("dias_semana") // CSV 0-6 (0=domingo)
+  active          Boolean  @default(true) @map("ativo")
+  createdAt       DateTime @default(now()) @map("criado_em")
+  updatedAt       DateTime @updatedAt @map("atualizado_em")
+
+  absences Absence[]
+
+  @@index([active])
+  @@map("funcionarios")
+}
+
+model Absence {
+  id         String   @id @default(uuid())
+  employeeId String   @map("funcionario_id")
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date       DateTime @map("data") @db.Date
+  note       String?  @map("observacao")
+  createdAt  DateTime @default(now()) @map("criado_em")
+
+  @@unique([employeeId, date])
+  @@index([employeeId])
+  @@map("faltas_funcionarios")
 }

@@ -47,8 +47,9 @@ export const orderItemSchema = z.object({
 export const orderCreateSchema = z.object({
   customerId: uuid('Cliente'),
   sellerId: optionalUuid('Vendedor'),
+  deliveryAddressId: optionalUuid('Endereço de entrega'),
   status: orderStatusSchema.default('novo'),
-  paymentMethod: paymentMethodSchema.default('pix'),
+  paymentMethod: requiredText('Forma de pagamento', 60).default('Pix'),
   orderDate: isoDate('Data do pedido'),
   deliveryDate: optionalIsoDate('Data de entrega'),
   billingDate: optionalIsoDate('Data de faturamento'),
@@ -56,6 +57,7 @@ export const orderCreateSchema = z.object({
   discount: money('Desconto').default('0.00'),
   shipping: money('Frete').default('0.00'),
   otherCosts: money('Outros custos').default('0.00'),
+  commissionPct: z.union([percent('Comissão'), z.null()]).optional(),
   notes: optionalText(2000),
   items: z
     .array(orderItemSchema)
@@ -70,8 +72,9 @@ export const orderUpdateSchema = z
   .object({
     customerId: uuid('Cliente').optional(),
     sellerId: optionalUuid('Vendedor').optional(),
+    deliveryAddressId: z.union([z.string().uuid('Endereço de entrega inválido.'), z.null()]).optional(),
     status: orderStatusSchema.optional(),
-    paymentMethod: paymentMethodSchema.optional(),
+    paymentMethod: requiredText('Forma de pagamento', 60).optional(),
     orderDate: isoDate('Data do pedido').optional(),
     deliveryDate: optionalIsoDate('Data de entrega').optional(),
     billingDate: optionalIsoDate('Data de faturamento').optional(),
@@ -79,6 +82,7 @@ export const orderUpdateSchema = z
     discount: money('Desconto').optional(),
     shipping: money('Frete').optional(),
     otherCosts: money('Outros custos').optional(),
+    commissionPct: z.union([percent('Comissão'), z.null()]).optional(),
     notes: optionalText(2000).optional(),
     items: z
       .array(orderItemSchema)
@@ -146,6 +150,7 @@ export const customerInputSchema = z.object({
   notes: optionalText(2000),
   isReseller: z.boolean().default(false),
   active: z.boolean().default(true),
+  creditLimit: money('Limite de crédito').default('0.00'),
 });
 
 export type CustomerInput = z.infer<typeof customerInputSchema>;
@@ -171,11 +176,45 @@ export const sellerInputSchema = z.object({
   email: email(),
   commissionPct: percent('Comissão').default('0.00'),
   goal: z.coerce.number().int().min(0).default(0),
+  goalRevenue: money('Meta de faturamento').default('0.00'),
   notes: optionalText(2000),
   active: z.boolean().default(true),
 });
 
 export const sellerUpdateSchema = sellerInputSchema.partial().refine(
+  (v) => Object.keys(v).length > 0,
+  'Nada para atualizar.',
+);
+
+// ─── Formas de pagamento ─────────────────────────────────────────────────────
+
+export const paymentOptionSchema = z.object({
+  name: requiredText('Nome', 60),
+  active: z.boolean().default(true),
+  sortOrder: z.coerce.number().int().min(0).default(0),
+  netDays: z.union([z.coerce.number().int().min(0).max(365), z.null()]).optional(),
+});
+
+export const paymentOptionUpdateSchema = paymentOptionSchema.partial().refine(
+  (v) => Object.keys(v).length > 0,
+  'Nada para atualizar.',
+);
+
+// ─── Endereços de entrega ─────────────────────────────────────────────────────
+
+export const addressInputSchema = z.object({
+  label: optionalText(80),
+  address: optionalText(255),
+  number: optionalText(20),
+  complement: optionalText(120),
+  neighborhood: optionalText(120),
+  city: optionalText(120),
+  state: optionalText(2),
+  zipCode: digits('CEP', { length: [8] }),
+  isDefault: z.boolean().default(false),
+});
+
+export const addressUpdateSchema = addressInputSchema.partial().refine(
   (v) => Object.keys(v).length > 0,
   'Nada para atualizar.',
 );

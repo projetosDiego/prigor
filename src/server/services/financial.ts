@@ -7,6 +7,7 @@ import { dec } from '../domain/money';
 import { prisma } from '../db';
 import { conflict, notFound } from '../http/errors';
 import { CATEGORY_COMMISSION } from './financial-sync';
+import { logOrderEvent } from './order-history';
 import {
   paginated,
   toTransactionDTO,
@@ -139,6 +140,10 @@ export async function settleTransaction(id: string, paymentDate: Date | null): P
     include: TRANSACTION_INCLUDE,
   });
 
+  if (existing.orderId) {
+    await logOrderEvent(prisma, { orderId: existing.orderId, action: 'pagamento', to: 'pago' });
+  }
+
   return toTransactionDTO(updated);
 }
 
@@ -155,6 +160,10 @@ export async function reverseSettlement(id: string): Promise<TransactionDTO> {
     data: { status: 'pendente', paymentDate: null },
     include: TRANSACTION_INCLUDE,
   });
+
+  if (existing.orderId) {
+    await logOrderEvent(prisma, { orderId: existing.orderId, action: 'estorno_pagamento', to: 'pendente' });
+  }
 
   return toTransactionDTO(updated);
 }

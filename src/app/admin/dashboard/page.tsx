@@ -337,6 +337,7 @@ export default function AdminDashboardPage() {
                   {erpData.orders.openValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </span>
                 <span className="text-[10px] text-stone-400 font-medium">{erpData.orders.open} pedidos aguardando faturamento</span>
+                <span className="text-[10px] text-orange-500 font-bold block">{erpData.orders.pendingDeliveries} aguardando entrega</span>
               </div>
               <div className="h-12 w-12 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-700">
                 <Clock className="h-6 w-6" />
@@ -349,6 +350,7 @@ export default function AdminDashboardPage() {
                 <span className="text-2xl font-black text-stone-800 mt-1 block">
                   {erpData.financial.receivable.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </span>
+                {erpData.financial.overdueReceivable > 0 && (<span className="text-[10px] text-red-600 font-bold block">{erpData.financial.overdueReceivable.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} vencido</span>)}
               </div>
               <div className="h-12 w-12 rounded-xl bg-stone-50 border border-stone-150 flex items-center justify-center text-stone-600">
                 <DollarSign className="h-6 w-6" />

@@ -11,10 +11,12 @@ import {
   ArrowDownRight, 
   Check, 
   Undo2,
+  Edit2,
   AlertTriangle
 } from 'lucide-react';
 import { responseErrorMessage } from '@/lib/errors';
 import type { Paginated, TransactionDTO } from '@/lib/api-types';
+import { useToast } from '@/components/shared/Toast';
 
 /**
  * Formata uma data civil (AAAA-MM-DD) como dd/mm/aaaa.
@@ -28,6 +30,7 @@ function formatarData(iso: string | null | undefined): string {
 }
 
 export default function FinancialPage() {
+  const { toast, confirm } = useToast();
   const [lancamentos, setLancamentos] = useState<TransactionDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +42,8 @@ export default function FinancialPage() {
   // Estado do Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState<'receita' | 'despesa'>('receita');
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editOrderGenerated, setEditOrderGenerated] = useState(false);
 
   // Form Fields
   const [descricao, setDescricao] = useState('');
@@ -86,6 +91,8 @@ export default function FinancialPage() {
   }, [carregarLancamentos]);
 
   const handleOpenModal = (tipo: 'receita' | 'despesa') => {
+    setEditId(null);
+    setEditOrderGenerated(false);
     setModalType(tipo);
     setDescricao('');
     setCategoria('');
@@ -96,45 +103,78 @@ export default function FinancialPage() {
     setIsModalOpen(true);
   };
 
+  const handleOpenEdit = (l: TransactionDTO) => {
+    setEditId(l.id);
+    setEditOrderGenerated(Boolean(l.orderId));
+    setModalType(l.type === 'despesa' ? 'despesa' : 'receita');
+    setDescricao(l.description);
+    setCategoria(l.category ?? '');
+    setValor(String(l.value));
+    setDataLancamento(l.issueDate ?? new Date().toISOString().split('T')[0]);
+    setDataVencimento(l.dueDate ?? '');
+    setObservacoes(l.notes ?? '');
+    setIsModalOpen(true);
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!descricao || parseFloat(valor) <= 0) return;
 
-    const payload = {
-      type: modalType,
-      description: descricao,
-      category: categoria || undefined,
-      value: parseFloat(valor),
-      issueDate: dataLancamento,
-      dueDate: dataVencimento || undefined,
-      status: 'pendente',
-      notes: observacoes || undefined
-    };
-
+    const isEdit = Boolean(editId);
     try {
-      const res = await fetch('/api/financial/transactions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      let res: Response;
+      if (isEdit) {
+        const editPayload: Record<string, unknown> = {
+          description: descricao,
+          category: categoria || undefined,
+          dueDate: dataVencimento || undefined,
+          notes: observacoes || undefined,
+        };
+        // Valor de lançamento gerado por pedido é travado no servidor.
+        if (!editOrderGenerated) editPayload.value = parseFloat(valor);
+        res = await fetch(`/api/financial/transactions/${editId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(editPayload),
+        });
+      } else {
+        const payload = {
+          type: modalType,
+          description: descricao,
+          category: categoria || undefined,
+          value: parseFloat(valor),
+          issueDate: dataLancamento,
+          dueDate: dataVencimento || undefined,
+          status: 'pendente',
+          notes: observacoes || undefined,
+        };
+        res = await fetch('/api/financial/transactions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      }
 
-      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao criar lançamento.'));
+      if (!res.ok) throw new Error(await responseErrorMessage(res, isEdit ? 'Erro ao atualizar lançamento.' : 'Erro ao criar lançamento.'));
 
       setIsModalOpen(false);
+      setEditId(null);
+      toast(isEdit ? 'Lançamento atualizado.' : 'Lançamento criado.', 'success');
       fetchLancamentos();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Erro ao criar lançamento.');
+      toast(err instanceof Error ? err.message : 'Erro ao salvar lançamento.', 'error');
     }
   };
 
   const handlePay = async (id: string, desc: string) => {
-    if (!confirm(`Confirmar recebimento/pagamento de "${desc}"?`)) return;
+    const okc = await confirm({ title: 'Baixar lançamento', message: `Confirmar recebimento/pagamento de "${desc}"?`, confirmLabel: 'Confirmar' });
+    if (!okc) return;
     try {
       const res = await fetch(`/api/financial/transactions/${id}/settle`, { method: 'POST' });
       if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao baixar lançamento.'));
       fetchLancamentos();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Erro ao baixar lançamento.');
+      toast(err instanceof Error ? err.message : 'Erro ao baixar lançamento.', 'error');
     }
   };
 
@@ -144,24 +184,26 @@ export default function FinancialPage() {
    * baixada por engano.
    */
   const handleReverse = async (id: string, desc: string) => {
-    if (!confirm(`Estornar a baixa de "${desc}"? O lançamento volta para pendente.`)) return;
+    const okc = await confirm({ title: 'Estornar baixa', message: `Estornar a baixa de "${desc}"? O lançamento volta para pendente.`, confirmLabel: 'Estornar', danger: true });
+    if (!okc) return;
     try {
       const res = await fetch(`/api/financial/transactions/${id}/reverse`, { method: 'POST' });
       if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao estornar a baixa.'));
       fetchLancamentos();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Erro ao estornar a baixa.');
+      toast(err instanceof Error ? err.message : 'Erro ao estornar a baixa.', 'error');
     }
   };
 
   const handleDelete = async (id: string, desc: string) => {
-    if (!confirm(`Deseja excluir permanentemente o lançamento "${desc}"?`)) return;
+    const okc = await confirm({ title: 'Excluir lançamento', message: `Deseja excluir permanentemente o lançamento "${desc}"?`, confirmLabel: 'Excluir', danger: true });
+    if (!okc) return;
     try {
       const res = await fetch(`/api/financial/transactions/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao excluir lançamento.'));
       fetchLancamentos();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Erro ao excluir lançamento.');
+      toast(err instanceof Error ? err.message : 'Erro ao excluir lançamento.', 'error');
     }
   };
 
@@ -373,6 +415,13 @@ export default function FinancialPage() {
                             <Undo2 className="h-4 w-4" />
                           </button>
                         )}
+                        <button
+                          onClick={() => handleOpenEdit(l)}
+                          className="p-1.5 border border-stone-200 rounded-lg hover:bg-amber-50 text-stone-400 hover:text-amber-700 transition-all cursor-pointer"
+                          title="Editar Lançamento"
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </button>
                         <button 
                           onClick={() => handleDelete(l.id, l.description)}
                           className="p-1.5 border border-stone-200 rounded-lg hover:bg-red-50 text-stone-400 hover:text-red-700 transition-all cursor-pointer"
@@ -396,7 +445,7 @@ export default function FinancialPage() {
           <div className="bg-white rounded-2xl border border-stone-200 shadow-xl w-full max-w-md overflow-hidden animate-scaleIn">
             <div className="flex items-center justify-between px-6 py-4 border-b border-stone-100">
               <h3 className="font-extrabold text-stone-900 text-base">
-                {modalType === 'receita' ? 'Lançar Nova Conta a Receber' : 'Lançar Nova Conta a Pagar'}
+                {editId ? 'Editar Lançamento' : (modalType === 'receita' ? 'Lançar Nova Conta a Receber' : 'Lançar Nova Conta a Pagar')}
               </h3>
               <button 
                 onClick={() => setIsModalOpen(false)} 
@@ -441,7 +490,9 @@ export default function FinancialPage() {
                       required
                       value={valor}
                       onChange={(e) => setValor(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs focus:ring-1 focus:ring-amber-500 bg-stone-50/50"
+                      disabled={editOrderGenerated}
+                      title={editOrderGenerated ? 'Valor gerado por pedido — altere pelo pedido' : undefined}
+                      className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs focus:ring-1 focus:ring-amber-500 bg-stone-50/50 disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>
 
@@ -488,7 +539,7 @@ export default function FinancialPage() {
                   type="submit"
                   className="rounded-lg bg-amber-700 hover:bg-amber-800 px-4 py-2 text-white font-bold text-xs cursor-pointer transition-all shadow-xs"
                 >
-                  Confirmar Lançamento
+                  {editId ? 'Salvar Alterações' : 'Confirmar Lançamento'}
                 </button>
               </div>
             </form>

@@ -12,9 +12,18 @@ import {
   Printer, 
   Calendar, 
   AlertTriangle,
-  Package
+  Package,
+  CheckCircle2,
+  Truck,
+  DollarSign,
+  MessageCircle,
+  Copy,
+  History,
+  Search,
+  UserPlus
 } from 'lucide-react';
 import { responseErrorMessage } from '@/lib/errors';
+import { useToast } from '@/components/shared/Toast';
 
 import type {
   CustomerDTO,
@@ -36,6 +45,55 @@ const STATUS_PEDIDO = [
 ] as const;
 
 type StatusPedido = (typeof STATUS_PEDIDO)[number];
+
+const STATUS_LABELS: Record<string, string> = {
+  novo: 'Novo',
+  confirmado: 'Confirmado',
+  em_producao: 'Em Produção',
+  entregue: 'Entregue',
+  faturado: 'Faturado',
+  cancelado: 'Cancelado',
+  pago: 'Pago',
+  pendente: 'Em aberto',
+};
+
+interface OrderEvent {
+  id: string;
+  action: string;
+  from: string | null;
+  to: string | null;
+  userName: string | null;
+  createdAt: string;
+}
+
+function addDaysISO(iso: string, days: number): string {
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+  const base = new Date(Date.UTC(y, m - 1, d));
+  base.setUTCDate(base.getUTCDate() + days);
+  return base.toISOString().slice(0, 10);
+}
+
+function statusLabel(v: string | null): string {
+  if (!v) return '—';
+  return STATUS_LABELS[v] ?? v;
+}
+
+function describeEvent(ev: OrderEvent): string {
+  switch (ev.action) {
+    case 'criado':
+      return `Pedido criado (${statusLabel(ev.to)})`;
+    case 'status':
+      return `Status: ${statusLabel(ev.from)} → ${statusLabel(ev.to)}`;
+    case 'pagamento':
+      return 'Pagamento recebido (baixa no financeiro)';
+    case 'estorno_pagamento':
+      return 'Baixa de pagamento estornada';
+    case 'cancelado':
+      return 'Pedido cancelado';
+    default:
+      return ev.action;
+  }
+}
 
 /**
  * O `OrderDTO` tipa `status` como `string`, mas o `select` do formulário só
@@ -66,10 +124,12 @@ function formatarData(iso: string | null | undefined): string {
 }
 
 export default function OrdersPage() {
+  const { toast, confirm } = useToast();
   const [pedidos, setPedidos] = useState<OrderDTO[]>([]);
   const [clientes, setClientes] = useState<CustomerDTO[]>([]);
   const [produtos, setProdutos] = useState<ProductDTO[]>([]);
   const [vendedores, setVendedores] = useState<SellerDTO[]>([]);
+  const [formasPagamento, setFormasPagamento] = useState<{ id: string; name: string; netDays: number | null }[]>([]);
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -83,9 +143,14 @@ export default function OrdersPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [selectedPedido, setSelectedPedido] = useState<OrderDTO | null>(null);
+  const [historyOrder, setHistoryOrder] = useState<OrderDTO | null>(null);
+  const [historyEvents, setHistoryEvents] = useState<OrderEvent[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   // Campos do Formulário
   const [clienteId, setClienteId] = useState('');
+  const [clienteBusca, setClienteBusca] = useState('');
+  const [clienteListaAberta, setClienteListaAberta] = useState(false);
   const [vendedorId, setVendedorId] = useState('');
   const [status, setStatus] = useState<StatusPedido>('novo');
   const [formaPagamento, setFormaPagamento] = useState('pix');
@@ -97,12 +162,40 @@ export default function OrdersPage() {
   const [descontoGeral, setDescontoGeral] = useState('0');
   const [frete, setFrete] = useState('0');
   const [outrosCustos, setOutrosCustos] = useState('0');
+  const [comissaoPct, setComissaoPct] = useState('');
+  const [enderecoEntregaId, setEnderecoEntregaId] = useState('');
+  const [enderecosCliente, setEnderecosCliente] = useState<{ id: string; label: string | null; address: string | null; neighborhood: string | null; city: string | null }[]>([]);
+  const [novoEndAberto, setNovoEndAberto] = useState(false);
+  const [neLabel, setNeLabel] = useState('');
+  const [neAddress, setNeAddress] = useState('');
+  const [neNumber, setNeNumber] = useState('');
+  const [neNeighborhood, setNeNeighborhood] = useState('');
+  const [neCity, setNeCity] = useState('Rio de Janeiro');
+  const [neState, setNeState] = useState('RJ');
+  const [neZip, setNeZip] = useState('');
+  const [neSaving, setNeSaving] = useState(false);
+  const [credito, setCredito] = useState<{ creditLimit: number; openBalance: number; available: number; exceeded: boolean; hasLimit: boolean } | null>(null);
   
   // Itens do Pedido Temporários
   const [itensTemp, setItensTemp] = useState<PedidoItem[]>([]);
   const [selectedProdId, setSelectedProdId] = useState('');
   const [itemQty, setItemQty] = useState('1');
   const [itemDesc, setItemDesc] = useState('0');
+  const [itemPreco, setItemPreco] = useState('');
+  const [produtoBusca, setProdutoBusca] = useState('');
+  const [produtoListaAberta, setProdutoListaAberta] = useState(false);
+  // Cadastro rápido de cliente por CNPJ (igual portal do vendedor)
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [qcCnpj, setQcCnpj] = useState('');
+  const [qcName, setQcName] = useState('');
+  const [qcPhone, setQcPhone] = useState('');
+  const [qcAddress, setQcAddress] = useState('');
+  const [qcNumber, setQcNumber] = useState('');
+  const [qcNeighborhood, setQcNeighborhood] = useState('');
+  const [qcCep, setQcCep] = useState('');
+  const [qcIsRev, setQcIsRev] = useState(true);
+  const [qcSaving, setQcSaving] = useState(false);
+  const [cnpjLoading, setCnpjLoading] = useState(false);
 
   const fetchBaseData = useCallback(async () => {
     try {
@@ -136,9 +229,17 @@ export default function OrdersPage() {
       setProdutos(prods.data);
       setVendedores(sells.data ?? []);
 
-      if (prods.data.length > 0) {
-        setSelectedProdId(prods.data[0].id);
+      try {
+        const resPg = await fetch('/api/payment-methods');
+        if (resPg.ok) {
+          const pg = (await resPg.json()) as { data?: { id: string; name: string; netDays: number | null }[] };
+          setFormasPagamento(pg.data ?? []);
+        }
+      } catch {
+        /* lista de formas é acessório; não bloqueia a tela */
       }
+
+      // Produto agora é escolhido por busca digitável; não pré-seleciona.
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar os dados.');
     } finally {
@@ -153,13 +254,58 @@ export default function OrdersPage() {
     })();
   }, [fetchBaseData]);
 
+  // Carrega os endereços de entrega do cliente selecionado.
+  useEffect(() => {
+    if (!clienteId) {
+      setEnderecosCliente([]);
+      setCredito(null);
+      return;
+    }
+    let cancel = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/customers/${clienteId}/addresses`);
+        if (res.ok) {
+          const d = (await res.json()) as { data?: { id: string; label: string | null; address: string | null; neighborhood: string | null; city: string | null }[] };
+          if (!cancel) setEnderecosCliente(d.data ?? []);
+        }
+      } catch {
+        /* endereços são acessório */
+      }
+      try {
+        const resC = await fetch(`/api/customers/${clienteId}/credit`);
+        if (resC.ok) {
+          const dc = (await resC.json()) as { data?: { creditLimit: number; openBalance: number; available: number; exceeded: boolean; hasLimit: boolean } };
+          if (!cancel) setCredito(dc.data ?? null);
+        }
+      } catch {
+        /* crédito é acessório */
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, [clienteId]);
+
+  // Vencimento automático: se a forma escolhida tem prazo (ex.: Boleto 7 dias),
+  // calcula a partir da previsão de entrega (ou, na falta, da data do pedido).
+  useEffect(() => {
+    const opt = formasPagamento.find((f) => f.name === formaPagamento);
+    if (!opt || opt.netDays == null) return;
+    const base = dataEntrega || dataPedido;
+    if (!base) return;
+    setDataVencimento(addDaysISO(base, opt.netDays));
+  }, [formaPagamento, dataEntrega, dataPedido, formasPagamento]);
+
   const handleOpenCreateModal = () => {
     setModalMode('create');
     setSelectedPedido(null);
-    setClienteId(clientes[0]?.id || '');
+    setClienteId('');
+    setClienteBusca('');
+    setClienteListaAberta(false);
     setVendedorId('');
     setStatus('novo');
-    setFormaPagamento('pix');
+    setFormaPagamento(formasPagamento[0]?.name ?? 'Pix');
     setDataPedido(new Date().toISOString().split('T')[0]);
     setDataEntrega('');
     setDataFaturamento('');
@@ -168,6 +314,8 @@ export default function OrdersPage() {
     setDescontoGeral('0');
     setFrete('0');
     setOutrosCustos('0');
+    setComissaoPct('');
+    setEnderecoEntregaId('');
     setItensTemp([]);
     setIsModalOpen(true);
   };
@@ -182,6 +330,7 @@ export default function OrdersPage() {
       if (res.ok) {
         const fullPed: OrderDTO = await res.json();
         setClienteId(fullPed.customerId);
+        setClienteBusca(clientes.find((c) => c.id === fullPed.customerId)?.tradeName ?? pedido.customerName ?? '');
         setVendedorId(fullPed.sellerId || '');
         setStatus(paraStatusPedido(fullPed.status));
         setFormaPagamento(fullPed.paymentMethod || 'pix');
@@ -193,11 +342,14 @@ export default function OrdersPage() {
         setDescontoGeral(String(fullPed.discount));
         setFrete(String(fullPed.shipping));
         setOutrosCustos(String(fullPed.otherCosts));
+        setComissaoPct(fullPed.commissionPct != null ? String(fullPed.commissionPct) : '');
+        setEnderecoEntregaId(fullPed.deliveryAddressId ?? '');
         setItensTemp(fullPed.items || []);
       }
     } catch {
       // Fallback: usa o que já veio na listagem
       setClienteId(pedido.customerId);
+      setClienteBusca(pedido.customerName ?? '');
       setVendedorId(pedido.sellerId || '');
       setStatus(paraStatusPedido(pedido.status));
       setFormaPagamento(pedido.paymentMethod || 'pix');
@@ -229,7 +381,7 @@ export default function OrdersPage() {
     const isRev = client ? !!client.isReseller : false;
 
     const qty = parseFloat(itemQty);
-    const pu = obterPrecoUnitario(prod, qty, isRev);
+    const pu = itemPreco.trim() !== '' ? (parseFloat(itemPreco) || 0) : obterPrecoUnitario(prod, qty, isRev);
     const desc = parseFloat(itemDesc) || 0;
     const sub = Math.max(0, qty * pu - desc);
 
@@ -245,6 +397,9 @@ export default function OrdersPage() {
     setItensTemp([...itensTemp, novoItem]);
     setItemQty('1');
     setItemDesc('0');
+    setItemPreco('');
+    setSelectedProdId('');
+    setProdutoBusca('');
   };
 
   const handleRemoveItem = (idx: number) => {
@@ -261,26 +416,117 @@ export default function OrdersPage() {
   // Calcula comissão estimada
   const activeSeller = vendedores.find(v => v.id === vendedorId);
   const sellerPct = activeSeller ? Number(activeSeller.commissionPct) || 0 : 0;
+  const overridePct = comissaoPct.trim() !== '' ? (Number(comissaoPct) || 0) : null;
+  const effectivePct = overridePct ?? sellerPct;
 
   const totalComissao = itensTemp.reduce((sum, item) => {
     // A comissão específica do produto vem em `commissionPct`; antes a tela lia
     // `comissao_pct`, um campo que a API nunca devolveu, e a comissão do
     // produto nunca era aplicada.
     const prod = produtos.find(p => p.id === item.productId);
-    const itemPct = (prod && prod.commissionPct != null) ? prod.commissionPct : sellerPct;
+    const itemPct = (prod && prod.commissionPct != null) ? prod.commissionPct : effectivePct;
     return sum + (item.subtotal * (itemPct / 100));
   }, 0);
 
   const comissaoFinal = subtotal > 0 ? Math.max(0, totalComissao * (totalGeral / subtotal)) : 0;
 
-  const handleSave = async (e: React.FormEvent) => {
+  const clientesFiltrados = (clienteBusca.trim()
+    ? clientes.filter((c) => {
+        const q = clienteBusca.toLowerCase();
+        const digitos = q.replace(/\D/g, '');
+        return (
+          c.tradeName.toLowerCase().includes(q) ||
+          (c.legalName ?? '').toLowerCase().includes(q) ||
+          (digitos !== '' && ((c.cnpj ?? '').includes(digitos) || (c.cpf ?? '').includes(digitos)))
+        );
+      })
+    : clientes
+  ).slice(0, 50);
+
+  const clienteTemPedidos = clienteId
+    ? pedidos.some((p) => p.customerId === clienteId && p.id !== selectedPedido?.id && p.status !== 'cancelado')
+    : false;
+  const primeiroPedido = Boolean(clienteId) && !clienteTemPedidos;
+  const pedidosDoCliente = clienteId
+    ? pedidos.filter((p) => p.customerId === clienteId && p.id !== selectedPedido?.id && p.status !== 'cancelado').length
+    : 0;
+  const produtosFiltrados = (produtoBusca.trim()
+    ? produtos.filter((p) => p.name.toLowerCase().includes(produtoBusca.toLowerCase()) || (p.sku ?? '').toLowerCase().includes(produtoBusca.toLowerCase()))
+    : produtos
+  ).slice(0, 50);
+
+  const handleQuickCNPJ = async () => {
+    const clean = qcCnpj.replace(/\D/g, '');
+    if (clean.length !== 14) { toast('Digite um CNPJ válido com 14 dígitos.', 'error'); return; }
+    setCnpjLoading(true);
+    try {
+      const res = await fetch(`/api/tools/cnpj?cnpj=${clean}`);
+      if (!res.ok) throw new Error('CNPJ não encontrado ou indisponível.');
+      const d = (await res.json()) as { nome_fantasia?: string; razao_social?: string; ddd_telefone_1?: string; logradouro?: string; numero?: string; complemento?: string; bairro?: string; cep?: string };
+      setQcName(d.nome_fantasia || d.razao_social || '');
+      setQcPhone(d.ddd_telefone_1 || '');
+      setQcAddress(d.logradouro || '');
+      setQcNumber(d.numero || '');
+      setQcNeighborhood(d.bairro || '');
+      setQcCep(d.cep || '');
+      toast('Dados do CNPJ preenchidos!', 'success');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Erro ao consultar CNPJ.', 'error');
+    } finally {
+      setCnpjLoading(false);
+    }
+  };
+
+  const abrirCadastroRapido = () => {
+    setQcCnpj(''); setQcName(''); setQcPhone(''); setQcAddress(''); setQcNumber(''); setQcNeighborhood(''); setQcCep(''); setQcIsRev(true);
+    setQuickOpen(true);
+  };
+
+  const handleSaveQuickClient = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!qcName.trim()) { toast('Informe ao menos o nome do cliente.', 'error'); return; }
+    setQcSaving(true);
+    const payload = {
+      tradeName: qcName,
+      isReseller: qcIsRev,
+      phone: qcPhone || undefined,
+      cnpj: qcCnpj.replace(/\D/g, '') || undefined,
+      latitude: -22.9068,
+      longitude: -43.1729,
+      address: qcAddress || 'Cadastrado no lançamento do pedido',
+      number: qcNumber || undefined,
+      neighborhood: qcNeighborhood || 'Centro',
+      zipCode: qcCep.replace(/\D/g, '') || undefined,
+      city: 'Rio de Janeiro',
+      state: 'RJ',
+      active: true,
+    };
+    try {
+      const res = await fetch('/api/customers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao cadastrar cliente.'));
+      const novo = (await res.json()) as CustomerDTO;
+      setClientes((prev) => [...prev, novo]);
+      setClienteId(novo.id);
+      setClienteBusca(novo.tradeName);
+      setClienteListaAberta(false);
+      setQuickOpen(false);
+      toast(`Cliente "${novo.tradeName}" cadastrado e selecionado!`, 'success');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Erro ao cadastrar cliente.', 'error');
+    } finally {
+      setQcSaving(false);
+    }
+  };
+
+  const enviarPedido = async (statusForcado?: StatusPedido) => {
     if (!clienteId || itensTemp.length === 0) return;
+
+    const statusFinal = statusForcado ?? status;
 
     const payload = {
       customerId: clienteId,
       sellerId: vendedorId || null,
-      status,
+      status: statusFinal,
       paymentMethod: formaPagamento,
       orderDate: dataPedido,
       deliveryDate: dataEntrega || null,
@@ -289,6 +535,8 @@ export default function OrdersPage() {
       discount: discountTotal,
       shipping: shippingTotal,
       otherCosts: othersTotal,
+      commissionPct: comissaoPct.trim() === '' ? null : comissaoPct,
+      deliveryAddressId: enderecoEntregaId || null,
       notes: observacoes || null,
       items: itensTemp.map(i => ({
         productId: i.productId,
@@ -313,19 +561,145 @@ export default function OrdersPage() {
 
       setIsModalOpen(false);
       fetchBaseData();
+      toast(modalMode === 'create' ? 'Pedido lançado com sucesso!' : 'Pedido atualizado!', 'success');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Erro ao processar pedido.');
+      toast(err instanceof Error ? err.message : 'Erro ao processar pedido.', 'error');
+    }
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await enviarPedido();
+  };
+
+  const handleQuickStatus = async (id: string, novoStatus: StatusPedido, rotulo: string) => {
+    try {
+      const res = await fetch(`/api/orders/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: novoStatus }),
+      });
+      if (!res.ok) throw new Error(await responseErrorMessage(res, `Erro ao marcar como ${rotulo}.`));
+      fetchBaseData();
+      toast(`Pedido marcado como ${rotulo}.`, 'success');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : `Erro ao marcar como ${rotulo}.`, 'error');
+    }
+  };
+
+  const handleMarcarPago = async (receivableId: string) => {
+    try {
+      const res = await fetch(`/api/financial/transactions/${receivableId}/settle`, { method: 'POST' });
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao marcar como pago.'));
+      fetchBaseData();
+      toast('Pagamento registrado no financeiro.', 'success');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Erro ao marcar como pago.', 'error');
+    }
+  };
+
+  const salvarNovoEndereco = async () => {
+    if (!clienteId) return;
+    if (!neAddress.trim() || !neNeighborhood.trim()) {
+      toast('Preencha ao menos endereço e bairro.', 'error');
+      return;
+    }
+    setNeSaving(true);
+    try {
+      const res = await fetch(`/api/customers/${clienteId}/addresses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: neLabel || null, address: neAddress, number: neNumber || null, neighborhood: neNeighborhood, city: neCity || null, state: neState || null, zipCode: neZip.replace(/\D/g, '') || null }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao adicionar endereço.'));
+      const novoId = (j?.data?.id ?? j?.id) as string | undefined;
+      const lst = await fetch(`/api/customers/${clienteId}/addresses`);
+      if (lst.ok) {
+        const d = (await lst.json()) as { data?: typeof enderecosCliente };
+        setEnderecosCliente(d.data ?? []);
+      }
+      if (novoId) setEnderecoEntregaId(novoId);
+      setNeLabel(''); setNeAddress(''); setNeNumber(''); setNeNeighborhood(''); setNeZip('');
+      setNovoEndAberto(false);
+      toast('Endereço adicionado e selecionado.', 'success');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Erro ao adicionar endereço.', 'error');
+    } finally {
+      setNeSaving(false);
+    }
+  };
+
+  const handleWhatsApp = (ped: OrderDTO) => {
+    const linhas = (ped.items ?? []).map((i) => `• ${i.quantity}x ${i.productName ?? ''}`).join('\n');
+    const msg =
+      `*Pedido #${ped.numero}* — ${ped.customerName ?? ''}\n${linhas}\n\nTotal: ` +
+      ped.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) +
+      (ped.deliveryDate ? `\nEntrega: ${formatarData(ped.deliveryDate)}` : '');
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+  };
+
+  const handleDuplicate = async (pedido: OrderDTO) => {
+    setModalMode('create');
+    setSelectedPedido(null);
+    try {
+      const res = await fetch(`/api/orders/${pedido.id}`);
+      const fullPed: OrderDTO = res.ok ? await res.json() : pedido;
+      setClienteId(fullPed.customerId);
+      setClienteBusca(clientes.find((c) => c.id === fullPed.customerId)?.tradeName ?? fullPed.customerName ?? '');
+      setVendedorId(fullPed.sellerId || '');
+      setStatus('novo');
+      setFormaPagamento(fullPed.paymentMethod || 'Pix');
+      setDataPedido(new Date().toISOString().split('T')[0]);
+      setDataEntrega('');
+      setDataFaturamento('');
+      setDataVencimento('');
+      setObservacoes(fullPed.notes || '');
+      setDescontoGeral(String(fullPed.discount));
+      setFrete(String(fullPed.shipping));
+      setOutrosCustos(String(fullPed.otherCosts));
+      setComissaoPct(fullPed.commissionPct != null ? String(fullPed.commissionPct) : '');
+      setEnderecoEntregaId(fullPed.deliveryAddressId ?? '');
+      setItensTemp(fullPed.items || []);
+    } catch {
+      /* usa o que veio na listagem */
+    }
+    setIsModalOpen(true);
+  };
+
+  const handleOpenHistory = async (pedido: OrderDTO) => {
+    setHistoryOrder(pedido);
+    setHistoryEvents([]);
+    setHistoryLoading(true);
+    try {
+      const res = await fetch(`/api/orders/${pedido.id}/history`);
+      if (res.ok) {
+        const d = await res.json();
+        setHistoryEvents(d.data ?? []);
+      }
+    } catch {
+      // silencioso — timeline é um extra
+    } finally {
+      setHistoryLoading(false);
     }
   };
 
   const handleDelete = async (id: string, num: number) => {
-    if (!confirm(`Tem certeza que deseja cancelar o pedido #${num}?`)) return;
+    const okc = await confirm({
+      title: 'Cancelar pedido',
+      message: `Tem certeza que deseja cancelar o pedido #${num}? O estoque será estornado.`,
+      confirmLabel: 'Cancelar pedido',
+      cancelLabel: 'Voltar',
+      danger: true,
+    });
+    if (!okc) return;
     try {
       const res = await fetch(`/api/orders/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao cancelar pedido.'));
       fetchBaseData();
+      toast(`Pedido #${num} cancelado.`, 'success');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Erro ao cancelar pedido.');
+      toast(err instanceof Error ? err.message : 'Erro ao cancelar pedido.', 'error');
     }
   };
 
@@ -338,7 +712,7 @@ export default function OrdersPage() {
       window.open(url, '_blank');
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Erro ao gerar PDF do pedido.');
+      toast(err instanceof Error ? err.message : 'Erro ao gerar PDF do pedido.', 'error');
     }
   };
 
@@ -489,9 +863,64 @@ export default function OrdersPage() {
                       }`}>
                         {ped.status}
                       </span>
+                      {ped.paymentStatus !== 'sem_conta' && (
+                        <div className="mt-1">
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${ped.paymentStatus === 'pago' ? 'bg-emerald-100 text-emerald-700' : ped.paymentStatus === 'atrasado' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>
+                            {ped.paymentStatus === 'pago' ? 'Pago' : ped.paymentStatus === 'atrasado' ? 'Vencido' : 'A receber'}
+                          </span>
+                        </div>
+                      )}
                     </td>
                     <td className="py-4 px-6 text-center">
                       <div className="flex items-center justify-center gap-1.5">
+                        {ped.status === 'novo' && (
+                          <button
+                            onClick={() => handleQuickStatus(ped.id, 'confirmado', 'confirmado')}
+                            className="p-1.5 border border-emerald-200 rounded-lg hover:bg-emerald-50 text-emerald-700 transition-all cursor-pointer"
+                            title="Concluir (confirmar pedido)"
+                          >
+                            <CheckCircle2 className="h-4 w-4" />
+                          </button>
+                        )}
+                        {(ped.status === 'confirmado' || ped.status === 'em_producao') && (
+                          <button
+                            onClick={() => handleQuickStatus(ped.id, 'entregue', 'entregue')}
+                            className="p-1.5 border border-sky-200 rounded-lg hover:bg-sky-50 text-sky-700 transition-all cursor-pointer"
+                            title="Marcar como entregue"
+                          >
+                            <Truck className="h-4 w-4" />
+                          </button>
+                        )}
+                        {(ped.paymentStatus === 'pendente' || ped.paymentStatus === 'atrasado') && ped.receivableId && (
+                          <button
+                            onClick={() => handleMarcarPago(ped.receivableId!)}
+                            className="p-1.5 border border-emerald-200 rounded-lg hover:bg-emerald-50 text-emerald-700 transition-all cursor-pointer"
+                            title="Marcar como pago (baixa no financeiro)"
+                          >
+                            <DollarSign className="h-4 w-4" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleWhatsApp(ped)}
+                          className="p-1.5 border border-stone-200 rounded-lg hover:bg-emerald-50 text-emerald-700 transition-all cursor-pointer"
+                          title="Enviar por WhatsApp"
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDuplicate(ped)}
+                          className="p-1.5 border border-stone-200 rounded-lg hover:bg-stone-50 text-stone-500 transition-all cursor-pointer"
+                          title="Duplicar pedido"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleOpenHistory(ped)}
+                          className="p-1.5 border border-stone-200 rounded-lg hover:bg-indigo-50 text-indigo-600 transition-all cursor-pointer"
+                          title="Histórico do pedido"
+                        >
+                          <History className="h-4 w-4" />
+                        </button>
                         <button 
                           onClick={() => handleOpenEditModal(ped)}
                           className="p-1.5 border border-stone-200 rounded-lg hover:bg-stone-50 text-stone-500 transition-all cursor-pointer"
@@ -545,19 +974,56 @@ export default function OrdersPage() {
               {/* Form Grid */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">Cliente *</label>
-                  <select 
-                    value={clienteId}
-                    onChange={(e) => setClienteId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs bg-stone-50/50 focus:ring-1 focus:ring-amber-500"
-                  >
-                    {clientes.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.tradeName} {c.isReseller ? '(Revendedor Atacado)' : ''}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Cliente * {primeiroPedido && (<span className="ml-1 inline-block rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-black text-emerald-700 align-middle">1º PEDIDO</span>)}</label>
+                    <button type="button" onClick={abrirCadastroRapido} className="text-[10px] font-bold text-amber-800 hover:underline cursor-pointer inline-flex items-center gap-1"><UserPlus className="h-3 w-3" /> Cadastrar novo</button>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={clienteBusca}
+                      onChange={(e) => { setClienteBusca(e.target.value); setClienteListaAberta(true); if (clienteId) setClienteId(''); }}
+                      onFocus={() => setClienteListaAberta(true)}
+                      onBlur={() => window.setTimeout(() => setClienteListaAberta(false), 150)}
+                      placeholder="Digite o nome ou CNPJ do cliente..."
+                      className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs bg-stone-50/50 focus:ring-1 focus:ring-amber-500"
+                    />
+                    {clienteListaAberta && (
+                      <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border border-stone-200 bg-white shadow-lg">
+                        {clientesFiltrados.length === 0 ? (
+                          <div className="px-3 py-2 text-xs text-stone-400">Nenhum cliente encontrado</div>
+                        ) : (
+                          clientesFiltrados.map((c) => (
+                            <button
+                              type="button"
+                              key={c.id}
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => { setClienteId(c.id); setClienteBusca(c.tradeName); setClienteListaAberta(false); }}
+                              className={`block w-full text-left px-3 py-2 text-xs hover:bg-amber-50 ${c.id === clienteId ? 'bg-amber-50 font-bold' : ''}`}
+                            >
+                              {c.tradeName}{c.isReseller ? ' (Atacado)' : ''}
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {clienteId && !primeiroPedido && (
+                    <p className="mt-1 text-[10px] font-bold text-stone-500">Este cliente já fez {pedidosDoCliente} pedido{pedidosDoCliente === 1 ? '' : 's'}.</p>
+                  )}
                 </div>
+
+                {credito?.exceeded && (
+                  <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
+                    <div className="text-xs text-red-700">
+                      <span className="font-black">LIMITE DE CRÉDITO EXCEDIDO.</span> Cliente com {credito.openBalance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} em aberto (limite {credito.creditLimit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}).
+                    </div>
+                  </div>
+                )}
+                {credito?.hasLimit && !credito.exceeded && (
+                  <p className="text-[10px] text-stone-400">Crédito: {credito.openBalance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} em aberto · disponível {credito.available.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} de {credito.creditLimit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.</p>
+                )}
 
                 <div>
                   <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">Vendedor</label>
@@ -592,18 +1058,54 @@ export default function OrdersPage() {
 
                 <div>
                   <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">Forma Pagamento</label>
-                  <select 
+                  <select
                     value={formaPagamento}
                     onChange={(e) => setFormaPagamento(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs bg-stone-50/50 focus:ring-1 focus:ring-amber-500"
                   >
-                    <option value="pix">Pix</option>
-                    <option value="dinheiro">Dinheiro</option>
-                    <option value="boleto">Boleto Bancário</option>
-                    <option value="credito">Cartão de Crédito</option>
-                    <option value="debito">Cartão de Débito</option>
-                    <option value="transferencia">Transferência/TED</option>
+                    {formaPagamento && !formasPagamento.some((f) => f.name === formaPagamento) && (
+                      <option value={formaPagamento}>{formaPagamento}</option>
+                    )}
+                    {formasPagamento.map((f) => (
+                      <option key={f.id} value={f.name}>{f.name}</option>
+                    ))}
                   </select>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Endereço de Entrega</label>
+                    {clienteId && (
+                      <button type="button" onClick={() => setNovoEndAberto((v) => !v)} className="text-[10px] font-bold text-amber-800 hover:underline cursor-pointer">
+                        {novoEndAberto ? 'Cancelar' : '➕ Novo endereço'}
+                      </button>
+                    )}
+                  </div>
+                  <select
+                    value={enderecoEntregaId}
+                    onChange={(e) => setEnderecoEntregaId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs bg-stone-50/50 focus:ring-1 focus:ring-amber-500"
+                  >
+                    <option value="">Mesmo do faturamento (principal)</option>
+                    {enderecosCliente.map((a) => (
+                      <option key={a.id} value={a.id}>{a.label ? `${a.label} — ` : ''}{a.address ?? ''}{a.neighborhood ? `, ${a.neighborhood}` : ''}</option>
+                    ))}
+                  </select>
+                  {novoEndAberto && (
+                    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50/40 p-3 space-y-2">
+                      <input type="text" placeholder="Apelido (ex.: Filial Centro)" value={neLabel} onChange={(e) => setNeLabel(e.target.value)} className="w-full px-2.5 py-1.5 rounded-lg border border-stone-200 text-xs bg-white focus:outline-none" />
+                      <div className="grid grid-cols-3 gap-2">
+                        <input type="text" placeholder="Endereço *" value={neAddress} onChange={(e) => setNeAddress(e.target.value)} className="col-span-2 px-2.5 py-1.5 rounded-lg border border-stone-200 text-xs bg-white focus:outline-none" />
+                        <input type="text" placeholder="Número" value={neNumber} onChange={(e) => setNeNumber(e.target.value)} className="px-2.5 py-1.5 rounded-lg border border-stone-200 text-xs bg-white focus:outline-none" />
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <input type="text" placeholder="Bairro *" value={neNeighborhood} onChange={(e) => setNeNeighborhood(e.target.value)} className="px-2.5 py-1.5 rounded-lg border border-stone-200 text-xs bg-white focus:outline-none" />
+                        <input type="text" placeholder="Cidade" value={neCity} onChange={(e) => setNeCity(e.target.value)} className="px-2.5 py-1.5 rounded-lg border border-stone-200 text-xs bg-white focus:outline-none" />
+                        <input type="text" placeholder="CEP" value={neZip} onChange={(e) => setNeZip(e.target.value)} className="px-2.5 py-1.5 rounded-lg border border-stone-200 text-xs bg-white focus:outline-none" />
+                      </div>
+                      <button type="button" onClick={salvarNovoEndereco} disabled={neSaving} className="w-full rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-xs font-bold py-1.5 cursor-pointer disabled:opacity-50">{neSaving ? 'Adicionando...' : 'Adicionar endereço'}</button>
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -665,21 +1167,39 @@ export default function OrdersPage() {
                   Itens do Pedido
                 </h4>
 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
                   <div className="md:col-span-2">
                     <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">Escolher Produto</label>
-                    <select 
-                      value={selectedProdId}
-                      onChange={(e) => setSelectedProdId(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs bg-white focus:outline-none"
-                    >
-                      {produtos.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} - Varejo: {p.salePrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                          {p.wholesalePrice ? ` (Atacado: ${p.wholesalePrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})` : ''}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={produtoBusca}
+                        onChange={(e) => { setProdutoBusca(e.target.value); setProdutoListaAberta(true); if (selectedProdId) setSelectedProdId(''); }}
+                        onFocus={() => setProdutoListaAberta(true)}
+                        onBlur={() => window.setTimeout(() => setProdutoListaAberta(false), 150)}
+                        placeholder="Digite o produto..."
+                        className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs bg-white focus:outline-none"
+                      />
+                      {produtoListaAberta && (
+                        <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border border-stone-200 bg-white shadow-lg">
+                          {produtosFiltrados.length === 0 ? (
+                            <div className="px-3 py-2 text-xs text-stone-400">Nenhum produto encontrado</div>
+                          ) : (
+                            produtosFiltrados.map((p) => (
+                              <button
+                                type="button"
+                                key={p.id}
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => { setSelectedProdId(p.id); setProdutoBusca(p.name); setProdutoListaAberta(false); const cli = clientes.find((c) => c.id === clienteId); setItemPreco(String(obterPrecoUnitario(p, parseFloat(itemQty) || 1, cli ? !!cli.isReseller : false))); }}
+                                className={`block w-full text-left px-3 py-2 text-xs hover:bg-amber-50 ${p.id === selectedProdId ? 'bg-amber-50 font-bold' : ''}`}
+                              >
+                                {p.name} — {p.salePrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}{p.wholesalePrice ? ` · Atacado ${p.wholesalePrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` : ''}
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div>
@@ -690,6 +1210,31 @@ export default function OrdersPage() {
                       min="1"
                       value={itemQty}
                       onChange={(e) => setItemQty(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs bg-white focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">Preço Unit. (R$)</label>
+                    <input 
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={itemPreco}
+                      onChange={(e) => setItemPreco(e.target.value)}
+                      placeholder="auto"
+                      className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs bg-white focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">Desconto (R$)</label>
+                    <input 
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={itemDesc}
+                      onChange={(e) => setItemDesc(e.target.value)}
                       className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs bg-white focus:outline-none"
                     />
                   </div>
@@ -786,6 +1331,21 @@ export default function OrdersPage() {
                     />
                   </div>
                   
+                  <div>
+                    <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">Comissão do Vendedor (%)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      placeholder={activeSeller ? `Padrão: ${sellerPct}%` : 'Selecione um vendedor'}
+                      value={comissaoPct}
+                      onChange={(e) => setComissaoPct(e.target.value)}
+                      disabled={!vendedorId}
+                      className="w-full px-3 py-1.5 rounded-lg border border-stone-200 text-xs bg-white focus:outline-none disabled:bg-stone-100 disabled:text-stone-400"
+                    />
+                  </div>
+
                   <div className="border border-stone-250 bg-white rounded-lg p-2.5 flex items-center justify-between">
                     <span className="text-[9px] text-stone-450 font-bold uppercase">Comissão Estimada</span>
                     <span className="text-xs font-black text-amber-900">
@@ -817,12 +1377,120 @@ export default function OrdersPage() {
                 >
                   Cancelar
                 </button>
+                <button
+                  type="button"
+                  onClick={() => enviarPedido('confirmado')}
+                  className="rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 px-4 py-2 text-emerald-800 font-bold text-xs cursor-pointer transition-all flex items-center gap-1.5"
+                >
+                  <CheckCircle2 className="h-4 w-4" /> Concluir
+                </button>
+                <button
+                  type="button"
+                  onClick={() => enviarPedido('entregue')}
+                  className="rounded-lg border border-sky-300 bg-sky-50 hover:bg-sky-100 px-4 py-2 text-sky-800 font-bold text-xs cursor-pointer transition-all flex items-center gap-1.5"
+                >
+                  <Truck className="h-4 w-4" /> Entregar
+                </button>
                 <button 
                   type="submit"
                   className="rounded-lg bg-amber-700 hover:bg-amber-800 px-4 py-2 text-white font-bold text-xs cursor-pointer transition-all shadow-xs"
                 >
                   {modalMode === 'create' ? 'Lançar Venda' : 'Salvar Alterações'}
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {historyOrder && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+          onClick={() => setHistoryOrder(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-stone-100">
+              <div className="flex items-center gap-2">
+                <History className="h-5 w-5 text-indigo-600" />
+                <h3 className="font-black text-stone-800">Histórico do Pedido #{historyOrder.numero}</h3>
+              </div>
+              <button
+                onClick={() => setHistoryOrder(null)}
+                className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-400 cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto">
+              {historyLoading ? (
+                <div className="flex items-center justify-center py-8 text-stone-400">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                </div>
+              ) : historyEvents.length === 0 ? (
+                <p className="text-stone-400 text-sm text-center py-6">
+                  Nenhum evento registrado ainda. Pedidos antigos (criados antes desta atualização)
+                  passam a registrar eventos a partir da próxima alteração.
+                </p>
+              ) : (
+                <ol className="relative border-l-2 border-stone-100 ml-2 space-y-5">
+                  {historyEvents.map((ev) => (
+                    <li key={ev.id} className="ml-4">
+                      <span className="absolute -left-[7px] mt-1 h-3 w-3 rounded-full bg-indigo-500 border-2 border-white" />
+                      <p className="text-sm font-bold text-stone-800">{describeEvent(ev)}</p>
+                      <p className="text-xs text-stone-400 mt-0.5">
+                        {new Date(ev.createdAt).toLocaleString('pt-BR')}
+                        {ev.userName ? ` · ${ev.userName}` : ''}
+                      </p>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {quickOpen && (
+        <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4" onClick={() => setQuickOpen(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-md border border-stone-200 shadow-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100">
+              <h3 className="font-black text-stone-900 text-sm">Cadastrar Cliente</h3>
+              <button onClick={() => setQuickOpen(false)} className="p-1 text-stone-400 hover:text-stone-600 cursor-pointer"><X className="h-5 w-5" /></button>
+            </div>
+            <form onSubmit={handleSaveQuickClient} className="p-5 space-y-3 text-xs font-semibold text-stone-600">
+              <div>
+                <label className="block mb-1">CNPJ (busca automática)</label>
+                <div className="flex gap-2">
+                  <input type="text" value={qcCnpj} onChange={(e) => setQcCnpj(e.target.value)} placeholder="Só números" className="flex-1 rounded-lg border border-stone-300 bg-stone-50 p-2.5 text-stone-900 focus:bg-white" />
+                  <button type="button" onClick={handleQuickCNPJ} disabled={cnpjLoading} className="rounded-lg bg-stone-900 hover:bg-stone-800 text-white px-3 py-2 text-xs font-bold cursor-pointer disabled:opacity-50 inline-flex items-center gap-1">{cnpjLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Buscar</button>
+                </div>
+              </div>
+              <div>
+                <label className="block mb-1">Nome / Razão social *</label>
+                <input type="text" value={qcName} onChange={(e) => setQcName(e.target.value)} required className="w-full rounded-lg border border-stone-300 bg-stone-50 p-2.5 text-stone-900 focus:bg-white" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div><label className="block mb-1">Telefone</label><input type="text" value={qcPhone} onChange={(e) => setQcPhone(e.target.value)} className="w-full rounded-lg border border-stone-300 bg-stone-50 p-2.5 text-stone-900 focus:bg-white" /></div>
+                <div><label className="block mb-1">Perfil</label>
+                  <select value={qcIsRev ? 'true' : 'false'} onChange={(e) => setQcIsRev(e.target.value === 'true')} className="w-full rounded-lg border border-stone-300 bg-stone-50 p-2.5 text-stone-900 focus:bg-white">
+                    <option value="true">Revendedor (Atacado)</option><option value="false">Consumidor (Varejo)</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="col-span-2"><label className="block mb-1">Endereço</label><input type="text" value={qcAddress} onChange={(e) => setQcAddress(e.target.value)} className="w-full rounded-lg border border-stone-300 bg-stone-50 p-2.5 text-stone-900 focus:bg-white" /></div>
+                <div><label className="block mb-1">Número</label><input type="text" value={qcNumber} onChange={(e) => setQcNumber(e.target.value)} className="w-full rounded-lg border border-stone-300 bg-stone-50 p-2.5 text-stone-900 focus:bg-white" /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div><label className="block mb-1">Bairro</label><input type="text" value={qcNeighborhood} onChange={(e) => setQcNeighborhood(e.target.value)} className="w-full rounded-lg border border-stone-300 bg-stone-50 p-2.5 text-stone-900 focus:bg-white" /></div>
+                <div><label className="block mb-1">CEP</label><input type="text" value={qcCep} onChange={(e) => setQcCep(e.target.value)} className="w-full rounded-lg border border-stone-300 bg-stone-50 p-2.5 text-stone-900 focus:bg-white" /></div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2 border-t border-stone-100">
+                <button type="button" onClick={() => setQuickOpen(false)} className="rounded-lg border border-stone-300 px-4 py-2 text-xs font-bold text-stone-600 hover:bg-stone-50 cursor-pointer">Cancelar</button>
+                <button type="submit" disabled={qcSaving} className="rounded-lg bg-amber-700 hover:bg-amber-800 px-4 py-2 text-xs font-bold text-white cursor-pointer disabled:opacity-50">{qcSaving ? 'Salvando...' : 'Cadastrar e selecionar'}</button>
               </div>
             </form>
           </div>

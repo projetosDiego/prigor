@@ -109,6 +109,7 @@ function toPersistable(
     'notes',
     'isReseller',
     'active',
+    'creditLimit',
   ];
 
   for (const key of keys) {
@@ -213,4 +214,48 @@ export async function customersWithLocation(
     longitude: number;
     category: string | null;
   }>;
+}
+
+/**
+ * Situação de crédito do cliente: quanto está em aberto x limite configurado.
+ * `creditLimit` = 0 significa "sem limite" — nesse caso `hasLimit` é false e o
+ * front não mostra alerta.
+ */
+export interface CustomerCreditDTO {
+  creditLimit: number;
+  openBalance: number;
+  available: number;
+  exceeded: boolean;
+  hasLimit: boolean;
+}
+
+export async function getCustomerCredit(
+  session: SessionPayload,
+  customerId: string,
+): Promise<CustomerCreditDTO> {
+  const customer = await prisma.customer.findUnique({
+    where: { id: customerId },
+    select: { id: true, sellerId: true, creditLimit: true },
+  });
+  if (!customer) throw notFound('Cliente');
+  if (!isManagement(session) && customer.sellerId !== session.sellerId) {
+    throw notFound('Cliente');
+  }
+
+  const agg = await prisma.financialTransaction.aggregate({
+    where: {
+      type: 'receita',
+      status: { in: ['pendente', 'atrasado'] },
+      order: { customerId, status: { not: 'cancelado' } },
+    },
+    _sum: { value: true },
+  });
+
+  const creditLimit = Number(customer.creditLimit);
+  const openBalance = Number(agg._sum.value ?? 0);
+  const hasLimit = creditLimit > 0;
+  const available = hasLimit ? creditLimit - openBalance : 0;
+  const exceeded = hasLimit && openBalance >= creditLimit;
+
+  return { creditLimit, openBalance, available, exceeded, hasLimit };
 }

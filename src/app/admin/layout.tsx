@@ -17,9 +17,12 @@ import {
   Scale,
   FileText,
   DollarSign,
+  TrendingUp,
+  CreditCard,
   Truck,
   Upload,
-  ScanLine
+  ScanLine,
+  Wallet
 } from 'lucide-react';
 import LogoutButton from '@/components/shared/LogoutButton';
 
@@ -121,15 +124,42 @@ export default async function AdminLayout({
               <Truck className="h-4 w-4 text-amber-755" />
               <span>Roteiros & Logística</span>
             </Link>
+            <Link href="/admin/costs" className="flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold hover:bg-stone-800 hover:text-white transition-all">
+              <Wallet className="h-4 w-4 text-amber-755" />
+              <span>Custos & Equipe</span>
+            </Link>
+          </div>
+
+          {/* Módulo Relatórios */}
+          <div className="space-y-1">
+            <span className="text-[10px] font-black text-stone-500 uppercase tracking-widest px-4 block mb-2">Relatórios</span>
+
+            <Link href="/admin/reports/customers" className="flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold hover:bg-stone-800 hover:text-white transition-all">
+              <BarChart3 className="h-4 w-4 text-amber-755" />
+              <span>Relatório de Clientes</span>
+            </Link>
+            <Link href="/admin/reports/sellers" className="flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold hover:bg-stone-800 hover:text-white transition-all">
+              <TrendingUp className="h-4 w-4 text-amber-755" />
+              <span>Relatório por Vendedor</span>
+            </Link>
           </div>
 
           {/* Módulo Sistema */}
           <div className="space-y-1">
             <span className="text-[10px] font-black text-stone-500 uppercase tracking-widest px-4 block mb-2">Configurações</span>
 
+            <Link href="/admin/users" className="flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold hover:bg-stone-800 hover:text-white transition-all">
+              <ShieldCheck className="h-4 w-4 text-amber-755" />
+              <span>Usuários & Acessos</span>
+            </Link>
+
             <Link href="/admin/sellers" className="flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold hover:bg-stone-800 hover:text-white transition-all">
               <UserSquare2 className="h-4 w-4 text-amber-755" />
               <span>Vendedores</span>
+            </Link>
+            <Link href="/admin/payment-methods" className="flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold hover:bg-stone-800 hover:text-white transition-all">
+              <CreditCard className="h-4 w-4 text-amber-755" />
+              <span>Formas de Pagamento</span>
             </Link>
 
             <Link href="/admin/score" className="flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold hover:bg-stone-800 hover:text-white transition-all">

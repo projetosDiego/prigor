@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { ToastProvider } from '@/components/shared/Toast';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +17,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" className="h-full bg-stone-50 antialiased">
       <body className="h-full flex flex-col font-sans text-stone-900 m-0">
-        {children}
+        <ToastProvider>{children}</ToastProvider>
       </body>
     </html>
   );

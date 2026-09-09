@@ -1,10 +1,14 @@
 /**
- * PDF do pedido.
+ * PDF do pedido — layout "PEDIDO DE VENDA".
  *
- * Substitui o `reportlab` do backend Python. Usa `pdf-lib`, que é JavaScript
- * puro: não precisa de binário nativo nem de navegador headless, então o
- * container de produção continua pequeno.
+ * Desenhado com pdf-lib (JS puro, sem binário nativo nem navegador headless).
+ * Segue o modelo do documento entregue ao cliente: cabeçalho com dados da
+ * empresa, blocos de cobrança/entrega, tabela de itens, totais, condições de
+ * pagamento, observações e linhas de assinatura.
  */
+import fs from 'node:fs';
+import path from 'node:path';
+
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 
 import { formatBRL } from '../domain/money';
@@ -13,10 +17,12 @@ import type { OrderDTO } from './serializers';
 const A4: [number, number] = [595.28, 841.89];
 const MARGIN = 42;
 const LINE = 14;
+const RIGHT = A4[0] - MARGIN;
 
 const INK = rgb(0.12, 0.12, 0.13);
-const MUTED = rgb(0.45, 0.45, 0.47);
-const RULE = rgb(0.85, 0.85, 0.87);
+const MUTED = rgb(0.42, 0.42, 0.45);
+const RULE = rgb(0.8, 0.8, 0.82);
+const BAR = rgb(0.9, 0.9, 0.92);
 const ACCENT = rgb(0.72, 0.45, 0.11);
 
 export interface CompanyInfo {
@@ -43,20 +49,11 @@ export const DEFAULT_COMPANY: CompanyInfo = {
   email: process.env.COMPANY_EMAIL ?? '',
 };
 
-const STATUS_LABEL: Record<string, string> = {
-  novo: 'Novo',
-  confirmado: 'Confirmado',
-  em_producao: 'Em produção',
-  entregue: 'Entregue',
-  faturado: 'Faturado',
-  cancelado: 'Cancelado',
-};
-
 const PAYMENT_LABEL: Record<string, string> = {
   dinheiro: 'Dinheiro',
   pix: 'PIX',
-  debito: 'Débito',
-  credito: 'Crédito',
+  debito: 'Cartão de Débito',
+  credito: 'Cartão de Crédito',
   boleto: 'Boleto',
   transferencia: 'Transferência',
 };
@@ -67,47 +64,62 @@ function formatDate(value: string | null): string {
   return `${day}/${month}/${year}`;
 }
 
+function onlyDigits(v: string): string {
+  return (v || '').replace(/\D/g, '');
+}
+
+function formatDoc(cnpj: string | null): string {
+  const d = onlyDigits(cnpj ?? '');
+  if (d.length === 14) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+  if (d.length === 11) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+  return cnpj ?? '';
+}
+
+function formatCep(v: string | null): string {
+  const d = onlyDigits(v ?? '');
+  return d.length === 8 ? `${d.slice(0, 5)}-${d.slice(5)}` : (v ?? '');
+}
+
+function formatPhone(v: string | null): string {
+  const d = onlyDigits(v ?? '');
+  if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+  if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return v ?? '';
+}
+
 interface Writer {
   page: PDFPage;
   y: number;
 }
 
-function text(
-  writer: Writer,
-  value: string,
-  options: { x?: number; size?: number; font: PDFFont; color?: typeof INK },
-): void {
-  writer.page.drawText(value, {
-    x: options.x ?? MARGIN,
-    y: writer.y,
-    size: options.size ?? 9,
-    font: options.font,
-    color: options.color ?? INK,
-  });
-}
-
-function rule(writer: Writer): void {
-  writer.page.drawLine({
-    start: { x: MARGIN, y: writer.y },
-    end: { x: A4[0] - MARGIN, y: writer.y },
-    thickness: 0.6,
-    color: RULE,
-  });
-}
-
-/** Trunca respeitando a largura disponível, sem cortar no meio de forma feia. */
 function fit(value: string, font: PDFFont, size: number, maxWidth: number): string {
   if (font.widthOfTextAtSize(value, size) <= maxWidth) return value;
   let out = value;
-  while (out.length > 1 && font.widthOfTextAtSize(`${out}…`, size) > maxWidth) {
-    out = out.slice(0, -1);
-  }
+  while (out.length > 1 && font.widthOfTextAtSize(`${out}…`, size) > maxWidth) out = out.slice(0, -1);
   return `${out}…`;
 }
 
-function right(page: PDFPage, value: string, rightEdge: number, y: number, font: PDFFont, size: number, color = INK): void {
-  const width = font.widthOfTextAtSize(value, size);
-  page.drawText(value, { x: rightEdge - width, y, size, font, color });
+function right(page: PDFPage, value: string, edge: number, y: number, font: PDFFont, size: number, color = INK): void {
+  page.drawText(value, { x: edge - font.widthOfTextAtSize(value, size), y, size, font, color });
+}
+
+function center(page: PDFPage, value: string, cx: number, y: number, font: PDFFont, size: number, color = INK): void {
+  page.drawText(value, { x: cx - font.widthOfTextAtSize(value, size) / 2, y, size, font, color });
+}
+
+function wrap(value: string, font: PDFFont, size: number, maxWidth: number): string[] {
+  const words = value.split(/\s+/);
+  const lines: string[] = [];
+  let current = '';
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (font.widthOfTextAtSize(candidate, size) > maxWidth && current) {
+      lines.push(current);
+      current = word;
+    } else current = candidate;
+  }
+  if (current) lines.push(current);
+  return lines;
 }
 
 export async function renderOrderPdf(
@@ -118,161 +130,244 @@ export async function renderOrderPdf(
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
 
-  let page = pdf.addPage(A4);
-  const writer: Writer = { page, y: A4[1] - MARGIN };
-  const rightEdge = A4[0] - MARGIN;
+  const page = pdf.addPage(A4);
+  const w: Writer = { page, y: A4[1] - MARGIN };
 
   pdf.setTitle(`Pedido ${order.numero} — ${company.name}`);
   pdf.setProducer(company.name);
   pdf.setCreationDate(new Date());
 
-  // Cabeçalho
-  text(writer, company.name, { font: bold, size: 18, color: ACCENT });
-  right(page, `PEDIDO #${order.numero}`, rightEdge, writer.y, bold, 14);
-  writer.y -= LINE + 2;
+  // ── Título ────────────────────────────────────────────────────────────────
+  page.drawText(`Pedido: ${order.numero}`, { x: MARGIN, y: w.y, size: 11, font: bold, color: INK });
+  w.y -= LINE + 6;
+
+  // ── Cabeçalho: logo + dados da empresa ─────────────────────────────────────
+  const headerTop = w.y;
+  try {
+    const logoBytes = fs.readFileSync(path.join(process.cwd(), 'logo.png'));
+    const logo = await pdf.embedPng(logoBytes);
+    const logoW = 78;
+    const logoH = (logo.height / logo.width) * logoW;
+    page.drawImage(logo, { x: MARGIN, y: headerTop - logoH + 6, width: logoW, height: logoH });
+  } catch {
+    // Sem logo: segue sem imagem.
+  }
 
   const companyLines = [
     company.legalName,
-    company.cnpj ? `CNPJ ${company.cnpj}` : '',
-    [company.address, company.city && `${company.city}/${company.state}`, company.zipCode]
+    company.cnpj ? `CNPJ: ${formatDoc(company.cnpj)}` : '',
+    company.address,
+    [company.zipCode ? formatCep(company.zipCode) : '', company.city && `${company.city} - ${company.state}`]
       .filter(Boolean)
-      .join(' · '),
-    [company.phone, company.email].filter(Boolean).join(' · '),
+      .join(' - '),
+    company.phone ? formatPhone(company.phone) : '',
   ].filter(Boolean);
 
+  let cy = headerTop;
   for (const line of companyLines) {
-    text(writer, line, { font: regular, size: 8, color: MUTED });
-    writer.y -= LINE - 3;
+    right(page, line, RIGHT, cy, regular, 8, MUTED);
+    cy -= LINE - 3;
   }
 
-  writer.y -= 4;
-  right(page, `Emissão: ${formatDate(order.orderDate)}`, rightEdge, writer.y + 10, regular, 8, MUTED);
-  rule(writer);
-  writer.y -= LINE + 4;
+  w.y = Math.min(headerTop - 70, cy) - 6;
 
-  // Cliente e condições
-  text(writer, 'CLIENTE', { font: bold, size: 8, color: MUTED });
-  text(writer, 'CONDIÇÕES', { font: bold, size: 8, color: MUTED, x: 330 });
-  writer.y -= LINE;
+  // ── Helpers de seção ────────────────────────────────────────────────────────
+  const sectionTitle = (title: string): void => {
+    page.drawRectangle({ x: MARGIN, y: w.y - 2, width: RIGHT - MARGIN, height: 13, color: BAR });
+    page.drawRectangle({ x: MARGIN, y: w.y - 2, width: 3, height: 13, color: ACCENT });
+    page.drawText(title, { x: MARGIN + 8, y: w.y + 1, size: 8.5, font: bold, color: INK });
+    w.y -= LINE + 6;
+  };
+  const pair = (label: string, value: string, x: number, valueColor = INK): number => {
+    page.drawText(label, { x, y: w.y, size: 8, font: regular, color: MUTED });
+    const lw = regular.widthOfTextAtSize(label, 8);
+    page.drawText(value || '—', { x: x + lw + 4, y: w.y, size: 9, font: bold, color: valueColor });
+    return x + lw + 4 + bold.widthOfTextAtSize(value || '—', 9);
+  };
 
-  text(writer, fit(order.customerName ?? '—', bold, 11, 270), { font: bold, size: 11 });
-  text(writer, `Status: ${STATUS_LABEL[order.status] ?? order.status}`, {
-    font: regular,
-    size: 9,
-    x: 330,
-  });
-  writer.y -= LINE - 2;
-
-  const address = order.deliveryAddress;
-  const addressLine = address
-    ? [address.address, address.number, address.neighborhood, address.city]
-        .filter(Boolean)
-        .join(', ')
-    : '';
-
-  if (addressLine) {
-    text(writer, fit(addressLine, regular, 9, 270), { font: regular, size: 9, color: MUTED });
+  // ── PEDIDO DE VENDA ─────────────────────────────────────────────────────────
+  sectionTitle('PEDIDO DE VENDA');
+  pair('Pedido:', String(order.numero), MARGIN);
+  pair('Vendedor:', order.sellerName ?? 'Administrador', MARGIN + 150);
+  w.y -= LINE;
+  const cliente = order.customerLegalName && order.customerLegalName !== order.customerName
+    ? `${order.customerName} (${order.customerLegalName})`
+    : (order.customerName ?? '—');
+  pair('Cliente:', fit(cliente, bold, 9, 420), MARGIN);
+  w.y -= LINE;
+  if (order.customerCnpj) {
+    pair('CNPJ:', formatDoc(order.customerCnpj), MARGIN);
+    w.y -= LINE;
   }
-  text(writer, `Pagamento: ${PAYMENT_LABEL[order.paymentMethod] ?? order.paymentMethod}`, {
-    font: regular,
-    size: 9,
-    x: 330,
-  });
-  writer.y -= LINE - 2;
+  pair('Data de criação:', formatDate(order.orderDate), MARGIN);
+  pair('Data de entrega:', formatDate(order.deliveryDate), MARGIN + 210);
+  w.y -= LINE + 8;
 
-  if (address?.phone) {
-    text(writer, `Telefone: ${address.phone}`, { font: regular, size: 9, color: MUTED });
-  }
-  text(writer, `Entrega: ${formatDate(order.deliveryDate)}`, { font: regular, size: 9, x: 330 });
-  writer.y -= LINE - 2;
+  // ── Endereços ────────────────────────────────────────────────────────────────
+  const bill = order.billingAddress ?? order.deliveryAddress;
+  const ship = order.deliveryAddress;
+  const drawAddress = (titulo: string, a: typeof order.deliveryAddress): void => {
+    sectionTitle(titulo);
+    pair('Endereço:', a?.address ?? '—', MARGIN);
+    pair('Número:', a?.number ?? '—', MARGIN + 300);
+    w.y -= LINE;
+    pair('Bairro:', a?.neighborhood ?? '—', MARGIN);
+    pair('CEP:', a ? formatCep(a.zipCode) : '—', MARGIN + 170);
+    pair('Cidade:', a?.city ?? '—', MARGIN + 300);
+    pair('Estado:', a?.state ?? '—', MARGIN + 430);
+    w.y -= LINE + 8;
+  };
+  drawAddress('ENDEREÇO DE COBRANÇA', bill);
+  drawAddress('ENDEREÇO DE ENTREGA', ship);
 
-  text(writer, `Vencimento: ${formatDate(order.dueDate)}`, { font: regular, size: 9, x: 330 });
-  writer.y -= LINE + 6;
+  // ── ITENS DO PEDIDO ──────────────────────────────────────────────────────────
+  sectionTitle('ITENS DO PEDIDO');
+  const C_REF = MARGIN + 6;
+  const C_DESC = MARGIN + 82;
+  const C_UNID = 330;
+  const C_QTD = 400;
+  const C_UNIT = 460;
+  const C_DESC_V = 505;
+  const C_TOTAL = RIGHT - 6;
+  const TBL_X = MARGIN;
+  const TBL_W = RIGHT - MARGIN;
+  const HEAD_H = 17;
+  const ROW_H = 17;
+  const HEAD_BG = rgb(0.16, 0.17, 0.20);
+  const HEAD_FG = rgb(1, 1, 1);
+  const ZEBRA = rgb(0.965, 0.965, 0.975);
+  const SUM_BG = rgb(0.98, 0.95, 0.88);
 
-  // Tabela de itens
-  const COL_QTY = 330;
-  const COL_UNIT = 400;
-  const COL_DISC = 470;
-  const COL_TOTAL = rightEdge;
+  // Faixa de cabeçalho da tabela
+  const drawItemsHeader = (): void => {
+    w.page.drawRectangle({ x: TBL_X, y: w.y - 5, width: TBL_W, height: HEAD_H, color: HEAD_BG });
+    const hy = w.y;
+    w.page.drawText('REFERÊNCIA', { x: C_REF, y: hy, size: 7, font: bold, color: HEAD_FG });
+    w.page.drawText('DESCRIÇÃO', { x: C_DESC, y: hy, size: 7, font: bold, color: HEAD_FG });
+    center(w.page, 'UNID.', C_UNID, hy, bold, 7, HEAD_FG);
+    right(w.page, 'QTD.', C_QTD, hy, bold, 7, HEAD_FG);
+    right(w.page, 'UNITÁRIO', C_UNIT, hy, bold, 7, HEAD_FG);
+    right(w.page, 'DESCONTO', C_DESC_V, hy, bold, 7, HEAD_FG);
+    right(w.page, 'TOTAL', C_TOTAL, hy, bold, 7, HEAD_FG);
+    w.y -= HEAD_H;
+  };
+  drawItemsHeader();
 
-  rule(writer);
-  writer.y -= LINE;
-  text(writer, 'ITEM', { font: bold, size: 8, color: MUTED });
-  right(page, 'QTD', COL_QTY, writer.y, bold, 8, MUTED);
-  right(page, 'UNIT.', COL_UNIT, writer.y, bold, 8, MUTED);
-  right(page, 'DESC.', COL_DISC, writer.y, bold, 8, MUTED);
-  right(page, 'TOTAL', COL_TOTAL, writer.y, bold, 8, MUTED);
-  writer.y -= 6;
-  rule(writer);
-  writer.y -= LINE;
-
+  // Linhas dos itens (zebra)
+  let totalQty = 0;
+  let rowIndex = 0;
   for (const item of order.items) {
-    if (writer.y < 150) {
-      page = pdf.addPage(A4);
-      writer.page = page;
-      writer.y = A4[1] - MARGIN;
+    if (w.y < 210) {
+      const np = pdf.addPage(A4);
+      w.page = np;
+      w.y = A4[1] - MARGIN;
+      drawItemsHeader();
     }
-
-    text(writer, fit(item.productName ?? '—', regular, 9, 260), { font: regular, size: 9 });
-    right(page, item.quantity.toLocaleString('pt-BR'), COL_QTY, writer.y, regular, 9);
-    right(page, formatBRL(item.unitPrice), COL_UNIT, writer.y, regular, 9);
-    right(page, item.discountItem ? formatBRL(item.discountItem) : '—', COL_DISC, writer.y, regular, 9);
-    right(page, formatBRL(item.subtotal), COL_TOTAL, writer.y, bold, 9);
-    writer.y -= LINE;
+    if (rowIndex % 2 === 1) {
+      w.page.drawRectangle({ x: TBL_X, y: w.y - 5, width: TBL_W, height: ROW_H, color: ZEBRA });
+    }
+    const ty = w.y;
+    totalQty += item.quantity;
+    w.page.drawText(fit(item.reference ?? '—', regular, 8, 68), { x: C_REF, y: ty, size: 8, font: regular, color: MUTED });
+    w.page.drawText(fit(item.productName ?? '—', bold, 8.5, C_UNID - C_DESC - 55), { x: C_DESC, y: ty, size: 8.5, font: bold, color: INK });
+    center(w.page, item.unit ?? 'UN', C_UNID, ty, regular, 8, INK);
+    right(w.page, item.quantity.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 3 }), C_QTD, ty, regular, 8, INK);
+    right(w.page, formatBRL(item.unitPrice), C_UNIT, ty, regular, 8, INK);
+    right(w.page, item.discountItem ? `- ${formatBRL(item.discountItem)}` : '—', C_DESC_V, ty, regular, 8, item.discountItem ? INK : MUTED);
+    right(w.page, formatBRL(item.subtotal), C_TOTAL, ty, bold, 8.5, INK);
+    w.y -= ROW_H;
+    rowIndex += 1;
   }
 
-  writer.y -= 2;
-  rule(writer);
-  writer.y -= LINE + 2;
+  // Régua de fechamento da tabela
+  page.drawLine({ start: { x: TBL_X, y: w.y + 1 }, end: { x: RIGHT, y: w.y + 1 }, thickness: 0.8, color: RULE });
+  w.y -= LINE + 4;
 
-  // Totais
-  const totals: Array<[string, string, boolean]> = [
-    ['Subtotal', formatBRL(order.subtotal), false],
-    ...(order.discount ? ([['Desconto', `- ${formatBRL(order.discount)}`, false]] as Array<[string, string, boolean]>) : []),
-    ...(order.shipping ? ([['Frete', formatBRL(order.shipping)]] as unknown as Array<[string, string, boolean]>) : []),
-    ...(order.otherCosts ? ([['Outros custos', formatBRL(order.otherCosts)]] as unknown as Array<[string, string, boolean]>) : []),
-    ['TOTAL', formatBRL(order.total), true],
-  ];
+  // Resumo dos itens: quantidade à esquerda, total destacado em caixa à direita
+  const SUM_W = 236;
+  const SUM_H = 22;
+  const sumX = RIGHT - SUM_W;
+  const sumY = w.y - 7;
+  const sumTextY = sumY + 7;
+  page.drawText('Quantidade de itens:', { x: MARGIN, y: sumTextY, size: 8, font: regular, color: MUTED });
+  page.drawText(totalQty.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 3 }), {
+    x: MARGIN + regular.widthOfTextAtSize('Quantidade de itens:', 8) + 5, y: sumTextY, size: 9, font: bold, color: INK,
+  });
+  page.drawRectangle({ x: sumX, y: sumY, width: SUM_W, height: SUM_H, color: SUM_BG, borderColor: ACCENT, borderWidth: 0.8 });
+  page.drawText('Valor total dos itens', { x: sumX + 12, y: sumTextY, size: 8, font: bold, color: MUTED });
+  right(page, formatBRL(order.subtotal), sumX + SUM_W - 12, sumTextY, bold, 11, ACCENT);
+  w.y -= SUM_H + 10;
 
-  for (const [label, value, strong] of totals) {
-    const font = strong ? bold : regular;
-    const size = strong ? 12 : 9;
-    right(page, label, COL_DISC, writer.y, font, size, strong ? INK : MUTED);
-    right(page, value, COL_TOTAL, writer.y, font, size, strong ? ACCENT : INK);
-    writer.y -= strong ? LINE + 4 : LINE;
-  }
+  // ── VALOR TOTAL DE PEDIDO ────────────────────────────────────────────────────
+  sectionTitle('VALOR TOTAL DE PEDIDO');
+  page.drawText('Total dos Itens', { x: MARGIN, y: w.y, size: 7.5, font: bold, color: MUTED });
+  page.drawText('Desconto', { x: MARGIN + 140, y: w.y, size: 7.5, font: bold, color: MUTED });
+  page.drawText('Frete', { x: MARGIN + 280, y: w.y, size: 7.5, font: bold, color: MUTED });
+  page.drawText('Outros custos', { x: MARGIN + 400, y: w.y, size: 7.5, font: bold, color: MUTED });
+  w.y -= LINE;
+  page.drawText(formatBRL(order.subtotal), { x: MARGIN, y: w.y, size: 9, font: regular, color: INK });
+  page.drawText(order.discount ? `- ${formatBRL(order.discount)}` : 'R$ 0,00', { x: MARGIN + 140, y: w.y, size: 9, font: regular, color: INK });
+  page.drawText(order.shipping ? formatBRL(order.shipping) : 'R$ 0,00', { x: MARGIN + 280, y: w.y, size: 9, font: regular, color: INK });
+  page.drawText(order.otherCosts ? formatBRL(order.otherCosts) : 'R$ 0,00', { x: MARGIN + 400, y: w.y, size: 9, font: regular, color: INK });
+  w.y -= LINE + 14;
+  page.drawRectangle({ x: MARGIN, y: w.y - 13, width: RIGHT - MARGIN, height: 30, color: rgb(0.98, 0.93, 0.83) });
+  page.drawRectangle({ x: MARGIN, y: w.y - 13, width: 4, height: 30, color: ACCENT });
+  page.drawText('VALOR TOTAL DO PEDIDO', { x: MARGIN + 16, y: w.y, size: 11, font: bold, color: INK });
+  right(page, formatBRL(order.total), RIGHT - 16, w.y - 3, bold, 18, ACCENT);
+  w.y -= 34;
 
+  // ── FORMA / CONDIÇÕES DE PAGAMENTO ────────────────────────────────────────────
+  sectionTitle('FORMA / CONDIÇÕES DE PAGAMENTO');
+  const P_DESC = MARGIN;
+  const P_VENC = MARGIN + 150;
+  const P_PGTO = MARGIN + 250;
+  const P_VAL = MARGIN + 350;
+  const P_SALDO = MARGIN + 430;
+  page.drawText('Descrição', { x: P_DESC, y: w.y, size: 7.5, font: bold, color: MUTED });
+  page.drawText('Vencimento', { x: P_VENC, y: w.y, size: 7.5, font: bold, color: MUTED });
+  page.drawText('Pagamento', { x: P_PGTO, y: w.y, size: 7.5, font: bold, color: MUTED });
+  page.drawText('Valor', { x: P_VAL, y: w.y, size: 7.5, font: bold, color: MUTED });
+  page.drawText('Saldo', { x: P_SALDO, y: w.y, size: 7.5, font: bold, color: MUTED });
+  w.y -= 4;
+  page.drawLine({ start: { x: MARGIN, y: w.y }, end: { x: RIGHT, y: w.y }, thickness: 0.6, color: RULE });
+  w.y -= LINE;
+  const pago = order.paymentStatus === 'pago';
+  page.drawText(PAYMENT_LABEL[order.paymentMethod] ?? order.paymentMethod, { x: P_DESC, y: w.y, size: 8, font: regular, color: INK });
+  page.drawText(formatDate(order.dueDate), { x: P_VENC, y: w.y, size: 8, font: regular, color: INK });
+  page.drawText(pago ? 'Pago' : 'Em aberto', { x: P_PGTO, y: w.y, size: 8, font: regular, color: INK });
+  page.drawText(formatBRL(order.total), { x: P_VAL, y: w.y, size: 8, font: regular, color: INK });
+  page.drawText(pago ? formatBRL(0) : formatBRL(order.total), { x: P_SALDO, y: w.y, size: 8, font: regular, color: INK });
+  w.y -= LINE + 10;
+
+  // ── OBSERVAÇÕES ───────────────────────────────────────────────────────────────
+  sectionTitle('OBSERVAÇÕES');
   if (order.notes) {
-    writer.y -= 6;
-    text(writer, 'OBSERVAÇÕES', { font: bold, size: 8, color: MUTED });
-    writer.y -= LINE;
-    for (const line of wrap(order.notes, regular, 9, rightEdge - MARGIN)) {
-      text(writer, line, { font: regular, size: 9 });
-      writer.y -= LINE - 2;
+    for (const line of wrap(order.notes, regular, 9, RIGHT - MARGIN)) {
+      if (w.y < 150) {
+        const np = pdf.addPage(A4);
+        w.page = np;
+        w.y = A4[1] - MARGIN;
+      }
+      w.page.drawText(line, { x: MARGIN, y: w.y, size: 9, font: regular, color: INK });
+      w.y -= LINE - 2;
     }
+  } else {
+    w.y -= LINE * 2;
   }
+
+  // ── Assinaturas ───────────────────────────────────────────────────────────────
+  const signY = Math.max(w.y - 30, 90);
+  const half = (RIGHT - MARGIN) / 2;
+  w.page.drawLine({ start: { x: MARGIN + 20, y: signY }, end: { x: MARGIN + half - 20, y: signY }, thickness: 0.6, color: INK });
+  w.page.drawLine({ start: { x: MARGIN + half + 20, y: signY }, end: { x: RIGHT - 20, y: signY }, thickness: 0.6, color: INK });
+  center(w.page, 'Assinatura do Comprador', MARGIN + half / 2, signY - 12, regular, 8, MUTED);
+  center(w.page, 'Assinatura do Recebedor', MARGIN + half + half / 2, signY - 12, regular, 8, MUTED);
 
   // Rodapé
-  const footer = `Documento gerado em ${new Date().toLocaleString('pt-BR')} · não possui valor fiscal`;
-  page.drawText(footer, { x: MARGIN, y: 30, size: 7, font: regular, color: MUTED });
+  w.page.drawText(
+    `Documento gerado em ${new Date().toLocaleString('pt-BR')} · não possui valor fiscal`,
+    { x: MARGIN, y: 30, size: 7, font: regular, color: MUTED },
+  );
 
   return pdf.save();
-}
-
-function wrap(value: string, font: PDFFont, size: number, maxWidth: number): string[] {
-  const words = value.split(/\s+/);
-  const lines: string[] = [];
-  let current = '';
-
-  for (const word of words) {
-    const candidate = current ? `${current} ${word}` : word;
-    if (font.widthOfTextAtSize(candidate, size) > maxWidth && current) {
-      lines.push(current);
-      current = word;
-    } else {
-      current = candidate;
-    }
-  }
-  if (current) lines.push(current);
-  return lines.slice(0, 8);
 }

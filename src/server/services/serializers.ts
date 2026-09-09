@@ -172,6 +172,8 @@ export interface OrderItemDTO {
   id: string;
   productId: string;
   productName: string | null;
+  reference?: string | null;
+  unit?: string | null;
   quantity: number;
   unitPrice: number;
   discountItem: number;
@@ -183,10 +185,13 @@ export interface OrderDTO {
   numero: number;
   customerId: string;
   customerName: string | null;
+  customerCnpj: string | null;
+  customerLegalName: string | null;
+  deliveryAddressId: string | null;
   sellerId: string | null;
   sellerName: string | null;
   status: OrderStatus;
-  paymentMethod: PaymentMethod;
+  paymentMethod: string;
   orderDate: string | null;
   deliveryDate: string | null;
   billingDate: string | null;
@@ -197,6 +202,9 @@ export interface OrderDTO {
   subtotal: number;
   total: number;
   commissionVal: number;
+  commissionPct: number | null;
+  paymentStatus: 'pago' | 'pendente' | 'atrasado' | 'sem_conta';
+  receivableId: string | null;
   notes: string | null;
   createdAt: string | null;
   updatedAt: string | null;
@@ -210,6 +218,20 @@ export interface OrderDTO {
     city: string | null;
     latitude: number | null;
     longitude: number | null;
+    state: string | null;
+    zipCode: string | null;
+    phone: string | null;
+  };
+  billingAddress?: {
+    address: string | null;
+    number: string | null;
+    complement: string | null;
+    neighborhood: string | null;
+    city: string | null;
+    state: string | null;
+    zipCode: string | null;
+    latitude: number | null;
+    longitude: number | null;
     phone: string | null;
   };
 }
@@ -219,8 +241,9 @@ export interface OrderRow {
   numero: number;
   customerId: string;
   sellerId: string | null;
+  deliveryAddressId: string | null;
   status: OrderStatus;
-  paymentMethod: PaymentMethod;
+  paymentMethod: string;
   orderDate: Date | string;
   deliveryDate: Date | string | null;
   billingDate: Date | string | null;
@@ -231,11 +254,17 @@ export interface OrderRow {
   subtotal: NumericInput;
   total: NumericInput;
   commissionVal: NumericInput;
+  commissionPct: NumericInput | null;
   notes: string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
   customer?: {
     tradeName: string;
+    cnpj: string | null;
+    cpf: string | null;
+    legalName: string | null;
+    state: string | null;
+    zipCode: string | null;
     address: string | null;
     number: string | null;
     complement: string | null;
@@ -247,6 +276,8 @@ export interface OrderRow {
     mobile: string | null;
   } | null;
   seller?: { name: string } | null;
+  transactions?: Array<{ id: string; status: string }>;
+  deliveryAddress?: { label: string | null; address: string | null; number: string | null; complement: string | null; neighborhood: string | null; city: string | null; state: string | null; zipCode: string | null } | null;
   items?: Array<{
     id: string;
     productId: string;
@@ -254,8 +285,18 @@ export interface OrderRow {
     unitPrice: NumericInput;
     discountItem: NumericInput;
     subtotal: NumericInput;
-    product?: { name: string } | null;
+    product?: { name: string; barCode: string | null; internalCode: string | null; sku: string | null; unit: string } | null;
   }>;
+}
+
+function computePaymentStatus(
+  txs: Array<{ id: string; status: string }> | undefined,
+): 'pago' | 'pendente' | 'atrasado' | 'sem_conta' {
+  const rec = (txs ?? [])[0];
+  if (!rec) return 'sem_conta';
+  if (rec.status === 'pago') return 'pago';
+  if (rec.status === 'atrasado') return 'atrasado';
+  return 'pendente';
 }
 
 export function toOrderDTO(row: OrderRow, options: { withAddress?: boolean } = {}): OrderDTO {
@@ -264,6 +305,9 @@ export function toOrderDTO(row: OrderRow, options: { withAddress?: boolean } = {
     numero: row.numero,
     customerId: row.customerId,
     customerName: row.customer?.tradeName ?? null,
+    customerCnpj: row.customer?.cnpj ?? null,
+    customerLegalName: row.customer?.legalName ?? null,
+    deliveryAddressId: row.deliveryAddressId ?? null,
     sellerId: row.sellerId,
     sellerName: row.seller?.name ?? null,
     status: row.status,
@@ -278,6 +322,9 @@ export function toOrderDTO(row: OrderRow, options: { withAddress?: boolean } = {
     subtotal: num(row.subtotal),
     total: num(row.total),
     commissionVal: num(row.commissionVal),
+    commissionPct: row.commissionPct === null || row.commissionPct === undefined ? null : num(row.commissionPct),
+    paymentStatus: computePaymentStatus(row.transactions),
+    receivableId: (row.transactions ?? [])[0]?.id ?? null,
     notes: row.notes,
     createdAt: timestamp(row.createdAt),
     updatedAt: timestamp(row.updatedAt),
@@ -285,6 +332,8 @@ export function toOrderDTO(row: OrderRow, options: { withAddress?: boolean } = {
       id: item.id,
       productId: item.productId,
       productName: item.product?.name ?? null,
+      reference: item.product?.barCode ?? item.product?.internalCode ?? item.product?.sku ?? null,
+      unit: item.product?.unit ?? null,
       quantity: num(item.quantity),
       unitPrice: num(item.unitPrice),
       discountItem: num(item.discountItem),
@@ -293,16 +342,34 @@ export function toOrderDTO(row: OrderRow, options: { withAddress?: boolean } = {
   };
 
   if (options.withAddress && row.customer) {
-    dto.deliveryAddress = {
+    const main = {
       address: row.customer.address,
       number: row.customer.number,
       complement: row.customer.complement,
       neighborhood: row.customer.neighborhood,
       city: row.customer.city,
+      state: row.customer.state,
+      zipCode: row.customer.zipCode,
       latitude: row.customer.latitude,
       longitude: row.customer.longitude,
       phone: row.customer.mobile ?? row.customer.phone,
     };
+    dto.billingAddress = main;
+    const da = row.deliveryAddress;
+    dto.deliveryAddress = da
+      ? {
+          address: da.address,
+          number: da.number,
+          complement: da.complement,
+          neighborhood: da.neighborhood,
+          city: da.city,
+          state: da.state,
+          zipCode: da.zipCode,
+          latitude: null,
+          longitude: null,
+          phone: main.phone,
+        }
+      : main;
   }
 
   return dto;
@@ -335,10 +402,12 @@ export interface CustomerDTO {
   notes: string | null;
   isReseller: boolean;
   active: boolean;
+  creditLimit: number;
   createdAt: string | null;
 }
 
-export interface CustomerRow extends Omit<CustomerDTO, 'sellerName' | 'createdAt'> {
+export interface CustomerRow extends Omit<CustomerDTO, 'sellerName' | 'createdAt' | 'creditLimit'> {
+  creditLimit: NumericInput;
   createdAt: Date | string;
   seller?: { name: string } | null;
 }
@@ -371,6 +440,7 @@ export function toCustomerDTO(row: CustomerRow): CustomerDTO {
     notes: row.notes,
     isReseller: row.isReseller,
     active: row.active,
+    creditLimit: num(row.creditLimit),
     createdAt: timestamp(row.createdAt),
   };
 }

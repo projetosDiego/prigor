@@ -12,10 +12,13 @@ import {
   Coffee,
   CheckCircle2,
   Plus,
+  Trash2,
+  Edit2,
   X
 } from 'lucide-react';
 
 import { errorMessage, apiErrorMessage } from '@/lib/errors';
+import { useToast } from '@/components/shared/Toast';
 import type { CustomerDTO, Paginated, SellerDTO } from '@/lib/api-types';
 
 interface ImportPreviewRow {
@@ -100,7 +103,9 @@ const formatPhone = (value: string) => {
 };
 
 export default function AdminCustomersPage() {
+  const { toast, confirm } = useToast();
   const [activeTab, setActiveTab] = useState<'list' | 'import'>('list');
+  const [buscaCliente, setBuscaCliente] = useState('');
   const [customers, setCustomers] = useState<CustomerDTO[]>([]);
   const [sellers, setSellers] = useState<SellerDTO[]>([]);
   const [loading, setLoading] = useState(true);
@@ -127,9 +132,22 @@ export default function AdminCustomersPage() {
   const [formCategory, setFormCategory] = useState('padarias');
   const [formSellerId, setFormSellerId] = useState('');
   const [formIsRevendedor, setFormIsRevendedor] = useState(true);
+  const [formCreditLimit, setFormCreditLimit] = useState('0');
+  const [editCustomerId, setEditCustomerId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [cnpjLoading, setCnpjLoading] = useState(false);
   const [cepLoading, setCepLoading] = useState(false);
+  const [addrCustomer, setAddrCustomer] = useState<CustomerDTO | null>(null);
+  const [addrList, setAddrList] = useState<Array<{ id: string; label: string | null; address: string | null; number: string | null; neighborhood: string | null; city: string | null; state: string | null; zipCode: string | null; isDefault: boolean }>>([]);
+  const [addrLoading, setAddrLoading] = useState(false);
+  const [naLabel, setNaLabel] = useState('');
+  const [naAddress, setNaAddress] = useState('');
+  const [naNumber, setNaNumber] = useState('');
+  const [naNeighborhood, setNaNeighborhood] = useState('');
+  const [naCity, setNaCity] = useState('');
+  const [naState, setNaState] = useState('RJ');
+  const [naZip, setNaZip] = useState('');
+  const [naSaving, setNaSaving] = useState(false);
 
   const loadSellers = useCallback(async () => {
     try {
@@ -166,7 +184,7 @@ export default function AdminCustomersPage() {
 
   const handleGeneratePreview = async () => {
     if (!rawJsonData.trim()) {
-      alert('Por favor, insira os dados em formato de lista (Array JSON) para preview.');
+      toast('Insira os dados em formato de lista (Array JSON) para preview.', 'error');
       return;
     }
 
@@ -199,7 +217,7 @@ export default function AdminCustomersPage() {
       setPreviewSummary(json.summary ?? null);
       setPreviewRows(json.preview || []);
     } catch (err: unknown) {
-      alert(errorMessage(err));
+      toast(errorMessage(err), 'error');
     } finally {
       setPreviewLoading(false);
     }
@@ -233,10 +251,10 @@ export default function AdminCustomersPage() {
 
       // Recarregar clientes
       await loadCustomers();
-      alert(`Importação concluída! ${json.summary?.imported} clientes novos foram importados com sucesso.`);
+      toast(`Importação concluída! ${json.summary?.imported} clientes novos importados.`, 'success');
       setActiveTab('list');
     } catch (err: unknown) {
-      alert(errorMessage(err));
+      toast(errorMessage(err), 'error');
     } finally {
       setImportLoading(false);
     }
@@ -245,7 +263,7 @@ export default function AdminCustomersPage() {
   const handleQueryCNPJ = async () => {
     const cleanCnpj = formCnpj.replace(/\D/g, '');
     if (cleanCnpj.length !== 14) {
-      alert('Digite um CNPJ válido com 14 dígitos para buscar.');
+      toast('Digite um CNPJ válido com 14 dígitos para buscar.', 'error');
       return;
     }
 
@@ -263,9 +281,9 @@ export default function AdminCustomersPage() {
       setFormComplement(data.complemento || '');
       setFormNeighborhood(data.bairro || '');
       setFormZipCode(data.cep || '');
-      alert('Dados cadastrais preenchidos a partir da Receita Federal!');
+      toast('Dados preenchidos a partir da Receita Federal!', 'success');
     } catch (err: unknown) {
-      alert('Erro ao buscar CNPJ: ' + errorMessage(err));
+      toast('Erro ao buscar CNPJ: ' + errorMessage(err), 'error');
     } finally {
       setCnpjLoading(false);
     }
@@ -274,7 +292,7 @@ export default function AdminCustomersPage() {
   const handleQueryCEP = async () => {
     const cleanCep = formZipCode.replace(/\D/g, '');
     if (cleanCep.length !== 8) {
-      alert('Digite um CEP válido com 8 dígitos para buscar.');
+      toast('Digite um CEP válido com 8 dígitos para buscar.', 'error');
       return;
     }
 
@@ -286,23 +304,115 @@ export default function AdminCustomersPage() {
 
       setFormAddress(data.street || '');
       setFormNeighborhood(data.neighborhood || '');
-      alert('Endereço do CEP carregado!');
+      toast('Endereço do CEP carregado!', 'success');
     } catch (err: unknown) {
-      alert('Erro ao consultar CEP: ' + errorMessage(err));
+      toast('Erro ao consultar CEP: ' + errorMessage(err), 'error');
     } finally {
       setCepLoading(false);
     }
   };
 
+  const reloadAddresses = async (customerId: string) => {
+    const res = await fetch(`/api/customers/${customerId}/addresses`);
+    const d = await res.json();
+    if (res.ok) setAddrList(d.data ?? []);
+  };
+  const openAddresses = async (cust: CustomerDTO) => {
+    setAddrCustomer(cust);
+    setAddrList([]);
+    setAddrLoading(true);
+    try {
+      await reloadAddresses(cust.id);
+    } catch {
+      /* ignora */
+    } finally {
+      setAddrLoading(false);
+    }
+  };
+  const addAddress = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addrCustomer) return;
+    setNaSaving(true);
+    try {
+      const res = await fetch(`/api/customers/${addrCustomer.id}/addresses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: naLabel, address: naAddress, number: naNumber, neighborhood: naNeighborhood, city: naCity, state: naState, zipCode: naZip }),
+      });
+      const j: unknown = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(j, 'Erro ao adicionar endereço.'));
+      setNaLabel(''); setNaAddress(''); setNaNumber(''); setNaNeighborhood(''); setNaCity(''); setNaZip('');
+      await reloadAddresses(addrCustomer.id);
+    } catch (err: unknown) {
+      toast(errorMessage(err), 'error');
+    } finally {
+      setNaSaving(false);
+    }
+  };
+  const removeAddress = async (id: string) => {
+    if (!addrCustomer) return;
+    const okc = await confirm({ title: 'Remover endereço', message: 'Remover este endereço de entrega?', confirmLabel: 'Remover', danger: true });
+    if (!okc) return;
+    try {
+      const res = await fetch(`/api/customer-addresses/${id}`, { method: 'DELETE' });
+      const j: unknown = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(j, 'Erro ao remover.'));
+      await reloadAddresses(addrCustomer.id);
+    } catch (err: unknown) {
+      toast(errorMessage(err), 'error');
+    }
+  };
+
+  const resetCustomerForm = () => {
+    setFormTradeName('');
+    setFormLegalName('');
+    setFormCnpj('');
+    setFormPhone('');
+    setFormAddress('');
+    setFormNumber('');
+    setFormComplement('');
+    setFormNeighborhood('');
+    setFormZipCode('');
+    setFormCategory('padarias');
+    setFormSellerId('');
+    setFormIsRevendedor(true);
+    setFormCreditLimit('0');
+  };
+
+  const openCreateCustomer = () => {
+    resetCustomerForm();
+    setEditCustomerId(null);
+    setIsCreateModalOpen(true);
+  };
+
+  const openEditCustomer = (cust: CustomerDTO) => {
+    setFormTradeName(cust.tradeName ?? '');
+    setFormLegalName(cust.legalName ?? '');
+    setFormCnpj(cust.cnpj ?? '');
+    setFormPhone(formatPhone(cust.phone ?? ''));
+    setFormAddress(cust.address ?? '');
+    setFormNumber(cust.number ?? '');
+    setFormComplement(cust.complement ?? '');
+    setFormNeighborhood(cust.neighborhood ?? '');
+    setFormZipCode(cust.zipCode ?? '');
+    setFormCategory(cust.category ?? 'padarias');
+    setFormSellerId(cust.sellerId ?? '');
+    setFormIsRevendedor(cust.isReseller);
+    setFormCreditLimit(String(cust.creditLimit ?? 0));
+    setEditCustomerId(cust.id);
+    setIsCreateModalOpen(true);
+  };
+
   const handleSaveCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formTradeName || !formAddress || !formNeighborhood) {
-      alert('Por favor, preencha todos os campos obrigatórios (*).');
+      toast('Preencha todos os campos obrigatórios (*).', 'error');
       return;
     }
 
     setSaving(true);
-    const payload = {
+    const isEdit = Boolean(editCustomerId);
+    const payload: Record<string, unknown> = {
       tradeName: formTradeName,
       legalName: formLegalName || formTradeName,
       cnpj: formCnpj.replace(/\D/g, '') || undefined,
@@ -314,17 +424,21 @@ export default function AdminCustomersPage() {
       city: 'Rio de Janeiro',
       state: 'RJ',
       zipCode: formZipCode.replace(/\D/g, '') || undefined,
-      latitude: -22.9068, // Fábrica default
-      longitude: -43.1729,
       category: formCategory,
       sellerId: formSellerId || undefined,
       isReseller: formIsRevendedor,
-      status: 'ATIVO'
+      creditLimit: formCreditLimit || '0',
     };
+    // Na criação fixa coordenadas padrão e status; na edição não sobrescreve o pin.
+    if (!isEdit) {
+      payload.latitude = -22.9068;
+      payload.longitude = -43.1729;
+      payload.status = 'ATIVO';
+    }
 
     try {
-      const res = await fetch('/api/customers', {
-        method: 'POST',
+      const res = await fetch(isEdit ? `/api/customers/${editCustomerId}` : '/api/customers', {
+        method: isEdit ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
@@ -332,10 +446,10 @@ export default function AdminCustomersPage() {
       const data: unknown = await res.json();
 
       if (!res.ok) {
-        throw new Error(apiErrorMessage(data, 'Erro ao cadastrar cliente.'));
+        throw new Error(apiErrorMessage(data, isEdit ? 'Erro ao atualizar cliente.' : 'Erro ao cadastrar cliente.'));
       }
 
-      alert('🎉 Ponto de revenda cadastrado com sucesso!');
+      toast(isEdit ? 'Cliente atualizado com sucesso!' : 'Ponto de revenda cadastrado com sucesso!', 'success');
       
       // Limpa formulário e fecha modal
       setFormTradeName('');
@@ -348,12 +462,14 @@ export default function AdminCustomersPage() {
       setFormNeighborhood('');
       setFormZipCode('');
       setFormSellerId('');
+      setFormCreditLimit('0');
+      setEditCustomerId(null);
       setIsCreateModalOpen(false);
 
       // Recarrega lista
       await loadCustomers();
     } catch (err: unknown) {
-      alert(errorMessage(err));
+      toast(errorMessage(err), 'error');
     } finally {
       setSaving(false);
     }
@@ -378,6 +494,16 @@ export default function AdminCustomersPage() {
   }
 ]`;
 
+  const customersFiltrados = (buscaCliente.trim()
+    ? customers.filter((c) =>
+        [c.tradeName, c.legalName, c.cnpj, c.neighborhood, c.phone]
+          .filter(Boolean)
+          .some((v) => String(v).toLowerCase().includes(buscaCliente.toLowerCase())) ||
+        (c.cnpj ?? '').includes(buscaCliente.replace(/\D/g, '')),
+      )
+    : customers
+  );
+
   return (
     <div className="space-y-6">
       {/* Cabeçalho */}
@@ -398,7 +524,7 @@ export default function AdminCustomersPage() {
             Importar Planilha Excel
           </Link>
           <button
-            onClick={() => setIsCreateModalOpen(true)}
+            onClick={openCreateCustomer}
             className="rounded-lg bg-amber-700 px-4 py-2 text-white font-bold text-xs hover:bg-amber-800 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
           >
             <Plus className="h-4 w-4" />
@@ -434,6 +560,16 @@ export default function AdminCustomersPage() {
       {/* Tab Lista de Clientes */}
       {activeTab === 'list' && (
         <div className="space-y-4">
+          <div className="relative max-w-md">
+            <input
+              type="text"
+              value={buscaCliente}
+              onChange={(e) => setBuscaCliente(e.target.value)}
+              placeholder="Buscar cliente por nome, CNPJ, bairro ou telefone..."
+              className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+            />
+            {buscaCliente && (<p className="mt-1 text-[10px] text-stone-400">{customersFiltrados.length} resultado(s)</p>)}
+          </div>
           {loading ? (
             <div className="flex h-60 items-center justify-center gap-2 bg-white rounded-2xl border border-stone-200">
               <Loader2 className="h-6 w-6 animate-spin text-amber-700" />
@@ -444,6 +580,10 @@ export default function AdminCustomersPage() {
           ) : customers.length === 0 ? (
             <div className="p-8 text-center bg-white border border-stone-200 rounded-2xl text-stone-450 italic text-xs">
               Nenhum cliente cadastrado. Use a aba de importação para carregar seus revendedores atuais da Doces Prigor!
+            </div>
+          ) : customersFiltrados.length === 0 ? (
+            <div className="p-8 text-center bg-white border border-stone-200 rounded-2xl text-stone-450 italic text-xs">
+              Nenhum cliente encontrado para “{buscaCliente}”.
             </div>
           ) : (
             <div className="rounded-2xl bg-white border border-stone-200 shadow-sm overflow-hidden animate-fadeIn">
@@ -457,10 +597,11 @@ export default function AdminCustomersPage() {
                       <th className="p-4">Telefone</th>
                       <th className="p-4">Categoria</th>
                       <th className="p-4">Vendedor Vinculado</th>
+                      <th className="p-4 text-center">Endereços</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-100">
-                    {customers.map((cust) => (
+                    {customersFiltrados.map((cust) => (
                       <tr key={cust.id} className="hover:bg-stone-50/50">
                         <td className="p-4">
                           <span className="font-bold text-stone-850 block">{cust.tradeName}</span>
@@ -486,6 +627,22 @@ export default function AdminCustomersPage() {
                           ) : (
                             <span className="text-stone-400 font-medium italic text-[10px]">Sem Vendedor</span>
                           )}
+                        </td>
+                        <td className="p-4 text-center">
+                          <div className="inline-flex items-center gap-1.5">
+                            <button
+                              onClick={() => openEditCustomer(cust)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-stone-200 px-2.5 py-1 text-[10px] font-bold text-stone-600 hover:bg-amber-50 hover:text-amber-800 cursor-pointer"
+                            >
+                              <Edit2 className="h-3.5 w-3.5" /> Editar
+                            </button>
+                            <button
+                              onClick={() => openAddresses(cust)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-stone-200 px-2.5 py-1 text-[10px] font-bold text-stone-600 hover:bg-amber-50 hover:text-amber-800 cursor-pointer"
+                            >
+                              <MapPin className="h-3.5 w-3.5" /> Endereços
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -633,13 +790,66 @@ export default function AdminCustomersPage() {
         </div>
       )}
 
+      {/* Modal de Endereços de Entrega */}
+      {addrCustomer && (
+        <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-lg max-h-[92vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100 shrink-0 bg-stone-50/50">
+              <div>
+                <h3 className="font-extrabold text-stone-950 text-sm">Endereços de Entrega</h3>
+                <p className="text-[10px] text-stone-400 font-semibold mt-0.5">{addrCustomer.tradeName}</p>
+              </div>
+              <button type="button" onClick={() => setAddrCustomer(null)} className="p-1 hover:bg-stone-100 rounded-lg text-stone-400 hover:text-stone-600 cursor-pointer"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="p-5 space-y-4 overflow-y-auto flex-1 text-xs">
+              <div className="rounded-lg bg-stone-50 border border-stone-150 p-3 text-[11px] text-stone-600">
+                <span className="font-bold text-stone-700">Faturamento (principal):</span> {addrCustomer.address ?? '—'}{addrCustomer.neighborhood ? `, ${addrCustomer.neighborhood}` : ''}. Cadastre abaixo endereços de entrega diferentes; se a entrega for no mesmo do faturamento, não precisa cadastrar nada.
+              </div>
+              {addrLoading ? (
+                <div className="flex items-center gap-2 text-stone-500"><Loader2 className="h-4 w-4 animate-spin" /> Carregando...</div>
+              ) : addrList.length === 0 ? (
+                <p className="text-stone-400 italic">Nenhum endereço de entrega cadastrado (entrega = faturamento).</p>
+              ) : (
+                <div className="space-y-2">
+                  {addrList.map((a) => (
+                    <div key={a.id} className="flex items-start justify-between gap-2 rounded-lg border border-stone-200 p-2.5">
+                      <div>
+                        {a.label && <span className="font-bold text-stone-800 block">{a.label}</span>}
+                        <span className="text-stone-600">{a.address}{a.number ? `, ${a.number}` : ''}{a.neighborhood ? ` — ${a.neighborhood}` : ''}</span>
+                        <span className="text-stone-400 block text-[10px]">{a.city}{a.state ? `/${a.state}` : ''} {a.zipCode ?? ''}</span>
+                      </div>
+                      <button onClick={() => removeAddress(a.id)} className="p-1 text-stone-400 hover:text-red-600 cursor-pointer shrink-0"><Trash2 className="h-4 w-4" /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <form onSubmit={addAddress} className="rounded-xl border border-stone-200 p-3 space-y-2 bg-stone-50/40">
+                <span className="text-[10px] font-black text-stone-500 uppercase">Novo endereço de entrega</span>
+                <input type="text" placeholder="Apelido (ex: Filial Centro)" value={naLabel} onChange={(e) => setNaLabel(e.target.value)} className="block w-full rounded-lg border border-stone-300 bg-white p-2 text-stone-900" />
+                <div className="grid grid-cols-3 gap-2">
+                  <input type="text" placeholder="Endereço" value={naAddress} onChange={(e) => setNaAddress(e.target.value)} className="col-span-2 block w-full rounded-lg border border-stone-300 bg-white p-2 text-stone-900" required />
+                  <input type="text" placeholder="Número" value={naNumber} onChange={(e) => setNaNumber(e.target.value)} className="block w-full rounded-lg border border-stone-300 bg-white p-2 text-stone-900" />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <input type="text" placeholder="Bairro" value={naNeighborhood} onChange={(e) => setNaNeighborhood(e.target.value)} className="block w-full rounded-lg border border-stone-300 bg-white p-2 text-stone-900" />
+                  <input type="text" placeholder="Cidade" value={naCity} onChange={(e) => setNaCity(e.target.value)} className="block w-full rounded-lg border border-stone-300 bg-white p-2 text-stone-900" />
+                  <input type="text" placeholder="UF" maxLength={2} value={naState} onChange={(e) => setNaState(e.target.value)} className="block w-full rounded-lg border border-stone-300 bg-white p-2 text-stone-900" />
+                </div>
+                <input type="text" placeholder="CEP" value={naZip} onChange={(e) => setNaZip(e.target.value)} className="block w-full rounded-lg border border-stone-300 bg-white p-2 text-stone-900" />
+                <button type="submit" disabled={naSaving} className="w-full rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-bold py-2 cursor-pointer flex items-center justify-center gap-1.5"><Plus className="h-4 w-4" />{naSaving ? 'Adicionando...' : 'Adicionar endereço'}</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal de Cadastro de Novo Ponto de Revenda (Cliente) */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-lg max-h-[92vh] overflow-hidden flex flex-col animate-scaleIn">
             <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100 shrink-0 bg-stone-50/50">
               <div>
-                <h3 className="font-extrabold text-stone-950 text-sm">Cadastrar Novo Ponto de Revenda</h3>
+                <h3 className="font-extrabold text-stone-950 text-sm">{editCustomerId ? 'Editar Cliente' : 'Cadastrar Novo Ponto de Revenda'}</h3>
                 <p className="text-[10px] text-stone-400 font-semibold uppercase mt-0.5">Homologação Individual de Clientes</p>
               </div>
               <button 
@@ -722,6 +932,18 @@ export default function AdminCustomersPage() {
                     <option value="false">Consumidor (Varejo)</option>
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">Limite de Crédito (R$) — 0 = sem limite</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={formCreditLimit}
+                  onChange={(e) => setFormCreditLimit(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50/50 focus:outline-none"
+                />
               </div>
 
               {/* Endereço & CEP */}
@@ -844,7 +1066,7 @@ export default function AdminCustomersPage() {
                   disabled={saving || !formTradeName || !formAddress || !formNeighborhood}
                   className="rounded-lg bg-amber-700 hover:bg-amber-800 px-4 py-2 text-white font-bold cursor-pointer transition-all shadow-xs disabled:opacity-50 text-xs"
                 >
-                  {saving ? 'Cadastrando...' : 'Homologar Cliente'}
+                  {saving ? 'Salvando...' : (editCustomerId ? 'Salvar Alterações' : 'Homologar Cliente')}
                 </button>
               </div>
             </form>

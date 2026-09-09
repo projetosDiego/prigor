@@ -1,5 +1,31 @@
 'use client';
 
+function formatPhone(v: string): string {
+  const d = v.replace(/\D/g, '').slice(0, 11);
+  if (d.length <= 2) return d;
+  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+}
+
+function maskMoneyBRL(v: string): string {
+  const d = v.replace(/\D/g, '');
+  if (!d) return '';
+  return (parseInt(d, 10) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function moneyMaskFromNumber(n: number): string {
+  if (!n) return '';
+  return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function parseMoneyBRL(masked: string): string {
+  const d = masked.replace(/\D/g, '');
+  if (!d) return '0';
+  return (parseInt(d, 10) / 100).toFixed(2);
+}
+
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   UserSquare2, 
@@ -29,6 +55,8 @@ interface SellerPayload {
   email: string;
   phone: string;
   goal: string;
+  commissionPct: string;
+  goalRevenue: string;
   active: boolean;
   startDate: string;
   password?: string;
@@ -47,6 +75,8 @@ export default function AdminSellersPage() {
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
   const [goal, setGoal] = useState('10');
+  const [commissionPct, setCommissionPct] = useState('0');
+  const [goalRevenue, setGoalRevenue] = useState('0');
   const [active, setActive] = useState(true);
   const [startDate, setStartDate] = useState('');
   const [formLoading, setFormLoading] = useState(false);
@@ -79,7 +109,7 @@ export default function AdminSellersPage() {
     try {
       const url = sellerId ? `/api/sellers/${sellerId}` : '/api/sellers';
       const method = sellerId ? 'PUT' : 'POST';
-      const payload: SellerPayload = { name, email, phone, goal, active, startDate };
+      const payload: SellerPayload = { name, email, phone, goal, commissionPct, goalRevenue: parseMoneyBRL(goalRevenue), active, startDate };
       
       // Senha é obrigatória na criação, opcional na edição
       if (password) {
@@ -104,6 +134,8 @@ export default function AdminSellersPage() {
       setGoal('10');
       setActive(true);
       setStartDate('');
+      setCommissionPct('0');
+      setGoalRevenue('');
       setShowForm(false);
 
       await loadSellers();
@@ -148,6 +180,8 @@ export default function AdminSellersPage() {
             setGoal('10'); 
             setActive(true); 
             setStartDate(new Date().toISOString().split('T')[0]);
+            setCommissionPct('0');
+            setGoalRevenue('');
             setShowForm(true); 
           }}
           className="flex items-center gap-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white px-4 py-2 text-xs font-bold transition-all cursor-pointer"
@@ -188,8 +222,10 @@ export default function AdminSellersPage() {
                       setName(seller.name); 
                       setEmail(seller.user.email); 
                       setPassword(''); // não preencher
-                      setPhone(seller.phone || ''); 
+                      setPhone(formatPhone(seller.phone || '')); 
                       setGoal(String(seller.goal)); 
+            setCommissionPct(String(seller.commissionPct ?? 0)); 
+            setGoalRevenue(moneyMaskFromNumber(Number(seller.goalRevenue ?? 0))); 
                       setActive(seller.active); 
                       setStartDate(seller.startDate?.split('T')[0] ?? '');
                       setShowForm(true); 
@@ -298,9 +334,9 @@ export default function AdminSellersPage() {
                   <label className="block mb-1">Telefone / WhatsApp</label>
                   <input
                     type="text"
-                    placeholder="21999998888"
+                    placeholder="(21) 99999-8888"
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    onChange={(e) => setPhone(formatPhone(e.target.value))}
                     className="block w-full rounded-lg border border-stone-300 bg-stone-50 p-2.5 text-stone-900 focus:bg-white"
                   />
                 </div>
@@ -313,6 +349,35 @@ export default function AdminSellersPage() {
                     onChange={(e) => setGoal(e.target.value)}
                     className="block w-full rounded-lg border border-stone-300 bg-stone-50 p-2.5 text-stone-900 focus:bg-white"
                     required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block mb-1">Comissão Padrão (%)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="100"
+                  placeholder="Ex: 5"
+                  value={commissionPct}
+                  onChange={(e) => setCommissionPct(e.target.value)}
+                  className="block w-full rounded-lg border border-stone-300 bg-stone-50 p-2.5 text-stone-900 focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="block mb-1">Meta de Faturamento (R$)</label>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 text-xs font-bold">R$</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="0,00"
+                    value={goalRevenue}
+                    onChange={(e) => setGoalRevenue(maskMoneyBRL(e.target.value))}
+                    className="block w-full rounded-lg border border-stone-300 bg-stone-50 py-2.5 pl-9 pr-3 text-stone-900 focus:bg-white"
                   />
                 </div>
               </div>

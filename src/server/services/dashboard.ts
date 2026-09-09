@@ -22,6 +22,7 @@ export interface DashboardStats {
     openValue: number;
     monthGrossValue: number;
     monthBilledValue: number;
+    pendingDeliveries: number;
   };
   financial: {
     receivable: number;
@@ -175,6 +176,10 @@ export async function getDashboard(session: SessionPayload): Promise<DashboardSt
     topNames.map((p: { id: string; name: string }) => [p.id, p.name]),
   );
 
+  const pendingDeliveries = await prisma.order.count({
+    where: { ...orderScope, status: { in: ['confirmado', 'em_producao'] } },
+  });
+
   return {
     period: { from: start.toISOString().slice(0, 10), to: end.toISOString().slice(0, 10) },
     customers: { active: activeCustomers },
@@ -189,6 +194,7 @@ export async function getDashboard(session: SessionPayload): Promise<DashboardSt
       openValue: num(openValue._sum?.total),
       monthGrossValue: num(monthGross._sum?.total),
       monthBilledValue: num(billedValue._sum?.total),
+      pendingDeliveries,
     },
     financial: {
       receivable: num(receivable?._sum?.value),

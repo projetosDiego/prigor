@@ -15,6 +15,7 @@ import { syncOrderFinancials } from './financial-sync';
 import { paginated, toOrderDTO, type OrderDTO, type OrderRow, type Paginated } from './serializers';
 import type { OrderCreateInput, OrderUpdateInput } from '../validation/sales';
 import type { Tx } from '../tx';
+import { logOrderEvent } from './order-history';
 
 const ORDER_INCLUDE = {
   customer: {
@@ -25,6 +26,11 @@ const ORDER_INCLUDE = {
       complement: true,
       neighborhood: true,
       city: true,
+      state: true,
+      zipCode: true,
+      cnpj: true,
+      cpf: true,
+      legalName: true,
       latitude: true,
       longitude: true,
       phone: true,
@@ -33,8 +39,10 @@ const ORDER_INCLUDE = {
     },
   },
   seller: { select: { name: true, commissionPct: true } },
+  transactions: { where: { type: 'receita' as const, category: 'Vendas' }, select: { id: true, status: true }, take: 1 },
+  deliveryAddress: { select: { label: true, address: true, number: true, complement: true, neighborhood: true, city: true, state: true, zipCode: true } },
   items: {
-    include: { product: { select: { name: true } } },
+    include: { product: { select: { name: true, barCode: true, internalCode: true, sku: true, unit: true } } },
     orderBy: { id: 'asc' as const },
   },
 };
@@ -258,6 +266,8 @@ export async function createOrder(
     if (sellerId && !seller) throw badRequest('Vendedor inválido.');
     if (seller && !seller.active) throw badRequest('Este vendedor está inativo.');
 
+    const commissionOverride = input.commissionPct ?? null;
+
     const items = input.items.map((item) => {
       const product = context.products.get(item.productId)!;
       const unitPrice =
@@ -277,12 +287,13 @@ export async function createOrder(
       discount: input.discount,
       shipping: input.shipping,
       otherCosts: input.otherCosts,
-      sellerCommissionPct: seller ? String(seller.commissionPct) : null,
+      sellerCommissionPct: seller ? (commissionOverride ?? String(seller.commissionPct)) : null,
     });
 
     const order = await tx.order.create({
       data: {
         customerId: input.customerId,
+        deliveryAddressId: input.deliveryAddressId,
         sellerId,
         status: input.status,
         paymentMethod: input.paymentMethod,
@@ -296,6 +307,7 @@ export async function createOrder(
         subtotal: calculated.subtotal.toFixed(2),
         total: calculated.total.toFixed(2),
         commissionVal: calculated.commissionVal.toFixed(2),
+        commissionPct: commissionOverride,
         notes: input.notes,
         items: {
           create: calculated.items.map((item) => ({
@@ -332,6 +344,13 @@ export async function createOrder(
       sellerId,
       customerName: order.customer?.tradeName ?? 'cliente',
       sellerName: order.seller?.name ?? null,
+    });
+
+    await logOrderEvent(tx, {
+      orderId: order.id,
+      userId: session.userId,
+      action: 'criado',
+      to: input.status,
     });
 
     // `OrElseThrow`: a linha acabou de ser criada dentro desta mesma transacao.
@@ -412,6 +431,13 @@ export async function updateOrder(
       : null;
     if (sellerId && !seller) throw badRequest('Vendedor inválido.');
 
+    const commissionOverride =
+      input.commissionPct !== undefined
+        ? input.commissionPct
+        : current.commissionPct != null
+          ? String(current.commissionPct)
+          : null;
+
     const existingItems = itemsProvided
       ? null
       : await tx.orderItem.findMany({
@@ -446,7 +472,7 @@ export async function updateOrder(
       discount: input.discount ?? String(current.discount),
       shipping: input.shipping ?? String(current.shipping),
       otherCosts: input.otherCosts ?? String(current.otherCosts),
-      sellerCommissionPct: seller ? String(seller.commissionPct) : null,
+      sellerCommissionPct: seller ? (commissionOverride ?? String(seller.commissionPct)) : null,
     });
 
     if (itemsProvided) {
@@ -478,14 +504,26 @@ export async function updateOrder(
         ...(input.billingDate !== undefined ? { billingDate: input.billingDate } : {}),
         dueDate,
         ...(input.notes !== undefined ? { notes: input.notes } : {}),
+        ...(input.deliveryAddressId !== undefined ? { deliveryAddressId: input.deliveryAddressId } : {}),
         discount: calculated.discount.toFixed(2),
         shipping: calculated.shipping.toFixed(2),
         otherCosts: calculated.otherCosts.toFixed(2),
         subtotal: calculated.subtotal.toFixed(2),
         total: calculated.total.toFixed(2),
         commissionVal: calculated.commissionVal.toFixed(2),
+        commissionPct: commissionOverride,
       },
     });
+
+    if (nextStatus !== current.status) {
+      await logOrderEvent(tx, {
+        orderId: id,
+        userId: session.userId,
+        action: 'status',
+        from: current.status,
+        to: nextStatus,
+      });
+    }
 
     if (movesStock(nextStatus)) {
       await applyStock(
@@ -586,6 +624,14 @@ export async function cancelOrder(session: SessionPayload, id: string): Promise<
     });
 
     await tx.order.update({ where: { id }, data: { status: 'cancelado' } });
+
+    await logOrderEvent(tx, {
+      orderId: id,
+      userId: session.userId,
+      action: 'cancelado',
+      from: current.status,
+      to: 'cancelado',
+    });
 
     return tx.order.findUniqueOrThrow({ where: { id }, include: ORDER_INCLUDE });
   });
