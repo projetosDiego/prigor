@@ -7,6 +7,14 @@ export const dynamic = 'force-dynamic';
 export const metadata: Metadata = {
   title: 'Prigor Expansão',
   description: 'Sistema de Inteligência Comercial e Expansão da Doces Prigor',
+  icons: {
+    icon: [
+      { url: '/logo.png', type: 'image/png' },
+      { url: '/icon.png', type: 'image/png' },
+    ],
+    shortcut: '/logo.png',
+    apple: '/logo.png',
+  },
 };
 
 export default function RootLayout({

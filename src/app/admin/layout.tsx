@@ -22,7 +22,10 @@ import {
   Truck,
   Upload,
   ScanLine,
-  Wallet
+  Wallet,
+  CalendarDays,
+  UserX,
+  PieChart
 } from 'lucide-react';
 import LogoutButton from '@/components/shared/LogoutButton';
 
@@ -134,6 +137,10 @@ export default async function AdminLayout({
           <div className="space-y-1">
             <span className="text-[10px] font-black text-stone-500 uppercase tracking-widest px-4 block mb-2">Relatórios</span>
 
+            <Link href="/admin/reports/sales" className="flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold hover:bg-stone-800 hover:text-white transition-all">
+              <CalendarDays className="h-4 w-4 text-amber-755" />
+              <span>Vendas Diárias</span>
+            </Link>
             <Link href="/admin/reports/customers" className="flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold hover:bg-stone-800 hover:text-white transition-all">
               <BarChart3 className="h-4 w-4 text-amber-755" />
               <span>Relatório de Clientes</span>
@@ -141,6 +148,14 @@ export default async function AdminLayout({
             <Link href="/admin/reports/sellers" className="flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold hover:bg-stone-800 hover:text-white transition-all">
               <TrendingUp className="h-4 w-4 text-amber-755" />
               <span>Relatório por Vendedor</span>
+            </Link>
+            <Link href="/admin/reports/inactive-customers" className="flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold hover:bg-stone-800 hover:text-white transition-all">
+              <UserX className="h-4 w-4 text-rose-500" />
+              <span>Clientes Inativos (Reativação)</span>
+            </Link>
+            <Link href="/admin/reports/products-abc" className="flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold hover:bg-stone-800 hover:text-white transition-all">
+              <PieChart className="h-4 w-4 text-amber-755" />
+              <span>Curva ABC de Produtos</span>
             </Link>
           </div>
 

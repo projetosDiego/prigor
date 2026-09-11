@@ -14,7 +14,8 @@ import {
   Plus,
   Trash2,
   Edit2,
-  X
+  X,
+  MessageSquare
 } from 'lucide-react';
 
 import { errorMessage, apiErrorMessage } from '@/lib/errors';
@@ -102,10 +103,34 @@ const formatPhone = (value: string) => {
   return `(${phone.substring(0, 2)}) ${phone.substring(2, 7)}-${phone.substring(7, 11)}`;
 };
 
+const formatCpf = (v: string) => {
+  const d = v.replace(/\D/g, '').slice(0, 11);
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return `${d.slice(0, 3)}.${d.slice(3)}`;
+  if (d.length <= 9) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6)}`;
+  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+};
+
+const formatCnpj = (v: string) => {
+  const d = v.replace(/\D/g, '').slice(0, 14);
+  if (d.length <= 2) return d;
+  if (d.length <= 5) return `${d.slice(0, 2)}.${d.slice(2)}`;
+  if (d.length <= 8) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5)}`;
+  if (d.length <= 12) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8)}`;
+  return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+};
+
+const formatCep = (v: string) => {
+  const d = v.replace(/\D/g, '').slice(0, 8);
+  if (d.length <= 5) return d;
+  return `${d.slice(0, 5)}-${d.slice(5)}`;
+};
+
 export default function AdminCustomersPage() {
   const { toast, confirm } = useToast();
   const [activeTab, setActiveTab] = useState<'list' | 'import'>('list');
   const [buscaCliente, setBuscaCliente] = useState('');
+  const [recurrentFilter, setRecurrentFilter] = useState<'all' | 'active' | 'risk' | 'inactive' | 'new'>('all');
   const [customers, setCustomers] = useState<CustomerDTO[]>([]);
   const [sellers, setSellers] = useState<SellerDTO[]>([]);
   const [loading, setLoading] = useState(true);
@@ -120,9 +145,11 @@ export default function AdminCustomersPage() {
 
   // Estados do Modal de Cadastro Individual
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [docType, setDocType] = useState<'cnpj' | 'cpf'>('cnpj');
   const [formTradeName, setFormTradeName] = useState('');
   const [formLegalName, setFormLegalName] = useState('');
   const [formCnpj, setFormCnpj] = useState('');
+  const [formCpf, setFormCpf] = useState('');
   const [formPhone, setFormPhone] = useState('');
   const [formAddress, setFormAddress] = useState('');
   const [formNumber, setFormNumber] = useState('');
@@ -289,10 +316,10 @@ export default function AdminCustomersPage() {
     }
   };
 
-  const handleQueryCEP = async () => {
-    const cleanCep = formZipCode.replace(/\D/g, '');
+  const handleQueryCEP = async (cepOverride?: string) => {
+    const cleanCep = (cepOverride ?? formZipCode).replace(/\D/g, '');
     if (cleanCep.length !== 8) {
-      toast('Digite um CEP válido com 8 dígitos para buscar.', 'error');
+      if (!cepOverride) toast('Digite um CEP válido com 8 dígitos para buscar.', 'error');
       return;
     }
 
@@ -302,13 +329,22 @@ export default function AdminCustomersPage() {
       if (!res.ok) throw new Error('CEP não encontrado ou indisponível.');
       const data: CepLookup = await res.json();
 
-      setFormAddress(data.street || '');
-      setFormNeighborhood(data.neighborhood || '');
-      toast('Endereço do CEP carregado!', 'success');
+      if (data.street) setFormAddress(data.street);
+      if (data.neighborhood) setFormNeighborhood(data.neighborhood);
+      toast('Endereço preenchido automaticamente pelo CEP!', 'success');
     } catch (err: unknown) {
-      toast('Erro ao consultar CEP: ' + errorMessage(err), 'error');
+      if (!cepOverride) toast('Erro ao consultar CEP: ' + errorMessage(err), 'error');
     } finally {
       setCepLoading(false);
+    }
+  };
+
+  const handleZipCodeChange = (val: string) => {
+    const formatted = formatCep(val);
+    setFormZipCode(formatted);
+    const clean = val.replace(/\D/g, '');
+    if (clean.length === 8) {
+      void handleQueryCEP(clean);
     }
   };
 
@@ -364,9 +400,11 @@ export default function AdminCustomersPage() {
   };
 
   const resetCustomerForm = () => {
+    setDocType('cnpj');
     setFormTradeName('');
     setFormLegalName('');
     setFormCnpj('');
+    setFormCpf('');
     setFormPhone('');
     setFormAddress('');
     setFormNumber('');
@@ -386,15 +424,17 @@ export default function AdminCustomersPage() {
   };
 
   const openEditCustomer = (cust: CustomerDTO) => {
+    setDocType(cust.cpf && !cust.cnpj ? 'cpf' : 'cnpj');
     setFormTradeName(cust.tradeName ?? '');
     setFormLegalName(cust.legalName ?? '');
-    setFormCnpj(cust.cnpj ?? '');
+    setFormCnpj(cust.cnpj ? formatCnpj(cust.cnpj) : '');
+    setFormCpf(cust.cpf ? formatCpf(cust.cpf) : '');
     setFormPhone(formatPhone(cust.phone ?? ''));
     setFormAddress(cust.address ?? '');
     setFormNumber(cust.number ?? '');
     setFormComplement(cust.complement ?? '');
     setFormNeighborhood(cust.neighborhood ?? '');
-    setFormZipCode(cust.zipCode ?? '');
+    setFormZipCode(cust.zipCode ? formatCep(cust.zipCode) : '');
     setFormCategory(cust.category ?? 'padarias');
     setFormSellerId(cust.sellerId ?? '');
     setFormIsRevendedor(cust.isReseller);
@@ -416,6 +456,7 @@ export default function AdminCustomersPage() {
       tradeName: formTradeName,
       legalName: formLegalName || formTradeName,
       cnpj: formCnpj.replace(/\D/g, '') || undefined,
+      cpf: formCpf.replace(/\D/g, '') || undefined,
       phone: formPhone || undefined,
       address: formAddress,
       number: formNumber || 'S/N',
@@ -452,17 +493,7 @@ export default function AdminCustomersPage() {
       toast(isEdit ? 'Cliente atualizado com sucesso!' : 'Ponto de revenda cadastrado com sucesso!', 'success');
       
       // Limpa formulário e fecha modal
-      setFormTradeName('');
-      setFormLegalName('');
-      setFormCnpj('');
-      setFormPhone('');
-      setFormAddress('');
-      setFormNumber('');
-      setFormComplement('');
-      setFormNeighborhood('');
-      setFormZipCode('');
-      setFormSellerId('');
-      setFormCreditLimit('0');
+      resetCustomerForm();
       setEditCustomerId(null);
       setIsCreateModalOpen(false);
 
@@ -494,15 +525,19 @@ export default function AdminCustomersPage() {
   }
 ]`;
 
-  const customersFiltrados = (buscaCliente.trim()
-    ? customers.filter((c) =>
-        [c.tradeName, c.legalName, c.cnpj, c.neighborhood, c.phone]
-          .filter(Boolean)
-          .some((v) => String(v).toLowerCase().includes(buscaCliente.toLowerCase())) ||
-        (c.cnpj ?? '').includes(buscaCliente.replace(/\D/g, '')),
-      )
-    : customers
-  );
+  const customersFiltrados = customers.filter((c) => {
+    const term = buscaCliente.trim().toLowerCase();
+    const matchesSearch = !term ||
+      [c.tradeName, c.legalName, c.neighborhood, c.phone, c.mobile]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(term)) ||
+      (c.cnpj ?? '').includes(term.replace(/\D/g, '')) ||
+      (c.cpf ?? '').includes(term.replace(/\D/g, ''));
+
+    const matchesRecurrent = recurrentFilter === 'all' || c.recurrentStatus === recurrentFilter;
+
+    return matchesSearch && matchesRecurrent;
+  });
 
   return (
     <div className="space-y-6">
@@ -560,15 +595,57 @@ export default function AdminCustomersPage() {
       {/* Tab Lista de Clientes */}
       {activeTab === 'list' && (
         <div className="space-y-4">
-          <div className="relative max-w-md">
-            <input
-              type="text"
-              value={buscaCliente}
-              onChange={(e) => setBuscaCliente(e.target.value)}
-              placeholder="Buscar cliente por nome, CNPJ, bairro ou telefone..."
-              className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
-            />
-            {buscaCliente && (<p className="mt-1 text-[10px] text-stone-400">{customersFiltrados.length} resultado(s)</p>)}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div className="relative max-w-md w-full">
+              <input
+                type="text"
+                value={buscaCliente}
+                onChange={(e) => setBuscaCliente(e.target.value)}
+                placeholder="Buscar cliente por nome, CNPJ/CPF, bairro ou telefone..."
+                className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+              />
+              {buscaCliente && (<p className="mt-1 text-[10px] text-stone-400">{customersFiltrados.length} resultado(s)</p>)}
+            </div>
+
+            {/* Filtro Rápido de Status de Recompra */}
+            <div className="flex flex-wrap items-center gap-1.5 bg-stone-100 p-1 rounded-xl text-[11px] font-bold">
+              <button
+                type="button"
+                onClick={() => setRecurrentFilter('all')}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                  recurrentFilter === 'all' ? 'bg-white text-stone-900 shadow-2xs' : 'text-stone-500 hover:text-stone-800'
+                }`}
+              >
+                Todos ({customers.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setRecurrentFilter('active')}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                  recurrentFilter === 'active' ? 'bg-emerald-700 text-white shadow-2xs' : 'text-emerald-800 hover:bg-emerald-50'
+                }`}
+              >
+                🟢 Ativos ({customers.filter((c) => c.recurrentStatus === 'active').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setRecurrentFilter('risk')}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                  recurrentFilter === 'risk' ? 'bg-amber-700 text-white shadow-2xs' : 'text-amber-800 hover:bg-amber-50'
+                }`}
+              >
+                🟡 Em Risco ({customers.filter((c) => c.recurrentStatus === 'risk').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setRecurrentFilter('inactive')}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                  recurrentFilter === 'inactive' ? 'bg-red-700 text-white shadow-2xs' : 'text-red-800 hover:bg-red-50'
+                }`}
+              >
+                🔴 Inativos ({customers.filter((c) => c.recurrentStatus === 'inactive').length})
+              </button>
+            </div>
           </div>
           {loading ? (
             <div className="flex h-60 items-center justify-center gap-2 bg-white rounded-2xl border border-stone-200">
@@ -592,12 +669,13 @@ export default function AdminCustomersPage() {
                   <thead>
                     <tr className="border-b border-stone-200 bg-stone-50 text-stone-400 font-bold uppercase tracking-wider">
                       <th className="p-4">Razão Social / Nome Fantasia</th>
-                      <th className="p-4">CNPJ</th>
+                      <th className="p-4">Documento (CNPJ/CPF)</th>
+                      <th className="p-4 text-center">Status Recompra</th>
                       <th className="p-4">Endereço</th>
                       <th className="p-4">Telefone</th>
                       <th className="p-4">Categoria</th>
                       <th className="p-4">Vendedor Vinculado</th>
-                      <th className="p-4 text-center">Endereços</th>
+                      <th className="p-4 text-center">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-100">
@@ -607,7 +685,41 @@ export default function AdminCustomersPage() {
                           <span className="font-bold text-stone-850 block">{cust.tradeName}</span>
                           {cust.legalName && <span className="text-[10px] text-stone-400 block">{cust.legalName}</span>}
                         </td>
-                        <td className="p-4 font-mono text-stone-600">{cust.cnpj || 'Não informado'}</td>
+                        <td className="p-4 font-mono text-stone-600">
+                          {cust.cnpj ? (
+                            <span className="inline-block bg-stone-100 px-1.5 py-0.5 rounded text-[11px] font-bold text-stone-800">
+                              CNPJ: {formatCnpj(cust.cnpj)}
+                            </span>
+                          ) : cust.cpf ? (
+                            <span className="inline-block bg-amber-50 border border-amber-150 px-1.5 py-0.5 rounded text-[11px] font-bold text-amber-900">
+                              CPF: {formatCpf(cust.cpf)}
+                            </span>
+                          ) : (
+                            <span className="text-stone-400 italic">Não informado</span>
+                          )}
+                        </td>
+                        <td className="p-4 text-center">
+                          {cust.recurrentStatus === 'active' ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-extrabold text-emerald-800">
+                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                              Ativo ({cust.daysSinceLastOrder}d)
+                            </span>
+                          ) : cust.recurrentStatus === 'risk' ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-extrabold text-amber-850">
+                              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                              Em Risco ({cust.daysSinceLastOrder}d)
+                            </span>
+                          ) : cust.recurrentStatus === 'inactive' ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-red-50 border border-red-200 px-2 py-0.5 text-[10px] font-extrabold text-red-800">
+                              <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                              Inativo ({cust.daysSinceLastOrder}d)
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 border border-stone-200 px-2 py-0.5 text-[10px] font-bold text-stone-500">
+                              Sem compras
+                            </span>
+                          )}
+                        </td>
                         <td className="p-4 text-stone-600">
                           <div className="flex items-center gap-1.5">
                             <MapPin className="h-3.5 w-3.5 text-stone-400 shrink-0" />
@@ -630,6 +742,20 @@ export default function AdminCustomersPage() {
                         </td>
                         <td className="p-4 text-center">
                           <div className="inline-flex items-center gap-1.5">
+                            {cust.phone && (
+                              <a
+                                href={`https://api.whatsapp.com/send?phone=55${cust.phone.replace(/\D/g, '')}&text=${encodeURIComponent(
+                                  `Olá ${cust.tradeName}! Tudo bem? Passando aqui da Doces Prigor para saber como está o estoque de doces aí na sua loja. Posso separar o seu pedido desta semana? 🍬`
+                                )}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-850 hover:bg-emerald-100 transition-colors cursor-pointer"
+                                title="Enviar mensagem no WhatsApp"
+                              >
+                                <MessageSquare className="h-3.5 w-3.5 text-emerald-700" />
+                                WhatsApp
+                              </a>
+                            )}
                             <button
                               onClick={() => openEditCustomer(cust)}
                               className="inline-flex items-center gap-1 rounded-lg border border-stone-200 px-2.5 py-1 text-[10px] font-bold text-stone-600 hover:bg-amber-50 hover:text-amber-800 cursor-pointer"
@@ -863,43 +989,86 @@ export default function AdminCustomersPage() {
 
             <form onSubmit={handleSaveCustomer} className="p-5 space-y-4 overflow-y-auto flex-1 text-xs font-semibold text-stone-700">
               
-              {/* CNPJ + Busca Automática */}
-              <div className="grid grid-cols-3 gap-2 items-end bg-stone-50/50 border border-stone-200 p-3 rounded-xl">
-                <div className="col-span-2">
-                  <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">CNPJ (Opcional - Recomendado)</label>
-                  <input 
-                    type="text"
-                    placeholder="Sem pontuação"
-                    value={formCnpj}
-                    onChange={(e) => setFormCnpj(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-stone-200 bg-white focus:outline-none"
-                  />
+              {/* Documento: CNPJ ou CPF */}
+              <div className="bg-stone-50/50 border border-stone-200 p-3 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] text-stone-400 font-bold uppercase block">Tipo de Documento</span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDocType('cnpj')}
+                      className={`px-2.5 py-1 rounded text-[10px] font-bold cursor-pointer transition-all ${
+                        docType === 'cnpj'
+                          ? 'bg-amber-700 text-white'
+                          : 'bg-stone-200 text-stone-600 hover:bg-stone-300'
+                      }`}
+                    >
+                      Pessoa Jurídica (CNPJ)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDocType('cpf')}
+                      className={`px-2.5 py-1 rounded text-[10px] font-bold cursor-pointer transition-all ${
+                        docType === 'cpf'
+                          ? 'bg-amber-700 text-white'
+                          : 'bg-stone-200 text-stone-600 hover:bg-stone-300'
+                      }`}
+                    >
+                      Pessoa Física (CPF)
+                    </button>
+                  </div>
                 </div>
-                <button 
-                  type="button"
-                  onClick={handleQueryCNPJ}
-                  disabled={cnpjLoading}
-                  className="rounded-lg bg-stone-950 hover:bg-stone-850 text-white font-bold py-2 text-center cursor-pointer transition-all h-9 flex items-center justify-center text-[10px] disabled:opacity-50"
-                >
-                  {cnpjLoading ? <Loader2 className="h-4 w-4 animate-spin text-white" /> : 'Consultar CNPJ'}
-                </button>
+
+                {docType === 'cnpj' ? (
+                  <div className="grid grid-cols-3 gap-2 items-end">
+                    <div className="col-span-2">
+                      <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">CNPJ</label>
+                      <input 
+                        type="text"
+                        placeholder="00.000.000/0000-00"
+                        value={formCnpj}
+                        onChange={(e) => setFormCnpj(formatCnpj(e.target.value))}
+                        className="w-full px-3 py-2 rounded-lg border border-stone-200 bg-white focus:outline-none"
+                      />
+                    </div>
+                    <button 
+                      type="button"
+                      onClick={handleQueryCNPJ}
+                      disabled={cnpjLoading}
+                      className="rounded-lg bg-stone-950 hover:bg-stone-850 text-white font-bold py-2 text-center cursor-pointer transition-all h-9 flex items-center justify-center text-[10px] disabled:opacity-50"
+                    >
+                      {cnpjLoading ? <Loader2 className="h-4 w-4 animate-spin text-white" /> : 'Consultar CNPJ'}
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">CPF</label>
+                    <input 
+                      type="text"
+                      placeholder="000.000.000-00"
+                      value={formCpf}
+                      onChange={(e) => setFormCpf(formatCpf(e.target.value))}
+                      className="w-full px-3 py-2 rounded-lg border border-stone-200 bg-white focus:outline-none"
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Informações Básicas */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">Nome Fantasia *</label>
+                  <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">Nome / Nome Fantasia *</label>
                   <input 
                     type="text"
                     required
-                    placeholder="Ex: Padaria da Esquina"
+                    placeholder="Ex: Padaria da Esquina ou João Silva"
                     value={formTradeName}
                     onChange={(e) => setFormTradeName(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50/50 focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">Razão Social</label>
+                  <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">Razão Social (se houver)</label>
                   <input 
                     type="text"
                     placeholder="Ex: Panificadora Silva Ltda"
@@ -948,26 +1117,30 @@ export default function AdminCustomersPage() {
 
               {/* Endereço & CEP */}
               <div className="border-t border-stone-100 pt-3 space-y-3">
-                <span className="text-[10px] font-black text-amber-700 uppercase tracking-widest block">Endereço de Entrega</span>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black text-amber-700 uppercase tracking-widest block">Endereço de Entrega</span>
+                  <span className="text-[9px] text-stone-400 italic">Digite o CEP para preencher o endereço automaticamente</span>
+                </div>
 
                 <div className="grid grid-cols-3 gap-2 items-end">
                   <div className="col-span-2">
                     <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">CEP</label>
                     <input 
                       type="text"
-                      placeholder="Sem traço"
+                      placeholder="00000-000"
                       value={formZipCode}
-                      onChange={(e) => setFormZipCode(e.target.value)}
+                      onChange={(e) => handleZipCodeChange(e.target.value)}
+                      onBlur={() => handleQueryCEP()}
                       className="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50/50 focus:outline-none"
                     />
                   </div>
                   <button 
                     type="button"
-                    onClick={handleQueryCEP}
+                    onClick={() => handleQueryCEP()}
                     disabled={cepLoading}
                     className="rounded-lg border border-amber-250 bg-amber-700/5 hover:bg-amber-700/10 text-amber-800 font-bold py-2 text-center cursor-pointer transition-all h-9 flex items-center justify-center text-[10px] disabled:opacity-50"
                   >
-                    {cepLoading ? <Loader2 className="h-4 w-4 animate-spin text-amber-700" /> : 'Consultar CEP'}
+                    {cepLoading ? <Loader2 className="h-4 w-4 animate-spin text-amber-700" /> : 'Buscar CEP'}
                   </button>
                 </div>
 

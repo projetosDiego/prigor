@@ -64,7 +64,12 @@ function zodDetails(error: ZodError): Array<{ field: string; message: string }> 
 
 export function toErrorResponse(error: unknown, route: string): NextResponse {
   if (error instanceof ZodError) {
-    return errorResponse(422, 'VALIDATION_ERROR', 'Dados inválidos.', zodDetails(error));
+    const details = zodDetails(error);
+    const summary = details
+      .map((d) => (d.field && d.field !== '(raiz)' ? `${d.field}: ${d.message}` : d.message))
+      .join('; ');
+    const message = summary ? `Dados inválidos: ${summary}` : 'Dados inválidos.';
+    return errorResponse(422, 'VALIDATION_ERROR', message, details);
   }
 
   if (isAppError(error)) {

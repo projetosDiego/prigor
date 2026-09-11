@@ -129,6 +129,26 @@ export default function SellerCustomersPage() {
     }
   };
 
+  // Consulta CEP automática
+  const handleCepChange = async (val: string) => {
+    setCep(val);
+    const clean = val.replace(/\D/g, '');
+    if (clean.length === 8) {
+      try {
+        const res = await fetch(`/api/tools/cep?cep=${clean}`);
+        if (res.ok) {
+          const data: { street?: string; neighborhood?: string; city?: string; state?: string } = await res.json();
+          if (data.street) setEndereco(data.street);
+          if (data.neighborhood) setBairro(data.neighborhood);
+          if (data.city) setCidade(data.city);
+          if (data.state) setEstado(data.state);
+        }
+      } catch {
+        /* ignora */
+      }
+    }
+  };
+
   // Captura o GPS local em tempo real
   const handleCaptureGPS = () => {
     if (!navigator.geolocation) {
@@ -401,11 +421,12 @@ export default function SellerCustomersPage() {
                       />
                     </div>
                     <div>
-                      <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">CEP</label>
+                      <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">CEP (preenche endereço auto)</label>
                       <input 
                         type="text"
+                        placeholder="00000-000"
                         value={cep}
-                        onChange={(e) => setCep(e.target.value)}
+                        onChange={(e) => handleCepChange(e.target.value)}
                         className="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50/50 focus:outline-none"
                       />
                     </div>

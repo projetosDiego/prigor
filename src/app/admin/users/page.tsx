@@ -66,7 +66,7 @@ export default function AdminUsersPage() {
       const url = editId ? `/api/users/${editId}` : '/api/users';
       const method = editId ? 'PUT' : 'POST';
       const payload: Record<string, unknown> = { name, email, phone, role, active };
-      if (password) payload.password = password;
+      if (password && password.trim()) payload.password = password.trim();
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const json: unknown = await res.json();
       if (!res.ok) throw new Error(apiErrorMessage(json, 'Erro ao salvar usuário.'));

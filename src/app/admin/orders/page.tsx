@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { 
   FileText, 
   Plus, 
@@ -184,6 +184,8 @@ export default function OrdersPage() {
   const [itemPreco, setItemPreco] = useState('');
   const [produtoBusca, setProdutoBusca] = useState('');
   const [produtoListaAberta, setProdutoListaAberta] = useState(false);
+  const [highlightedProdIndex, setHighlightedProdIndex] = useState(0);
+  const qtyInputRef = useRef<HTMLInputElement>(null);
   // Cadastro rápido de cliente por CNPJ (igual portal do vendedor)
   const [quickOpen, setQuickOpen] = useState(false);
   const [qcCnpj, setQcCnpj] = useState('');
@@ -406,6 +408,23 @@ export default function OrdersPage() {
     setItensTemp(itensTemp.filter((_, i) => i !== idx));
   };
 
+  const handleUpdateItem = (idx: number, patch: { quantity?: number; discountItem?: number }) => {
+    setItensTemp((prev) =>
+      prev.map((item, i) => {
+        if (i !== idx) return item;
+        const qty = patch.quantity !== undefined ? Math.max(0, patch.quantity) : item.quantity;
+        const desc = patch.discountItem !== undefined ? Math.max(0, patch.discountItem) : item.discountItem;
+        const subtotal = Math.max(0, qty * item.unitPrice - desc);
+        return {
+          ...item,
+          quantity: qty,
+          discountItem: desc,
+          subtotal,
+        };
+      })
+    );
+  };
+
   // Recalculo Geral
   const subtotal = itensTemp.reduce((sum, item) => sum + item.subtotal, 0);
   const discountTotal = parseFloat(descontoGeral) || 0;
@@ -482,15 +501,37 @@ export default function OrdersPage() {
     setQuickOpen(true);
   };
 
+  const handleQuickCep = async (cepValue: string) => {
+    setQcCep(cepValue);
+    const clean = cepValue.replace(/\D/g, '');
+    if (clean.length === 8) {
+      try {
+        const res = await fetch(`/api/tools/cep?cep=${clean}`);
+        if (res.ok) {
+          const d = (await res.json()) as { street?: string; neighborhood?: string };
+          if (d.street) setQcAddress(d.street);
+          if (d.neighborhood) setQcNeighborhood(d.neighborhood);
+          toast('Endereço preenchido pelo CEP!', 'success');
+        }
+      } catch {
+        /* ignora */
+      }
+    }
+  };
+
   const handleSaveQuickClient = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!qcName.trim()) { toast('Informe ao menos o nome do cliente.', 'error'); return; }
     setQcSaving(true);
+    const cleanDoc = qcCnpj.replace(/\D/g, '');
+    const isCpf = cleanDoc.length === 11;
     const payload = {
       tradeName: qcName,
       isReseller: qcIsRev,
       phone: qcPhone || undefined,
-      cnpj: qcCnpj.replace(/\D/g, '') || undefined,
+      cnpj: (!isCpf && cleanDoc.length === 14) ? cleanDoc : undefined,
+      cpf: isCpf ? cleanDoc : undefined,
+      sellerId: vendedorId || undefined,
       latitude: -22.9068,
       longitude: -43.1729,
       address: qcAddress || 'Cadastrado no lançamento do pedido',
@@ -631,12 +672,22 @@ export default function OrdersPage() {
   };
 
   const handleWhatsApp = (ped: OrderDTO) => {
+    const customer = clientes.find((c) => c.id === ped.customerId);
+    const phone = customer?.phone || customer?.mobile || '';
+    const cleanPhone = phone.replace(/\D/g, '');
     const linhas = (ped.items ?? []).map((i) => `• ${i.quantity}x ${i.productName ?? ''}`).join('\n');
     const msg =
-      `*Pedido #${ped.numero}* — ${ped.customerName ?? ''}\n${linhas}\n\nTotal: ` +
-      ped.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) +
-      (ped.deliveryDate ? `\nEntrega: ${formatarData(ped.deliveryDate)}` : '');
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+      `*Pedido #${ped.numero} — Doces Prigor* 🍬\n` +
+      `Cliente: ${ped.customerName ?? ''}\n` +
+      (linhas ? `${linhas}\n` : '') +
+      `\n*Total:* ${ped.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` +
+      (ped.deliveryDate ? `\n*Previsão de Entrega:* ${formatarData(ped.deliveryDate)}` : '') +
+      `\n\n_Doces Prigor agradece a preferência!_`;
+
+    const url = cleanPhone
+      ? `https://api.whatsapp.com/send?phone=55${cleanPhone}&text=${encodeURIComponent(msg)}`
+      : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    window.open(url, '_blank');
   };
 
   const handleDuplicate = async (pedido: OrderDTO) => {
@@ -1169,15 +1220,50 @@ export default function OrdersPage() {
 
                 <div className="grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
                   <div className="md:col-span-2">
-                    <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">Escolher Produto</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[9px] text-stone-400 font-bold uppercase block">Escolher Produto</label>
+                      <span className="text-[9px] text-stone-400 italic">Use as setas ↑↓ e Enter</span>
+                    </div>
                     <div className="relative">
                       <input
                         type="text"
                         value={produtoBusca}
-                        onChange={(e) => { setProdutoBusca(e.target.value); setProdutoListaAberta(true); if (selectedProdId) setSelectedProdId(''); }}
-                        onFocus={() => setProdutoListaAberta(true)}
-                        onBlur={() => window.setTimeout(() => setProdutoListaAberta(false), 150)}
-                        placeholder="Digite o produto..."
+                        onChange={(e) => {
+                          setProdutoBusca(e.target.value);
+                          setProdutoListaAberta(true);
+                          setHighlightedProdIndex(0);
+                          if (selectedProdId) setSelectedProdId('');
+                        }}
+                        onFocus={() => {
+                          setProdutoListaAberta(true);
+                          setHighlightedProdIndex(0);
+                        }}
+                        onBlur={() => window.setTimeout(() => setProdutoListaAberta(false), 200)}
+                        onKeyDown={(e) => {
+                          if (!produtoListaAberta || produtosFiltrados.length === 0) return;
+                          if (e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            setHighlightedProdIndex((prev) => Math.min(produtosFiltrados.length - 1, prev + 1));
+                          } else if (e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            setHighlightedProdIndex((prev) => Math.max(0, prev - 1));
+                          } else if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const prod = produtosFiltrados[highlightedProdIndex];
+                            if (prod) {
+                              setSelectedProdId(prod.id);
+                              setProdutoBusca(prod.name);
+                              setProdutoListaAberta(false);
+                              const cli = clientes.find((c) => c.id === clienteId);
+                              setItemPreco(String(obterPrecoUnitario(prod, parseFloat(itemQty) || 1, cli ? !!cli.isReseller : false)));
+                              qtyInputRef.current?.focus();
+                              qtyInputRef.current?.select();
+                            }
+                          } else if (e.key === 'Escape') {
+                            setProdutoListaAberta(false);
+                          }
+                        }}
+                        placeholder="Digite o nome do produto..."
                         className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs bg-white focus:outline-none"
                       />
                       {produtoListaAberta && (
@@ -1185,15 +1271,30 @@ export default function OrdersPage() {
                           {produtosFiltrados.length === 0 ? (
                             <div className="px-3 py-2 text-xs text-stone-400">Nenhum produto encontrado</div>
                           ) : (
-                            produtosFiltrados.map((p) => (
+                            produtosFiltrados.map((p, idx) => (
                               <button
                                 type="button"
                                 key={p.id}
                                 onMouseDown={(e) => e.preventDefault()}
-                                onClick={() => { setSelectedProdId(p.id); setProdutoBusca(p.name); setProdutoListaAberta(false); const cli = clientes.find((c) => c.id === clienteId); setItemPreco(String(obterPrecoUnitario(p, parseFloat(itemQty) || 1, cli ? !!cli.isReseller : false))); }}
-                                className={`block w-full text-left px-3 py-2 text-xs hover:bg-amber-50 ${p.id === selectedProdId ? 'bg-amber-50 font-bold' : ''}`}
+                                onClick={() => {
+                                  setSelectedProdId(p.id);
+                                  setProdutoBusca(p.name);
+                                  setProdutoListaAberta(false);
+                                  const cli = clientes.find((c) => c.id === clienteId);
+                                  setItemPreco(String(obterPrecoUnitario(p, parseFloat(itemQty) || 1, cli ? !!cli.isReseller : false)));
+                                  qtyInputRef.current?.focus();
+                                  qtyInputRef.current?.select();
+                                }}
+                                className={`block w-full text-left px-3 py-2 text-xs transition-colors ${
+                                  idx === highlightedProdIndex
+                                    ? 'bg-amber-100 text-amber-900 font-bold border-l-4 border-amber-600'
+                                    : p.id === selectedProdId
+                                    ? 'bg-amber-50 font-bold'
+                                    : 'hover:bg-amber-50'
+                                }`}
                               >
-                                {p.name} — {p.salePrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}{p.wholesalePrice ? ` · Atacado ${p.wholesalePrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` : ''}
+                                {p.name} — {p.salePrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                {p.wholesalePrice ? ` · Atacado ${p.wholesalePrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` : ''}
                               </button>
                             ))
                           )}
@@ -1205,6 +1306,7 @@ export default function OrdersPage() {
                   <div>
                     <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">Quantidade</label>
                     <input 
+                      ref={qtyInputRef}
                       type="number"
                       step="1"
                       min="1"
@@ -1240,7 +1342,7 @@ export default function OrdersPage() {
                   </div>
 
                   <button 
-                    type="button"
+                    type="button" 
                     onClick={handleAddItem}
                     className="rounded-lg bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs py-2 px-3 text-center cursor-pointer transition-all h-9 flex items-center justify-center shrink-0"
                   >
@@ -1249,7 +1351,7 @@ export default function OrdersPage() {
                 </div>
 
                 {/* Tabela de Itens Temporários */}
-                <div className="border border-stone-200 bg-white rounded-xl overflow-hidden max-h-48 overflow-y-auto">
+                <div className="border border-stone-200 bg-white rounded-xl overflow-hidden max-h-56 overflow-y-auto">
                   {itensTemp.length === 0 ? (
                     <div className="text-center py-8 text-stone-400 text-xs font-semibold">
                       Adicione pelo menos um item para faturar.
@@ -1259,9 +1361,9 @@ export default function OrdersPage() {
                       <thead className="bg-stone-50 text-stone-400 font-bold uppercase border-b border-stone-150">
                         <tr>
                           <th className="py-2 px-4">Produto</th>
-                          <th className="py-2 px-4 text-center">Qtd</th>
-                          <th className="py-2 px-4 text-right">Preço Unit.</th>
-                          <th className="py-2 px-4 text-right">Desconto (Item)</th>
+                          <th className="py-2 px-3 text-center w-24">Qtd (Editar)</th>
+                          <th className="py-2 px-3 text-right">Preço Unit.</th>
+                          <th className="py-2 px-3 text-right w-32">Desconto (Editar)</th>
                           <th className="py-2 px-4 text-right">Subtotal</th>
                           <th className="py-2 px-4 text-center">Ação</th>
                         </tr>
@@ -1269,16 +1371,43 @@ export default function OrdersPage() {
                       <tbody className="divide-y divide-stone-100 font-semibold text-stone-600">
                         {itensTemp.map((it, idx) => (
                           <tr key={idx} className="hover:bg-stone-50/50">
-                            <td className="py-2.5 px-4 text-stone-850 font-bold">{it.productName || produtos.find(p => p.id === it.productId)?.name}</td>
-                            <td className="py-2.5 px-4 text-center font-bold text-stone-800">{it.quantity}</td>
-                            <td className="py-2.5 px-4 text-right">{it.unitPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                            <td className="py-2.5 px-4 text-right text-red-650">-{it.discountItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                            <td className="py-2.5 px-4 text-right font-black text-stone-850">{it.subtotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                            <td className="py-2.5 px-4 text-stone-850 font-bold">
+                              {it.productName || produtos.find(p => p.id === it.productId)?.name}
+                            </td>
+                            <td className="py-2.5 px-3 text-center">
+                              <input
+                                type="number"
+                                min="1"
+                                step="1"
+                                value={it.quantity}
+                                onChange={(e) => handleUpdateItem(idx, { quantity: parseFloat(e.target.value) || 0 })}
+                                className="w-16 px-1.5 py-1 text-center font-bold rounded border border-stone-200 bg-stone-50 focus:bg-white focus:border-amber-500 focus:outline-none text-xs"
+                              />
+                            </td>
+                            <td className="py-2.5 px-3 text-right">
+                              {it.unitPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                            </td>
+                            <td className="py-2.5 px-3 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <span className="text-stone-400 text-[10px]">R$</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={it.discountItem}
+                                  onChange={(e) => handleUpdateItem(idx, { discountItem: parseFloat(e.target.value) || 0 })}
+                                  className="w-20 px-1.5 py-1 text-right rounded border border-stone-200 bg-stone-50 focus:bg-white focus:border-amber-500 focus:outline-none text-xs text-red-600 font-semibold"
+                                />
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-4 text-right font-black text-stone-850">
+                              {it.subtotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                            </td>
                             <td className="py-2.5 px-4 text-center">
                               <button 
-                                type="button"
+                                type="button" 
                                 onClick={() => handleRemoveItem(idx)}
-                                className="text-red-600 hover:text-red-800 font-bold cursor-pointer"
+                                className="text-red-600 hover:text-red-800 font-bold cursor-pointer text-xs"
                               >
                                 Excluir
                               </button>
@@ -1462,10 +1591,16 @@ export default function OrdersPage() {
             </div>
             <form onSubmit={handleSaveQuickClient} className="p-5 space-y-3 text-xs font-semibold text-stone-600">
               <div>
-                <label className="block mb-1">CNPJ (busca automática)</label>
+                <label className="block mb-1">CNPJ ou CPF (busca automática para CNPJ)</label>
                 <div className="flex gap-2">
-                  <input type="text" value={qcCnpj} onChange={(e) => setQcCnpj(e.target.value)} placeholder="Só números" className="flex-1 rounded-lg border border-stone-300 bg-stone-50 p-2.5 text-stone-900 focus:bg-white" />
-                  <button type="button" onClick={handleQuickCNPJ} disabled={cnpjLoading} className="rounded-lg bg-stone-900 hover:bg-stone-800 text-white px-3 py-2 text-xs font-bold cursor-pointer disabled:opacity-50 inline-flex items-center gap-1">{cnpjLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Buscar</button>
+                  <input 
+                    type="text" 
+                    value={qcCnpj} 
+                    onChange={(e) => setQcCnpj(e.target.value)} 
+                    placeholder="CNPJ (14 dígitos) ou CPF (11 dígitos)" 
+                    className="flex-1 rounded-lg border border-stone-300 bg-stone-50 p-2.5 text-stone-900 focus:bg-white" 
+                  />
+                  <button type="button" onClick={handleQuickCNPJ} disabled={cnpjLoading} className="rounded-lg bg-stone-900 hover:bg-stone-850 text-white px-3 py-2 text-xs font-bold cursor-pointer disabled:opacity-50 inline-flex items-center gap-1">{cnpjLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Buscar</button>
                 </div>
               </div>
               <div>
@@ -1486,7 +1621,7 @@ export default function OrdersPage() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div><label className="block mb-1">Bairro</label><input type="text" value={qcNeighborhood} onChange={(e) => setQcNeighborhood(e.target.value)} className="w-full rounded-lg border border-stone-300 bg-stone-50 p-2.5 text-stone-900 focus:bg-white" /></div>
-                <div><label className="block mb-1">CEP</label><input type="text" value={qcCep} onChange={(e) => setQcCep(e.target.value)} className="w-full rounded-lg border border-stone-300 bg-stone-50 p-2.5 text-stone-900 focus:bg-white" /></div>
+                <div><label className="block mb-1">CEP (preenche auto)</label><input type="text" value={qcCep} onChange={(e) => handleQuickCep(e.target.value)} placeholder="00000-000" className="w-full rounded-lg border border-stone-300 bg-stone-50 p-2.5 text-stone-900 focus:bg-white" /></div>
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-stone-100">
                 <button type="button" onClick={() => setQuickOpen(false)} className="rounded-lg border border-stone-300 px-4 py-2 text-xs font-bold text-stone-600 hover:bg-stone-50 cursor-pointer">Cancelar</button>

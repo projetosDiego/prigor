@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { 
   BarChart3, 
   Users, 
@@ -8,18 +9,24 @@ import {
   Award, 
   Clock, 
   Loader2,
-  MapPin,
   TrendingUp,
   AlertTriangle,
   DollarSign,
   Package,
   Scale,
-  CheckCircle2,
-  ArrowUpRight,
-  ArrowDownRight
+  ShoppingCart,
+  Calendar,
+  Truck,
+  ArrowRight,
+  ExternalLink,
+  Target,
+  UserCheck,
+  Percent,
+  TrendingDown,
+  AlertCircle
 } from 'lucide-react';
 import { responseErrorMessage } from '@/lib/errors';
-import type { DashboardStats } from '@/lib/api-types';
+import type { DashboardStats } from '@/server/services/dashboard';
 
 // CRM Types (Expansão)
 interface CRMData {
@@ -54,15 +61,33 @@ interface CRMData {
   }[];
 }
 
-/**
- * Formata uma data civil (AAAA-MM-DD) como dd/mm/aaaa.
- * `new Date('2026-01-05')` seria interpretada como meia-noite UTC e voltaria
- * um dia atrás no fuso do Brasil, então a conversão é feita na mão.
- */
+function formatBRL(value: number): string {
+  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
 function formatarData(iso: string | null | undefined): string {
   if (!iso) return '—';
   const [ano, mes, dia] = iso.slice(0, 10).split('-');
   return ano && mes && dia ? `${dia}/${mes}/${ano}` : '—';
+}
+
+function getStatusBadge(status: string) {
+  switch (status.toLowerCase()) {
+    case 'novo':
+      return { label: 'Novo', bg: 'bg-blue-50 text-blue-700 border-blue-200' };
+    case 'confirmado':
+      return { label: 'Confirmado', bg: 'bg-amber-50 text-amber-700 border-amber-200' };
+    case 'em_producao':
+      return { label: 'Em Produção', bg: 'bg-purple-50 text-purple-700 border-purple-200' };
+    case 'entregue':
+      return { label: 'Entregue', bg: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+    case 'faturado':
+      return { label: 'Faturado', bg: 'bg-teal-50 text-teal-700 border-teal-200' };
+    case 'cancelado':
+      return { label: 'Cancelado', bg: 'bg-red-50 text-red-700 border-red-200' };
+    default:
+      return { label: status, bg: 'bg-stone-50 text-stone-700 border-stone-200' };
+  }
 }
 
 export default function AdminDashboardPage() {
@@ -71,8 +96,8 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Controle de abas
-  const [activeTab, setActiveTab] = useState<'crm' | 'financeiro' | 'producao'>('crm');
+  // Controle de abas — agora a aba inicial é "vendas" (Visão Executiva Comercial)
+  const [activeTab, setActiveTab] = useState<'vendas' | 'crm' | 'financeiro' | 'producao'>('vendas');
 
   const fetchData = useCallback(async () => {
     try {
@@ -106,8 +131,6 @@ export default function AdminDashboardPage() {
   }, []);
 
   useEffect(() => {
-    // A carga roda fora do corpo síncrono do efeito para não encadear
-    // renders (react-hooks/set-state-in-effect).
     void (async () => {
       await fetchData();
     })();
@@ -117,7 +140,7 @@ export default function AdminDashboardPage() {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-2">
         <Loader2 className="h-8 w-8 animate-spin text-amber-700" />
-        <p className="text-sm text-stone-500 font-medium">Consolidando informações do ecossistema...</p>
+        <p className="text-sm text-stone-500 font-medium">Consolidando informações do ecossistema comercial...</p>
       </div>
     );
   }
@@ -138,424 +161,491 @@ export default function AdminDashboardPage() {
   }
 
   return (
-    <div className="space-y-8 animate-fadeIn">
+    <div className="space-y-6 animate-fadeIn">
       {/* Cabeçalho */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h2 className="text-2xl font-black text-stone-900 tracking-tight flex items-center gap-2">
             <BarChart3 className="h-6 w-6 text-amber-700" />
-            Dashboard Executivo
+            Central Executiva de Vendas
           </h2>
-          <p className="text-xs text-stone-500 font-medium">Visão em tempo real da operação comercial, industrial e financeira</p>
+          <p className="text-xs text-stone-500 font-medium">
+            Acompanhamento em tempo real de faturamento, projeção de mês, metas e entregas
+          </p>
         </div>
         
         {/* Filtro de Abas */}
-        <div className="bg-stone-100 p-1 rounded-xl flex gap-1.5 self-start">
+        <div className="bg-stone-150 p-1 rounded-xl flex flex-wrap gap-1 self-start">
           <button 
-            onClick={() => setActiveTab('crm')}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              activeTab === 'crm' ? 'bg-white text-stone-900 shadow-xs' : 'text-stone-500 hover:text-stone-850'
+            onClick={() => setActiveTab('vendas')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'vendas' ? 'bg-white text-stone-900 shadow-xs' : 'text-stone-600 hover:text-stone-900'
             }`}
           >
-            Comercial & CRM
+            Vendas & Fechamento
           </button>
           <button 
             onClick={() => setActiveTab('financeiro')}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              activeTab === 'financeiro' ? 'bg-white text-stone-900 shadow-xs' : 'text-stone-500 hover:text-stone-850'
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'financeiro' ? 'bg-white text-stone-900 shadow-xs' : 'text-stone-600 hover:text-stone-900'
             }`}
           >
             Fluxo Financeiro
           </button>
           <button 
             onClick={() => setActiveTab('producao')}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              activeTab === 'producao' ? 'bg-white text-stone-900 shadow-xs' : 'text-stone-500 hover:text-stone-850'
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'producao' ? 'bg-white text-stone-900 shadow-xs' : 'text-stone-600 hover:text-stone-900'
             }`}
           >
             Estoque & Fábrica
           </button>
+          <button 
+            onClick={() => setActiveTab('crm')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'crm' ? 'bg-white text-stone-900 shadow-xs' : 'text-stone-600 hover:text-stone-900'
+            }`}
+          >
+            Expansão (Leads)
+          </button>
         </div>
       </div>
 
-      {/* ABA COMERCIAL & CRM */}
-      {activeTab === 'crm' && (
-        <div className="space-y-8">
-          {/* Cards de Resumo */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="rounded-xl bg-white p-6 shadow-sm border border-stone-200 flex items-center justify-between">
-              <div>
-                <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Oportunidades (Leads)</span>
-                <span className="text-2xl font-black text-stone-800 mt-1 block">{crmData.summary.totalLeads}</span>
+      {/* ABA PRINCIPAL: VENDAS & FECHAMENTO EXECUTIVO */}
+      {activeTab === 'vendas' && (
+        <div className="space-y-6">
+          {/* CARDS PRINCIPAIS: ONTEM, HOJE, MÊS, PROJEÇÃO E COMPARATIVO */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Card Vendas de Ontem */}
+            <div className="rounded-2xl bg-white border border-stone-200 p-4 shadow-xs space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider">
+                  Vendas de Ontem ({formatarData(erpData.yesterday?.date)})
+                </span>
+                <div className="rounded-lg bg-stone-100 p-2 text-stone-600">
+                  <Clock className="h-4 w-4" />
+                </div>
               </div>
-              <div className="h-12 w-12 rounded-xl bg-orange-50 border border-orange-100 flex items-center justify-center text-orange-600">
-                <Flame className="h-6 w-6" />
+              <p className="text-2xl font-black text-stone-900 tracking-tight">
+                {formatBRL(erpData.yesterday?.revenue ?? 0)}
+              </p>
+              <div className="flex items-center justify-between text-xs text-stone-500 pt-1">
+                <span>{erpData.yesterday?.orders ?? 0} pedidos fechados</span>
+                <span>Ticket: {formatBRL(erpData.yesterday?.averageTicket ?? 0)}</span>
               </div>
             </div>
 
-            <div className="rounded-xl bg-white p-6 shadow-sm border border-stone-200 flex items-center justify-between">
+            {/* Card Vendas de Hoje */}
+            <div className="rounded-2xl bg-white border border-stone-200 p-4 shadow-xs space-y-1">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider">
+                    Vendas de Hoje
+                  </span>
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" title="Tempo Real" />
+                </div>
+                <div className="rounded-lg bg-emerald-50 p-2 text-emerald-700 border border-emerald-100">
+                  <ShoppingCart className="h-4 w-4" />
+                </div>
+              </div>
+              <p className="text-2xl font-black text-emerald-900 tracking-tight">
+                {formatBRL(erpData.today?.revenue ?? 0)}
+              </p>
+              <div className="flex items-center justify-between text-xs text-stone-500 pt-1">
+                <span>{erpData.today?.orders ?? 0} pedidos hoje</span>
+                <Link
+                  href={`/admin/reports/sales`}
+                  className="font-bold text-amber-800 hover:text-amber-900 hover:underline flex items-center gap-0.5"
+                >
+                  Ver dia <ExternalLink className="h-3 w-3" />
+                </Link>
+              </div>
+            </div>
+
+            {/* Card Faturamento Acumulado no Mês vs Meta */}
+            <div className="rounded-2xl bg-white border border-stone-200 p-4 shadow-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider">
+                  Faturamento do Mês
+                </span>
+                <div className="rounded-lg bg-amber-50 p-2 text-amber-700 border border-amber-100">
+                  <Target className="h-4 w-4" />
+                </div>
+              </div>
+              <p className="text-2xl font-black text-stone-900 tracking-tight">
+                {formatBRL(erpData.monthProjection?.realized ?? erpData.orders.monthGrossValue)}
+              </p>
+              
+              {/* Barra de Progresso da Meta */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px] font-bold text-stone-500">
+                  <span>Meta: {formatBRL(erpData.monthProjection?.goal ?? 0)}</span>
+                  <span className="text-amber-850">{(erpData.monthProjection?.percentGoal ?? 0).toFixed(1)}%</span>
+                </div>
+                <div className="w-full bg-stone-100 rounded-full h-2 overflow-hidden">
+                  <div 
+                    className="bg-amber-700 h-2 rounded-full transition-all duration-500" 
+                    style={{ width: `${Math.min(100, erpData.monthProjection?.percentGoal ?? 0)}%` }} 
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Card Projeção do Mês (Forecast) */}
+            <div className="rounded-2xl bg-white border border-stone-200 p-4 shadow-xs space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider">
+                  Projeção do Mês (Forecast)
+                </span>
+                <div className="rounded-lg bg-indigo-50 p-2 text-indigo-700 border border-indigo-100">
+                  <TrendingUp className="h-4 w-4" />
+                </div>
+              </div>
+              <p className="text-2xl font-black text-indigo-950 tracking-tight">
+                {formatBRL(erpData.monthProjection?.projection ?? 0)}
+              </p>
+              <div className="flex items-center justify-between text-[11px] pt-1 font-semibold">
+                <span className="text-stone-500">
+                  Dia {erpData.monthProjection?.daysElapsed ?? 1} de {erpData.monthProjection?.totalDays ?? 30}
+                </span>
+                {erpData.monthProjection?.growthPercent !== undefined && (
+                  <span className={`flex items-center gap-0.5 font-bold ${
+                    erpData.monthProjection.growthPercent >= 0 ? 'text-emerald-700' : 'text-red-700'
+                  }`}>
+                    {erpData.monthProjection.growthPercent >= 0 ? '+' : ''}
+                    {erpData.monthProjection.growthPercent.toFixed(1)}% vs anterior
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* FAIXA DE ALERTAS OPERACIONAIS IMEDIATOS */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Alerta Entregas Hoje */}
+            <Link
+              href="/admin/orders"
+              className="rounded-xl border border-amber-200 bg-amber-50/70 p-3.5 flex items-center justify-between hover:bg-amber-100/60 transition-all shadow-2xs group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-amber-200/70 p-2 text-amber-850">
+                  <Truck className="h-5 w-5" />
+                </div>
+                <div>
+                  <span className="text-xs font-extrabold text-amber-950 block">Entregas para Hoje</span>
+                  <span className="text-[11px] text-amber-800 font-medium">
+                    {erpData.alerts?.deliveriesToday ?? erpData.orders.pendingDeliveries} pedidos em rota ou produção
+                  </span>
+                </div>
+              </div>
+              <ArrowRight className="h-4 w-4 text-amber-700 group-hover:translate-x-0.5 transition-transform" />
+            </Link>
+
+            {/* Alerta Clientes Sem Comprar */}
+            <Link
+              href="/admin/reports/inactive-customers"
+              className="rounded-xl border border-orange-200 bg-orange-50/70 p-3.5 flex items-center justify-between hover:bg-orange-100/60 transition-all shadow-2xs group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-orange-200/70 p-2 text-orange-850">
+                  <AlertCircle className="h-5 w-5" />
+                </div>
+                <div>
+                  <span className="text-xs font-extrabold text-orange-950 block">Clientes Sem Comprar (+15 dias)</span>
+                  <span className="text-[11px] text-orange-800 font-medium">
+                    {erpData.alerts?.inactiveCustomersCount ?? 0} revendedores precisam de contato
+                  </span>
+                </div>
+              </div>
+              <ArrowRight className="h-4 w-4 text-orange-700 group-hover:translate-x-0.5 transition-transform" />
+            </Link>
+
+            {/* Alerta Títulos Vencidos */}
+            <Link
+              href="/admin/financial"
+              className="rounded-xl border border-red-200 bg-red-50/70 p-3.5 flex items-center justify-between hover:bg-red-100/60 transition-all shadow-2xs group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-red-200/70 p-2 text-red-850">
+                  <DollarSign className="h-5 w-5" />
+                </div>
+                <div>
+                  <span className="text-xs font-extrabold text-red-950 block">Contas a Receber Vencidas</span>
+                  <span className="text-[11px] text-red-800 font-medium">
+                    {formatBRL(erpData.alerts?.overdueReceivableTotal ?? erpData.financial.overdueReceivable)} ({erpData.alerts?.overdueReceivableCount ?? 0} títulos)
+                  </span>
+                </div>
+              </div>
+              <ArrowRight className="h-4 w-4 text-red-700 group-hover:translate-x-0.5 transition-transform" />
+            </Link>
+          </div>
+
+          {/* GRID COMERCIAL: RANKING DE VENDEDORES & DOCES CAMPEÕES */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Ranking de Vendedores no Mês */}
+            <div className="rounded-2xl bg-white border border-stone-200 p-5 shadow-xs space-y-4">
+              <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <Award className="h-5 w-5 text-amber-700" />
+                  <h3 className="text-sm font-extrabold text-stone-900">Desempenho da Equipe de Vendas</h3>
+                </div>
+                <Link
+                  href="/admin/reports/sellers"
+                  className="text-xs font-bold text-amber-800 hover:underline flex items-center gap-1"
+                >
+                  Relatório Completo <ArrowRight className="h-3 w-3" />
+                </Link>
+              </div>
+
+              {(!erpData.sellersRanking || erpData.sellersRanking.length === 0) ? (
+                <p className="text-xs text-stone-400 text-center py-6">Nenhum vendedor registrado no mês.</p>
+              ) : (
+                <div className="space-y-3.5">
+                  {erpData.sellersRanking.map((s, idx) => (
+                    <div key={s.id} className="space-y-1.5 p-2 rounded-xl hover:bg-stone-50 transition-colors">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-extrabold text-stone-900 flex items-center gap-2">
+                          <span className={`h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-black ${
+                            idx === 0 ? 'bg-amber-100 text-amber-800' : 'bg-stone-100 text-stone-600'
+                          }`}>
+                            {idx + 1}
+                          </span>
+                          {s.name}
+                          <span className="text-[10px] font-normal text-stone-400">({s.ordersCount} pedidos)</span>
+                        </span>
+                        <div className="text-right">
+                          <span className="font-black text-stone-900 block">{formatBRL(s.realized)}</span>
+                          <span className="text-[10px] font-bold text-stone-400">
+                            Meta: {formatBRL(s.goal)} ({s.percentGoal.toFixed(0)}%)
+                          </span>
+                        </div>
+                      </div>
+                      <div className="w-full bg-stone-100 rounded-full h-1.5 overflow-hidden">
+                        <div 
+                          className="bg-amber-700 h-1.5 rounded-full" 
+                          style={{ width: `${Math.min(100, s.percentGoal)}%` }} 
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Doces Mais Vendidos no Mês */}
+            <div className="rounded-2xl bg-white border border-stone-200 p-5 shadow-xs space-y-4">
+              <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <Package className="h-5 w-5 text-purple-700" />
+                  <h3 className="text-sm font-extrabold text-stone-900">Doces Campeões de Venda (Mês)</h3>
+                </div>
+                <Link
+                  href="/admin/reports/products-abc"
+                  className="text-xs font-bold text-purple-800 hover:underline flex items-center gap-1"
+                >
+                  Curva ABC <ArrowRight className="h-3 w-3" />
+                </Link>
+              </div>
+
+              {erpData.topProducts.length === 0 ? (
+                <p className="text-xs text-stone-400 text-center py-6">Nenhum produto faturado no mês.</p>
+              ) : (
+                <div className="divide-y divide-stone-100">
+                  {erpData.topProducts.map((p, idx) => (
+                    <div key={p.productId} className="py-2.5 flex justify-between items-center text-xs">
+                      <div className="flex items-center gap-2.5 truncate max-w-[240px]">
+                        <span className="text-[11px] font-black text-stone-400">#{idx + 1}</span>
+                        <span className="font-bold text-stone-850 truncate">{p.name}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-black text-stone-900 block">{formatBRL(p.total)}</span>
+                        <span className="text-[10px] font-bold text-purple-700">{p.quantity} unidades</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ÚLTIMOS PEDIDOS EMITIDOS */}
+          <div className="rounded-2xl bg-white border border-stone-200 p-5 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+              <div className="flex items-center gap-2">
+                <ShoppingCart className="h-5 w-5 text-stone-700" />
+                <h3 className="text-sm font-extrabold text-stone-900">Últimos Pedidos Emitidos</h3>
+              </div>
+              <Link
+                href="/admin/orders"
+                className="text-xs font-bold text-amber-800 hover:underline flex items-center gap-1"
+              >
+                Ver Todos os Pedidos <ArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-stone-200 bg-stone-50 text-stone-400 font-bold uppercase tracking-wider text-[10px]">
+                    <th className="py-2.5 px-3">Pedido</th>
+                    <th className="py-2.5 px-3">Data</th>
+                    <th className="py-2.5 px-3">Cliente</th>
+                    <th className="py-2.5 px-3 text-center">Status</th>
+                    <th className="py-2.5 px-3 text-right">Valor Total</th>
+                    <th className="py-2.5 px-3 text-center">Ação</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100 font-semibold text-stone-700">
+                  {erpData.latestOrders.map((o) => {
+                    const badge = getStatusBadge(o.status);
+                    return (
+                      <tr key={o.id} className="hover:bg-stone-50/60">
+                        <td className="py-2.5 px-3 font-extrabold text-amber-800">
+                          #{o.numero}
+                        </td>
+                        <td className="py-2.5 px-3 text-stone-500 font-medium">
+                          {formatarData(o.orderDate)}
+                        </td>
+                        <td className="py-2.5 px-3 font-bold text-stone-900">
+                          {o.customerName}
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${badge.bg}`}>
+                            {badge.label}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-black text-stone-900">
+                          {formatBRL(o.total)}
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <Link
+                            href={`/admin/orders?search=%23${o.numero}`}
+                            className="text-stone-400 hover:text-amber-800 transition-colors inline-block"
+                            title="Visualizar pedido"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ABA FINANCEIRO */}
+      {activeTab === 'financeiro' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="rounded-2xl bg-white border border-stone-200 p-4 shadow-xs">
+              <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">A Receber</span>
+              <span className="text-2xl font-black text-emerald-800 mt-1 block">{formatBRL(erpData.financial.receivable)}</span>
+              <span className="text-[11px] text-stone-500 mt-1 block">Títulos pendentes</span>
+            </div>
+            <div className="rounded-2xl bg-white border border-stone-200 p-4 shadow-xs">
+              <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">A Pagar</span>
+              <span className="text-2xl font-black text-red-800 mt-1 block">{formatBRL(erpData.financial.payable)}</span>
+              <span className="text-[11px] text-stone-500 mt-1 block">Despesas da empresa</span>
+            </div>
+            <div className="rounded-2xl bg-white border border-stone-200 p-4 shadow-xs">
+              <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Vencidos a Receber</span>
+              <span className="text-2xl font-black text-orange-800 mt-1 block">{formatBRL(erpData.financial.overdueReceivable)}</span>
+              <span className="text-[11px] text-stone-500 mt-1 block">Inadimplência ativa</span>
+            </div>
+            <div className="rounded-2xl bg-white border border-stone-200 p-4 shadow-xs">
+              <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Comissões Pendentes</span>
+              <span className="text-2xl font-black text-purple-800 mt-1 block">{formatBRL(erpData.financial.pendingCommissions)}</span>
+              <span className="text-[11px] text-stone-500 mt-1 block">A pagar a vendedores</span>
+            </div>
+          </div>
+          <div className="p-4 rounded-xl bg-white border border-stone-200 flex justify-between items-center">
+            <span className="text-xs text-stone-600 font-semibold">Deseja gerenciar lançamentos, DRE e caixa detalhado?</span>
+            <Link href="/admin/financial" className="rounded-lg bg-amber-700 hover:bg-amber-800 text-white px-4 py-2 text-xs font-bold transition-all">
+              Abrir Módulo Financeiro
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* ABA PRODUÇÃO E ESTOQUE */}
+      {activeTab === 'producao' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="rounded-2xl bg-white border border-stone-200 p-4 shadow-xs">
+              <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Produtos para Venda</span>
+              <span className="text-2xl font-black text-stone-900 mt-1 block">{erpData.products.forSale} itens</span>
+              <span className="text-[11px] text-stone-500 mt-1 block">Catálogo ativo</span>
+            </div>
+            <div className="rounded-2xl bg-white border border-stone-200 p-4 shadow-xs">
+              <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Insumos & Ingredientes</span>
+              <span className="text-2xl font-black text-stone-900 mt-1 block">{erpData.products.supplies} itens</span>
+              <span className="text-[11px] text-stone-500 mt-1 block">Matérias-primas</span>
+            </div>
+            <div className="rounded-2xl bg-white border border-stone-200 p-4 shadow-xs">
+              <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Estoque Abaixo do Mínimo</span>
+              <span className="text-2xl font-black text-red-700 mt-1 block">{erpData.products.lowStock} itens</span>
+              <span className="text-[11px] text-red-600 mt-1 block">Requer reposição urgente</span>
+            </div>
+          </div>
+          <div className="p-4 rounded-xl bg-white border border-stone-200 flex justify-between items-center">
+            <span className="text-xs text-stone-600 font-semibold">Controle de fichas técnicas e movimentações:</span>
+            <Link href="/admin/stock" className="rounded-lg bg-amber-700 hover:bg-amber-800 text-white px-4 py-2 text-xs font-bold transition-all">
+              Abrir Controle de Estoque
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* ABA EXPANSÃO & LEADS */}
+      {activeTab === 'crm' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="rounded-xl bg-white p-5 shadow-xs border border-stone-200 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Leads Mapeados</span>
+                <span className="text-2xl font-black text-stone-800 mt-1 block">{crmData.summary.totalLeads}</span>
+              </div>
+              <div className="h-10 w-10 rounded-xl bg-orange-50 border border-orange-100 flex items-center justify-center text-orange-600">
+                <Flame className="h-5 w-5" />
+              </div>
+            </div>
+            <div className="rounded-xl bg-white p-5 shadow-xs border border-stone-200 flex items-center justify-between">
               <div>
                 <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Clientes Cadastrados</span>
                 <span className="text-2xl font-black text-stone-800 mt-1 block">{erpData.customers.active}</span>
               </div>
-              <div className="h-12 w-12 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600">
-                <Users className="h-6 w-6" />
+              <div className="h-10 w-10 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600">
+                <Users className="h-5 w-5" />
               </div>
             </div>
-
-            <div className="rounded-xl bg-white p-6 shadow-sm border border-stone-200 flex items-center justify-between">
+            <div className="rounded-xl bg-white p-5 shadow-xs border border-stone-200 flex items-center justify-between">
               <div>
                 <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Taxa de Conversão</span>
                 <span className="text-2xl font-black text-amber-800 mt-1 block">{crmData.summary.conversionRate}%</span>
               </div>
-              <div className="h-12 w-12 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-700">
-                <TrendingUp className="h-6 w-6" />
+              <div className="h-10 w-10 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-700">
+                <TrendingUp className="h-5 w-5" />
               </div>
             </div>
-
-            <div className="rounded-xl bg-white p-6 shadow-sm border border-stone-200 flex items-center justify-between">
+            <div className="rounded-xl bg-white p-5 shadow-xs border border-stone-200 flex items-center justify-between">
               <div>
                 <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Tempo Médio Conversão</span>
                 <span className="text-2xl font-black text-stone-800 mt-1 block">{crmData.summary.avgConversionTimeDays} dias</span>
               </div>
-              <div className="h-12 w-12 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
-                <Clock className="h-6 w-6" />
+              <div className="h-10 w-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+                <Clock className="h-5 w-5" />
               </div>
             </div>
           </div>
 
-          {/* Funil de Prospecção */}
-          <div className="rounded-2xl bg-white p-6 shadow-sm border border-stone-200 space-y-4">
-            <h3 className="text-sm font-bold text-stone-800 uppercase tracking-wider">Funil de Prospecção Comercial</h3>
-            <div className="grid grid-cols-11 gap-2 pt-2">
-              {Object.entries(crmData.funnel).map(([stage, count]) => {
-                const pct = crmData.summary.totalLeads > 0 ? (count / crmData.summary.totalLeads) * 100 : 0;
-                return (
-                  <div key={stage} className="flex flex-col items-center gap-2">
-                    <div className="h-32 w-full bg-stone-50 flex flex-col justify-end rounded-lg overflow-hidden border border-stone-150 relative group">
-                      <div 
-                        className="bg-amber-700 w-full transition-all rounded-t-sm" 
-                        style={{ height: `${pct}%` }}
-                      />
-                      <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-stone-700">
-                        {count}
-                      </span>
-                    </div>
-                    <span 
-                      className="text-[9px] font-bold text-stone-500 uppercase text-center w-full truncate cursor-default"
-                      title={stage.replace('_', ' ')}
-                    >
-                      {stage.replace('_', ' ')}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Vendedores e Bairros */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="rounded-2xl bg-white p-6 shadow-sm border border-stone-200 lg:col-span-2 space-y-4">
-              <h3 className="text-sm font-bold text-stone-800 uppercase tracking-wider flex items-center gap-1.5">
-                <Award className="h-4.5 w-4.5 text-amber-700" />
-                Performance dos Vendedores
-              </h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-stone-200 text-stone-400 font-bold uppercase tracking-wider">
-                      <th className="pb-3">Vendedor</th>
-                      <th className="pb-3 text-center">Leads Recebidos</th>
-                      <th className="pb-3 text-center">Visitas</th>
-                      <th className="pb-3 text-center">Conversões</th>
-                      <th className="pb-3 text-center">Meta Mensal</th>
-                      <th className="pb-3 text-right">Taxa Conversão</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-100 font-semibold">
-                    {crmData.sellerPerformance.map((seller) => (
-                      <tr key={seller.id} className="hover:bg-stone-50/50">
-                        <td className="py-3 font-bold text-stone-850">{seller.name}</td>
-                        <td className="py-3 text-center text-stone-500">{seller.leadsReceived}</td>
-                        <td className="py-3 text-center text-stone-500">{seller.visitsLogged}</td>
-                        <td className="py-3 text-center font-bold text-emerald-700">{seller.conversions}</td>
-                        <td className="py-3 text-center text-stone-450">{seller.goal}</td>
-                        <td className="py-3 text-right font-black text-amber-800">{seller.conversionRate}%</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="rounded-2xl bg-white p-6 shadow-sm border border-stone-200 space-y-4">
-              <h3 className="text-sm font-bold text-stone-800 uppercase tracking-wider flex items-center gap-1.5">
-                <MapPin className="h-4.5 w-4.5 text-amber-700" />
-                Inteligência por Bairro
-              </h3>
-              <div className="space-y-3.5 max-h-[300px] overflow-y-auto pr-1">
-                {crmData.neighborhoodPerformance.map((n, idx) => (
-                  <div key={idx} className="flex items-center justify-between border-b border-stone-100 pb-2 text-xs font-semibold">
-                    <div>
-                      <span className="text-stone-850 block">{n.neighborhood}</span>
-                      <span className="text-[10px] text-stone-450 font-medium">{n.totalLeads} oportunidades</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="font-extrabold text-stone-700 block">{n.conversions} fechados</span>
-                      <span className="text-[10px] text-amber-700 font-black">{n.conversionRate}% conv</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ABA FINANCEIRO & FLUXO DE CAIXA */}
-      {activeTab === 'financeiro' && (
-        <div className="space-y-8 animate-fadeIn">
-          {/* Caixa Financeiro */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="rounded-xl bg-white p-6 shadow-sm border border-stone-200 flex items-center justify-between">
-              <div>
-                <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Faturamento do Mês</span>
-                <span className="text-2xl font-black text-emerald-800 mt-1 block">
-                  {erpData.orders.monthGrossValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                </span>
-                <span className="text-[10px] text-stone-400 font-medium">{erpData.orders.inMonth} vendas no período</span>
-              </div>
-              <div className="h-12 w-12 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600">
-                <ArrowUpRight className="h-6 w-6" />
-              </div>
-            </div>
-
-            <div className="rounded-xl bg-white p-6 shadow-sm border border-stone-200 flex items-center justify-between">
-              <div>
-                <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Pedidos Em Aberto</span>
-                <span className="text-2xl font-black text-amber-800 mt-1 block">
-                  {erpData.orders.openValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                </span>
-                <span className="text-[10px] text-stone-400 font-medium">{erpData.orders.open} pedidos aguardando faturamento</span>
-                <span className="text-[10px] text-orange-500 font-bold block">{erpData.orders.pendingDeliveries} aguardando entrega</span>
-              </div>
-              <div className="h-12 w-12 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-700">
-                <Clock className="h-6 w-6" />
-              </div>
-            </div>
-
-            <div className="rounded-xl bg-white p-6 shadow-sm border border-stone-200 flex items-center justify-between">
-              <div>
-                <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Contas a Receber</span>
-                <span className="text-2xl font-black text-stone-800 mt-1 block">
-                  {erpData.financial.receivable.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                </span>
-                {erpData.financial.overdueReceivable > 0 && (<span className="text-[10px] text-red-600 font-bold block">{erpData.financial.overdueReceivable.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} vencido</span>)}
-              </div>
-              <div className="h-12 w-12 rounded-xl bg-stone-50 border border-stone-150 flex items-center justify-center text-stone-600">
-                <DollarSign className="h-6 w-6" />
-              </div>
-            </div>
-
-            <div className="rounded-xl bg-white p-6 shadow-sm border border-stone-200 flex items-center justify-between">
-              <div>
-                <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Contas a Pagar</span>
-                <span className="text-2xl font-black text-red-750 mt-1 block">
-                  {erpData.financial.payable.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                </span>
-                <span className="text-[10px] text-stone-400 font-medium">Inclui {erpData.financial.pendingCommissions.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} de comissões</span>
-              </div>
-              <div className="h-12 w-12 rounded-xl bg-red-50 border border-red-100 flex items-center justify-center text-red-650">
-                <ArrowDownRight className="h-6 w-6" />
-              </div>
-            </div>
-          </div>
-
-          {/* Últimos Pedidos */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="rounded-2xl bg-white p-6 shadow-sm border border-stone-200 lg:col-span-2 space-y-4">
-              <h3 className="text-sm font-bold text-stone-800 uppercase tracking-wider">Últimos Pedidos Emitidos</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-stone-200 text-stone-400 font-bold uppercase tracking-wider">
-                      <th className="pb-3">Pedido</th>
-                      <th className="pb-3">Cliente</th>
-                      <th className="pb-3">Data</th>
-                      <th className="pb-3 text-center">Status</th>
-                      <th className="pb-3 text-right">Valor Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-100 font-semibold text-stone-600">
-                    {erpData.latestOrders.map((p) => (
-                      <tr key={p.id} className="hover:bg-stone-50/50">
-                        <td className="py-3 font-bold text-stone-850">#{p.numero}</td>
-                        <td className="py-3 text-stone-700">{p.customerName}</td>
-                        <td className="py-3 text-stone-450">{formatarData(p.orderDate)}</td>
-                        <td className="py-3 text-center">
-                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
-                            p.status === 'faturado' || p.status === 'entregue' ? 'bg-emerald-50 text-emerald-800' :
-                            p.status === 'cancelado' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'
-                          }`}>
-                            {p.status}
-                          </span>
-                        </td>
-                        <td className="py-3 text-right font-black text-stone-850">
-                          {p.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Resumo de Projeção de Caixa */}
-            <div className="rounded-2xl bg-white p-6 shadow-sm border border-stone-200 space-y-4">
-              <h3 className="text-sm font-bold text-stone-800 uppercase tracking-wider">Metas Financeiras</h3>
-              
-              <div className="space-y-6 pt-2">
-                <div>
-                  <div className="flex justify-between text-xs font-bold text-stone-650 mb-1">
-                    <span>Faturamento Comercial</span>
-                    <span>{((erpData.orders.monthGrossValue / 15000) * 100).toFixed(0)}% da Meta</span>
-                  </div>
-                  <div className="h-3 w-full bg-stone-100 rounded-full overflow-hidden border border-stone-150">
-                    <div 
-                      className="h-full bg-emerald-600 rounded-full"
-                      style={{ width: `${Math.min(100, (erpData.orders.monthGrossValue / 15000) * 100)}%` }}
-                    />
-                  </div>
-                  <span className="text-[10px] text-stone-400 font-medium block mt-1">Realizado: {erpData.orders.monthGrossValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} / Meta: R$ 15.000,00</span>
-                </div>
-
-                <div>
-                  <div className="flex justify-between text-xs font-bold text-stone-650 mb-1">
-                    <span>Provisão de Caixa</span>
-                    <span>Líquido Estimado</span>
-                  </div>
-                  <div className={`p-4 rounded-xl border font-bold text-sm ${
-                    (erpData.financial.receivable - erpData.financial.payable) >= 0 ? 'bg-emerald-50/50 border-emerald-100 text-emerald-800' : 'bg-red-50/50 border-red-100 text-red-800'
-                  }`}>
-                    {(erpData.financial.receivable - erpData.financial.payable).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                    <span className="text-[10px] text-stone-450 block font-medium mt-1">Saldo projetado após recebimento/pagamento das faturas pendentes.</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ABA ESTOQUE & FÁBRICA */}
-      {activeTab === 'producao' && (
-        <div className="space-y-8 animate-fadeIn">
-          {/* Caixa Fábrica */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="rounded-xl bg-white p-6 shadow-sm border border-stone-200 flex items-center justify-between">
-              <div>
-                <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Produtos para Venda</span>
-                <span className="text-2xl font-black text-stone-800 mt-1 block">{erpData.products.forSale}</span>
-                <span className="text-[10px] text-stone-400 font-medium">Produtos finais de brownie</span>
-              </div>
-              <div className="h-12 w-12 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-700">
-                <Package className="h-6 w-6" />
-              </div>
-            </div>
-
-            <div className="rounded-xl bg-white p-6 shadow-sm border border-stone-200 flex items-center justify-between">
-              <div>
-                <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Insumos & Ingredientes</span>
-                <span className="text-2xl font-black text-stone-800 mt-1 block">{erpData.products.supplies}</span>
-                <span className="text-[10px] text-stone-400 font-medium">Matérias-primas e recheios</span>
-              </div>
-              <div className="h-12 w-12 rounded-xl bg-stone-50 border border-stone-150 flex items-center justify-center text-stone-600">
-                <Scale className="h-6 w-6" />
-              </div>
-            </div>
-
-            <div className="rounded-xl bg-white p-6 shadow-sm border border-stone-200 flex items-center justify-between">
-              <div>
-                <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Rupturas / Estoque Baixo</span>
-                <span className={`text-2xl font-black mt-1 block ${erpData.products.lowStock > 0 ? 'text-red-750' : 'text-emerald-800'}`}>
-                  {erpData.products.lowStock}
-                </span>
-                <span className="text-[10px] text-stone-400 font-medium">Itens abaixo do estoque mínimo</span>
-              </div>
-              <div className={`h-12 w-12 rounded-xl flex items-center justify-center ${
-                erpData.products.lowStock > 0 ? 'bg-red-50 border border-red-100 text-red-700' : 'bg-emerald-50 border border-emerald-100 text-emerald-600'
-              }`}>
-                {erpData.products.lowStock > 0 ? <AlertTriangle className="h-6 w-6" /> : <CheckCircle2 className="h-6 w-6" />}
-              </div>
-            </div>
-          </div>
-
-          {/* Top Vendidos e Alertas */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Top Produtos */}
-            <div className="rounded-2xl bg-white p-6 shadow-sm border border-stone-200 lg:col-span-2 space-y-4">
-              <h3 className="text-sm font-bold text-stone-800 uppercase tracking-wider">Produtos Mais Vendidos (Mês)</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-stone-200 text-stone-400 font-bold uppercase tracking-wider">
-                      <th className="pb-3">Produto</th>
-                      <th className="pb-3 text-center">Quantidade Vendida</th>
-                      <th className="pb-3 text-right">Valor Total Faturado</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-100 font-semibold text-stone-600">
-                    {erpData.topProducts.map((p, idx) => (
-                      <tr key={idx} className="hover:bg-stone-50/50">
-                        <td className="py-3 font-bold text-stone-850">{p.name}</td>
-                        <td className="py-3 text-center text-stone-700 font-bold">{p.quantity} un</td>
-                        <td className="py-3 text-right font-black text-stone-850">
-                          {p.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                        </td>
-                      </tr>
-                    ))}
-                    {erpData.topProducts.length === 0 && (
-                      <tr>
-                        <td colSpan={3} className="py-8 text-center text-stone-400 font-medium">Sem dados de vendas registradas neste mês.</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Quadro de Alertas */}
-            <div className="rounded-2xl bg-white p-6 shadow-sm border border-stone-200 space-y-4">
-              <h3 className="text-sm font-bold text-stone-800 uppercase tracking-wider">Ações Recomendadas</h3>
-              
-              <div className="space-y-3.5 pt-2 text-xs">
-                {erpData.products.lowStock > 0 ? (
-                  <div className="p-3 bg-red-50 border border-red-100 text-red-800 rounded-xl flex items-start gap-2.5 font-semibold">
-                    <AlertTriangle className="h-5 w-5 shrink-0 text-red-700" />
-                    <div>
-                      <span className="font-bold block">Aviso de Ruptura de Estoque</span>
-                      <span className="text-[10px] text-red-700 font-medium block mt-0.5">Há {erpData.products.lowStock} ingredientes/produtos abaixo do limite de segurança. Vá para Matérias-primas para verificar o estoque mínimo.</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="p-3 bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-xl flex items-start gap-2.5 font-semibold">
-                    <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-700" />
-                    <div>
-                      <span className="font-bold block">Estoque 100% Seguro</span>
-                      <span className="text-[10px] text-emerald-700 font-medium block mt-0.5">Todos os insumos operacionais estão acima do estoque mínimo configurado.</span>
-                    </div>
-                  </div>
-                )}
-
-                <div className="p-3 bg-stone-50 border border-stone-150 text-stone-700 rounded-xl flex items-start gap-2.5 font-semibold">
-                  <Clock className="h-5 w-5 shrink-0 text-stone-500" />
-                  <div>
-                    <span className="font-bold block text-stone-850">Produção Programada</span>
-                    <span className="text-[10px] text-stone-450 font-medium block mt-0.5">Acompanhe a fila de pedidos na tela de faturamento para planejar as fornadas e o derretimento do chocolate.</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div className="p-4 rounded-xl bg-white border border-stone-200 flex justify-between items-center">
+            <span className="text-xs text-stone-600 font-semibold">Deseja gerenciar a prospecção ativa de novos pontos?</span>
+            <Link href="/admin/leads" className="rounded-lg bg-amber-700 hover:bg-amber-800 text-white px-4 py-2 text-xs font-bold transition-all">
+              Abrir Funil de Leads
+            </Link>
           </div>
         </div>
       )}

@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   FileText,
   Plus,
   Loader2,
   X,
-  Package
+  Package,
+  MessageCircle
 } from 'lucide-react';
 import { responseErrorMessage } from '@/lib/errors';
 import { useToast } from '@/components/shared/Toast';
@@ -133,6 +134,8 @@ export default function SellerOrdersPage() {
   const [itemPreco, setItemPreco] = useState('');
   const [produtoBusca, setProdutoBusca] = useState('');
   const [produtoListaAberta, setProdutoListaAberta] = useState(false);
+  const [highlightedProdIndex, setHighlightedProdIndex] = useState(0);
+  const qtyInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     void (async () => {
@@ -255,6 +258,23 @@ export default function SellerOrdersPage() {
 
   const handleRemoveItem = (idx: number) => {
     setItensTemp(itensTemp.filter((_, i) => i !== idx));
+  };
+
+  const handleUpdateItem = (idx: number, patch: { quantity?: number; discountItem?: number }) => {
+    setItensTemp((prev) =>
+      prev.map((item, i) => {
+        if (i !== idx) return item;
+        const qty = patch.quantity !== undefined ? Math.max(0.001, patch.quantity) : item.quantity;
+        const desc = patch.discountItem !== undefined ? Math.max(0, patch.discountItem) : item.discountItem;
+        const subtotal = Math.max(0, qty * item.unitPrice - desc);
+        return {
+          ...item,
+          quantity: qty,
+          discountItem: desc,
+          subtotal,
+        };
+      })
+    );
   };
 
   // Totais do Formulário
@@ -477,6 +497,26 @@ export default function SellerOrdersPage() {
     : produtos
   ).slice(0, 50);
 
+  const handleWhatsApp = (p: OrderDTO) => {
+    const customer = clientes.find((c) => c.id === p.customerId);
+    const rawPhone = p.deliveryAddress?.phone || customer?.phone || customer?.mobile || '';
+    const cleanPhone = rawPhone.replace(/\D/g, '');
+    const linhas = (p.items ?? []).map((i) => `• ${i.quantity}x ${i.productName ?? ''}`).join('\n');
+    const msg =
+      `*Pedido #${p.numero} — Doces Prigor* 🍬\n` +
+      `Cliente: ${p.customerName ?? ''}\n` +
+      (linhas ? `${linhas}\n` : '') +
+      `\n*Total:* ${p.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n` +
+      `*Pagamento:* ${p.paymentMethod?.toUpperCase() ?? 'A combinar'}` +
+      (p.deliveryDate ? `\n*Previsão de Entrega:* ${formatarData(p.deliveryDate)}` : '') +
+      `\n\n_Obrigado pela preferência e parceria!_`;
+
+    const url = cleanPhone
+      ? `https://api.whatsapp.com/send?phone=55${cleanPhone}&text=${encodeURIComponent(msg)}`
+      : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    window.open(url, '_blank');
+  };
+
   return (
     <div className="space-y-4 max-w-md mx-auto">
       {/* Cabeçalho */}
@@ -517,6 +557,15 @@ export default function SellerOrdersPage() {
                 <span className="text-[9px] text-stone-400 block font-medium mt-1">
                   Emitido em: {formatarData(p.orderDate)} • {p.paymentMethod?.toUpperCase()}
                 </span>
+                <button
+                  type="button"
+                  onClick={() => handleWhatsApp(p)}
+                  className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-[10px] font-bold border border-emerald-200 transition-all cursor-pointer"
+                  title="Enviar confirmação e itens do pedido por WhatsApp"
+                >
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  Enviar WhatsApp
+                </button>
               </div>
               <div className="text-right flex flex-col items-end gap-1.5 shrink-0">
                 <span className="text-stone-850 font-black text-sm block">
@@ -636,14 +685,49 @@ export default function SellerOrdersPage() {
 
                     <div className="grid grid-cols-3 gap-2 items-end">
                       <div className="col-span-2">
-                        <label className="text-[8px] text-stone-450 font-bold uppercase block mb-0.5">Produto</label>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <label className="text-[8px] text-stone-450 font-bold uppercase block">Produto</label>
+                          <span className="text-[8px] text-stone-400 italic">Use setas ↑↓ e Enter</span>
+                        </div>
                         <div className="relative">
                           <input
                             type="text"
                             value={produtoBusca}
-                            onChange={(e) => { setProdutoBusca(e.target.value); setProdutoListaAberta(true); if (selectedProdId) setSelectedProdId(''); }}
-                            onFocus={() => setProdutoListaAberta(true)}
-                            onBlur={() => window.setTimeout(() => setProdutoListaAberta(false), 150)}
+                            onChange={(e) => {
+                              setProdutoBusca(e.target.value);
+                              setProdutoListaAberta(true);
+                              setHighlightedProdIndex(0);
+                              if (selectedProdId) setSelectedProdId('');
+                            }}
+                            onFocus={() => {
+                              setProdutoListaAberta(true);
+                              setHighlightedProdIndex(0);
+                            }}
+                            onBlur={() => window.setTimeout(() => setProdutoListaAberta(false), 200)}
+                            onKeyDown={(e) => {
+                              if (!produtoListaAberta || produtosFiltrados.length === 0) return;
+                              if (e.key === 'ArrowDown') {
+                                e.preventDefault();
+                                setHighlightedProdIndex((prev) => Math.min(produtosFiltrados.length - 1, prev + 1));
+                              } else if (e.key === 'ArrowUp') {
+                                e.preventDefault();
+                                setHighlightedProdIndex((prev) => Math.max(0, prev - 1));
+                              } else if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const prod = produtosFiltrados[highlightedProdIndex];
+                                if (prod) {
+                                  setSelectedProdId(prod.id);
+                                  setProdutoBusca(prod.name);
+                                  setProdutoListaAberta(false);
+                                  const cli = clientes.find((c) => c.id === clienteId);
+                                  setItemPreco(String(obterPrecoUnitario(prod, parseFloat(itemQty) || 1, cli ? !!cli.isReseller : false)));
+                                  qtyInputRef.current?.focus();
+                                  qtyInputRef.current?.select();
+                                }
+                              } else if (e.key === 'Escape') {
+                                setProdutoListaAberta(false);
+                              }
+                            }}
                             placeholder="Digite o produto..."
                             className="w-full px-2.5 py-1.5 rounded-lg border border-stone-200 bg-white focus:outline-none text-[11px]"
                           />
@@ -652,13 +736,27 @@ export default function SellerOrdersPage() {
                               {produtosFiltrados.length === 0 ? (
                                 <div className="px-2.5 py-2 text-[11px] text-stone-400">Nenhum produto encontrado</div>
                               ) : (
-                                produtosFiltrados.map((p) => (
+                                produtosFiltrados.map((p, idx) => (
                                   <button
                                     type="button"
                                     key={p.id}
                                     onMouseDown={(e) => e.preventDefault()}
-                                    onClick={() => { setSelectedProdId(p.id); setProdutoBusca(p.name); setProdutoListaAberta(false); const cli = clientes.find((c) => c.id === clienteId); setItemPreco(String(obterPrecoUnitario(p, parseFloat(itemQty) || 1, cli ? !!cli.isReseller : false))); }}
-                                    className={`block w-full text-left px-2.5 py-1.5 text-[11px] hover:bg-amber-50 ${p.id === selectedProdId ? 'bg-amber-50 font-bold' : ''}`}
+                                    onClick={() => {
+                                      setSelectedProdId(p.id);
+                                      setProdutoBusca(p.name);
+                                      setProdutoListaAberta(false);
+                                      const cli = clientes.find((c) => c.id === clienteId);
+                                      setItemPreco(String(obterPrecoUnitario(p, parseFloat(itemQty) || 1, cli ? !!cli.isReseller : false)));
+                                      qtyInputRef.current?.focus();
+                                      qtyInputRef.current?.select();
+                                    }}
+                                    className={`block w-full text-left px-2.5 py-1.5 text-[11px] transition-colors ${
+                                      idx === highlightedProdIndex
+                                        ? 'bg-amber-100 text-amber-900 font-bold border-l-4 border-amber-600'
+                                        : p.id === selectedProdId
+                                        ? 'bg-amber-50 font-bold'
+                                        : 'hover:bg-amber-50'
+                                    }`}
                                   >
                                     {p.name} — R$ {p.salePrice}
                                   </button>
@@ -672,6 +770,7 @@ export default function SellerOrdersPage() {
                       <div>
                         <label className="text-[8px] text-stone-450 font-bold uppercase block mb-0.5">Quantidade</label>
                         <input 
+                          ref={qtyInputRef}
                           type="number"
                           min="1"
                           step="1"
@@ -707,7 +806,7 @@ export default function SellerOrdersPage() {
                       </div>
 
                       <button 
-                        type="button"
+                        type="button" 
                         onClick={handleAddItem}
                         className="rounded-lg bg-stone-900 hover:bg-stone-800 text-white font-bold py-1.5 px-2 text-center cursor-pointer transition-all text-[10px]"
                       >
@@ -717,24 +816,50 @@ export default function SellerOrdersPage() {
 
                     {/* Lista de Itens Adicionados */}
                     {itensTemp.length > 0 && (
-                      <div className="border border-stone-200 bg-white rounded-lg overflow-hidden max-h-32 overflow-y-auto">
+                      <div className="border border-stone-200 bg-white rounded-lg overflow-hidden max-h-48 overflow-y-auto">
                         <table className="w-full text-left text-[10px] font-semibold text-stone-600">
                           <thead className="bg-stone-50 text-stone-400 font-bold border-b border-stone-150">
                             <tr>
-                              <th className="py-1 px-2">Produto</th>
-                              <th className="py-1 px-2 text-center">Qtd</th>
-                              <th className="py-1 px-2 text-right">Subtotal</th>
-                              <th className="py-1 px-2 text-center"></th>
+                              <th className="py-1.5 px-2">Produto</th>
+                              <th className="py-1.5 px-2 text-center w-16">Qtd</th>
+                              <th className="py-1.5 px-2 text-right">Preço Unit.</th>
+                              <th className="py-1.5 px-2 text-right w-24">Desc. Unit.</th>
+                              <th className="py-1.5 px-2 text-right">Subtotal</th>
+                              <th className="py-1.5 px-2 text-center"></th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-stone-100">
                             {itensTemp.map((it, idx) => (
-                              <tr key={idx}>
-                                <td className="py-1.5 px-2 truncate max-w-[120px]">{it.productName}</td>
-                                <td className="py-1.5 px-2 text-center">{it.quantity}</td>
-                                <td className="py-1.5 px-2 text-right">{it.subtotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                              <tr key={idx} className="hover:bg-stone-50/50">
+                                <td className="py-1.5 px-2 truncate max-w-[120px] font-bold text-stone-800">{it.productName}</td>
                                 <td className="py-1.5 px-2 text-center">
-                                  <button onClick={() => handleRemoveItem(idx)} className="text-red-600 font-bold cursor-pointer">X</button>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    step="1"
+                                    value={it.quantity}
+                                    onChange={(e) => handleUpdateItem(idx, { quantity: parseFloat(e.target.value) || 0 })}
+                                    className="w-14 px-1 py-0.5 text-center font-bold rounded border border-stone-200 bg-stone-50 focus:bg-white focus:border-amber-500 focus:outline-none text-[10px]"
+                                  />
+                                </td>
+                                <td className="py-1.5 px-2 text-right text-stone-600">
+                                  {it.unitPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                </td>
+                                <td className="py-1.5 px-2 text-right">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={it.discountItem}
+                                    onChange={(e) => handleUpdateItem(idx, { discountItem: parseFloat(e.target.value) || 0 })}
+                                    className="w-16 px-1 py-0.5 text-right font-bold rounded border border-stone-200 bg-stone-50 focus:bg-white focus:border-amber-500 focus:outline-none text-[10px] text-red-600"
+                                  />
+                                </td>
+                                <td className="py-1.5 px-2 text-right font-black text-stone-900">
+                                  {it.subtotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                </td>
+                                <td className="py-1.5 px-2 text-center">
+                                  <button onClick={() => handleRemoveItem(idx)} className="text-red-600 hover:text-red-800 font-bold cursor-pointer">X</button>
                                 </td>
                               </tr>
                             ))}

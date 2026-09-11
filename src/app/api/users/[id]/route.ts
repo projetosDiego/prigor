@@ -7,7 +7,15 @@ import { deactivateUser, updateUser } from '@/server/services/users';
 
 type Context = { params: Promise<{ id: string }> };
 
-const updateSchema = userUpdateSchema.and(z.object({ password: z.string().min(8).max(200).optional() }));
+const updateSchema = userUpdateSchema.and(
+  z.object({
+    password: z
+      .union([z.string(), z.null()])
+      .optional()
+      .transform((v) => (!v || !v.trim() ? undefined : v.trim()))
+      .refine((v) => !v || v.length >= 8, 'A senha precisa ter pelo menos 8 caracteres.'),
+  }),
+);
 
 export const PATCH = route<Context>('usuarios.atualizar', async (request, { params }) => {
   const session = await requireAdmin();

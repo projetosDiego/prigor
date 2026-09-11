@@ -112,8 +112,8 @@ export default function AdminSellersPage() {
       const payload: SellerPayload = { name, email, phone, goal, commissionPct, goalRevenue: parseMoneyBRL(goalRevenue), active, startDate };
       
       // Senha é obrigatória na criação, opcional na edição
-      if (password) {
-        payload.password = password;
+      if (password && password.trim()) {
+        payload.password = password.trim();
       }
 
       const res = await fetch(url, {

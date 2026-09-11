@@ -153,28 +153,35 @@ export async function updateSeller(
   const existing = await prisma.seller.findUnique({ where: { id }, select: { id: true, userId: true } });
   if (!existing) throw notFound('Vendedor');
 
-  const updated = await prisma.$transaction(async (tx: Tx) => {
-    const userData: Record<string, unknown> = {};
-    if (input.name !== undefined) userData.name = input.name;
-    if (input.email !== undefined && input.email !== null) userData.email = input.email;
-    if (input.phone !== undefined) userData.phone = input.phone;
-    if (input.active !== undefined) userData.active = input.active;
-    if (input.password) userData.passwordHash = await hashPassword(input.password);
+  try {
+    const updated = await prisma.$transaction(async (tx: Tx) => {
+      const userData: Record<string, unknown> = {};
+      if (input.name !== undefined) userData.name = input.name;
+      if (input.email !== undefined && input.email !== null) userData.email = input.email;
+      if (input.phone !== undefined) userData.phone = input.phone;
+      if (input.active !== undefined) userData.active = input.active;
+      if (input.password) userData.passwordHash = await hashPassword(input.password);
 
-    if (Object.keys(userData).length > 0) {
-      await tx.user.update({ where: { id: existing.userId }, data: userData });
+      if (Object.keys(userData).length > 0) {
+        await tx.user.update({ where: { id: existing.userId }, data: userData });
+      }
+
+      const sellerData: Record<string, unknown> = {};
+      for (const key of ['name', 'phone', 'email', 'commissionPct', 'goal', 'goalRevenue', 'notes', 'active'] as const) {
+        const value = (input as Record<string, unknown>)[key];
+        if (value !== undefined) sellerData[key] = value;
+      }
+
+      return tx.seller.update({ where: { id }, data: sellerData, include: SELLER_INCLUDE });
+    });
+
+    return toDTO(updated);
+  } catch (error) {
+    if (prismaErrorCode(error) === UNIQUE_VIOLATION) {
+      throw conflict('Já existe um usuário cadastrado com esse e-mail.');
     }
-
-    const sellerData: Record<string, unknown> = {};
-    for (const key of ['name', 'phone', 'email', 'commissionPct', 'goal', 'goalRevenue', 'notes', 'active'] as const) {
-      const value = (input as Record<string, unknown>)[key];
-      if (value !== undefined) sellerData[key] = value;
-    }
-
-    return tx.seller.update({ where: { id }, data: sellerData, include: SELLER_INCLUDE });
-  });
-
-  return toDTO(updated);
+    throw error;
+  }
 }
 
 /**

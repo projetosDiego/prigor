@@ -21,8 +21,24 @@ export function apiErrorMessage(payload: unknown, fallback: string): string {
   const body = payload as ApiErrorPayload;
 
   if (typeof body.error === 'string' && body.error.trim()) return body.error;
-  if (body.error && typeof body.error === 'object' && typeof body.error.message === 'string') {
-    return body.error.message;
+  if (body.error && typeof body.error === 'object') {
+    if (Array.isArray(body.error.details) && body.error.details.length > 0) {
+      const detailsList = body.error.details
+        .map((d: unknown) => {
+          if (typeof d === 'string') return d;
+          if (d && typeof d === 'object') {
+            const item = d as { field?: string; message?: string };
+            const field = item.field && item.field !== '(raiz)' ? `${item.field}: ` : '';
+            return `${field}${item.message || JSON.stringify(d)}`;
+          }
+          return String(d);
+        })
+        .join('\n');
+      return `Dados inválidos:\n${detailsList}`;
+    }
+    if (typeof body.error.message === 'string' && body.error.message.trim()) {
+      return body.error.message;
+    }
   }
   if (typeof body.detail === 'string' && body.detail.trim()) return body.detail;
 

@@ -404,15 +404,37 @@ export interface CustomerDTO {
   active: boolean;
   creditLimit: number;
   createdAt: string | null;
+  lastOrderDate?: string | null;
+  daysSinceLastOrder?: number | null;
+  recurrentStatus?: 'active' | 'risk' | 'inactive' | 'new';
 }
 
-export interface CustomerRow extends Omit<CustomerDTO, 'sellerName' | 'createdAt' | 'creditLimit'> {
+export interface CustomerRow extends Omit<CustomerDTO, 'sellerName' | 'createdAt' | 'creditLimit' | 'lastOrderDate' | 'daysSinceLastOrder' | 'recurrentStatus'> {
   creditLimit: NumericInput;
   createdAt: Date | string;
   seller?: { name: string } | null;
+  orders?: Array<{ orderDate: Date }>;
 }
 
 export function toCustomerDTO(row: CustomerRow): CustomerDTO {
+  const latestOrder = row.orders && row.orders.length > 0 ? row.orders[0] : null;
+  let lastOrderDate: string | null = null;
+  let daysSinceLastOrder: number | null = null;
+  let recurrentStatus: 'active' | 'risk' | 'inactive' | 'new' = 'new';
+
+  if (latestOrder) {
+    lastOrderDate = latestOrder.orderDate.toISOString().slice(0, 10);
+    const msPerDay = 1000 * 60 * 60 * 24;
+    daysSinceLastOrder = Math.max(0, Math.floor((Date.now() - latestOrder.orderDate.getTime()) / msPerDay));
+    if (daysSinceLastOrder <= 14) {
+      recurrentStatus = 'active';
+    } else if (daysSinceLastOrder <= 30) {
+      recurrentStatus = 'risk';
+    } else {
+      recurrentStatus = 'inactive';
+    }
+  }
+
   return {
     id: row.id,
     tradeName: row.tradeName,
@@ -442,6 +464,9 @@ export function toCustomerDTO(row: CustomerRow): CustomerDTO {
     active: row.active,
     creditLimit: num(row.creditLimit),
     createdAt: timestamp(row.createdAt),
+    lastOrderDate,
+    daysSinceLastOrder,
+    recurrentStatus,
   };
 }
 

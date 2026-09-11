@@ -8,7 +8,13 @@ import { deactivateSeller, getSeller, updateSeller } from '@/server/services/sel
 type Context = { params: Promise<{ id: string }> };
 
 const updateSchema = sellerUpdateSchema.and(
-  z.object({ password: z.string().min(8).max(200).optional() }),
+  z.object({
+    password: z
+      .union([z.string(), z.null()])
+      .optional()
+      .transform((v) => (!v || !v.trim() ? undefined : v.trim()))
+      .refine((v) => !v || v.length >= 8, 'A senha precisa ter pelo menos 8 caracteres.'),
+  }),
 );
 
 export const GET = route<Context>('vendedores.obter', async (_request, { params }) => {

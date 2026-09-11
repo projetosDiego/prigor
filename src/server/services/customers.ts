@@ -22,7 +22,15 @@ type CustomerInput = z.infer<typeof customerInputSchema>;
 type CustomerUpdate = z.infer<typeof customerUpdateSchema>;
 type CustomerQuery = z.infer<typeof customerListQuerySchema>;
 
-const CUSTOMER_INCLUDE = { seller: { select: { name: true } } };
+const CUSTOMER_INCLUDE = {
+  seller: { select: { name: true } },
+  orders: {
+    where: { status: { not: 'cancelado' as const } },
+    select: { orderDate: true },
+    orderBy: { orderDate: 'desc' as const },
+    take: 1,
+  },
+};
 
 export async function listCustomers(
   session: SessionPayload,
@@ -77,7 +85,7 @@ export async function getCustomer(session: SessionPayload, id: string): Promise<
 
 function handleUnique(error: unknown): never {
   if (prismaErrorCode(error) === UNIQUE_VIOLATION) {
-    throw conflict('Já existe um cliente com esse CNPJ.');
+    throw conflict('Já existe um cliente cadastrado com esse documento (CNPJ/CPF).');
   }
   throw error;
 }
@@ -104,6 +112,7 @@ function toPersistable(
     'latitude',
     'longitude',
     'category',
+    'sellerId',
     'regionId',
     'neighborhoodId',
     'notes',
@@ -133,8 +142,8 @@ export async function createCustomer(
     const created = await prisma.customer.create({
       data: {
         ...toPersistable(input),
-        // Vendedor sempre cadastra na própria carteira.
-        sellerId: isManagement(session) ? null : session.sellerId,
+        // Vendedor sempre cadastra na própria carteira; gestores podem atribuir diretamente ao vendedor
+        sellerId: isManagement(session) ? (input.sellerId ?? null) : session.sellerId,
       },
       include: CUSTOMER_INCLUDE,
     });
@@ -159,10 +168,15 @@ export async function updateCustomer(
     throw notFound('Cliente');
   }
 
+  const dataToUpdate = toPersistable(input);
+  if (!isManagement(session)) {
+    delete dataToUpdate.sellerId;
+  }
+
   try {
     const updated = await prisma.customer.update({
       where: { id },
-      data: toPersistable(input),
+      data: dataToUpdate,
       include: CUSTOMER_INCLUDE,
     });
     return toCustomerDTO(updated);
