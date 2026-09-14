@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { 
   FileText, 
   Plus, 
@@ -138,6 +138,7 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [filtroTexto, setFiltroTexto] = useState('');
 
   // Estado do Modal (Formulário)
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -151,7 +152,11 @@ export default function OrdersPage() {
   const [clienteId, setClienteId] = useState('');
   const [clienteBusca, setClienteBusca] = useState('');
   const [clienteListaAberta, setClienteListaAberta] = useState(false);
+  const [highlightedClientIndex, setHighlightedClientIndex] = useState(0);
   const [vendedorId, setVendedorId] = useState('');
+  const [vendedorBusca, setVendedorBusca] = useState('');
+  const [vendedorListaAberta, setVendedorListaAberta] = useState(false);
+  const [highlightedSellerIndex, setHighlightedSellerIndex] = useState(0);
   const [status, setStatus] = useState<StatusPedido>('novo');
   const [formaPagamento, setFormaPagamento] = useState('pix');
   const [dataPedido, setDataPedido] = useState(new Date().toISOString().split('T')[0]);
@@ -305,7 +310,11 @@ export default function OrdersPage() {
     setClienteId('');
     setClienteBusca('');
     setClienteListaAberta(false);
+    setHighlightedClientIndex(0);
     setVendedorId('');
+    setVendedorBusca('');
+    setVendedorListaAberta(false);
+    setHighlightedSellerIndex(0);
     setStatus('novo');
     setFormaPagamento(formasPagamento[0]?.name ?? 'Pix');
     setDataPedido(new Date().toISOString().split('T')[0]);
@@ -333,7 +342,13 @@ export default function OrdersPage() {
         const fullPed: OrderDTO = await res.json();
         setClienteId(fullPed.customerId);
         setClienteBusca(clientes.find((c) => c.id === fullPed.customerId)?.tradeName ?? pedido.customerName ?? '');
+        setClienteListaAberta(false);
+        setHighlightedClientIndex(0);
         setVendedorId(fullPed.sellerId || '');
+        const vend = vendedores.find((v) => v.id === fullPed.sellerId);
+        setVendedorBusca(vend ? vend.name : fullPed.sellerName || '');
+        setVendedorListaAberta(false);
+        setHighlightedSellerIndex(0);
         setStatus(paraStatusPedido(fullPed.status));
         setFormaPagamento(fullPed.paymentMethod || 'pix');
         setDataPedido(fullPed.orderDate ?? '');
@@ -352,7 +367,13 @@ export default function OrdersPage() {
       // Fallback: usa o que já veio na listagem
       setClienteId(pedido.customerId);
       setClienteBusca(pedido.customerName ?? '');
+      setClienteListaAberta(false);
+      setHighlightedClientIndex(0);
       setVendedorId(pedido.sellerId || '');
+      const vend = vendedores.find((v) => v.id === pedido.sellerId);
+      setVendedorBusca(vend ? vend.name : pedido.sellerName || '');
+      setVendedorListaAberta(false);
+      setHighlightedSellerIndex(0);
       setStatus(paraStatusPedido(pedido.status));
       setFormaPagamento(pedido.paymentMethod || 'pix');
       setDataPedido(pedido.orderDate ?? '');
@@ -461,6 +482,16 @@ export default function OrdersPage() {
       })
     : clientes
   ).slice(0, 50);
+
+  const vendedoresFiltrados = useMemo(() => {
+    const todos = [
+      { id: '', name: 'Sem Vendedor (Venda Direta)', commissionPct: 0 },
+      ...vendedores.map((v) => ({ id: v.id, name: v.name, commissionPct: Number(v.commissionPct) || 0 }))
+    ];
+    if (!vendedorBusca.trim()) return todos;
+    const q = vendedorBusca.toLowerCase();
+    return todos.filter((v) => v.name.toLowerCase().includes(q));
+  }, [vendedores, vendedorBusca]);
 
   const clienteTemPedidos = clienteId
     ? pedidos.some((p) => p.customerId === clienteId && p.id !== selectedPedido?.id && p.status !== 'cancelado')
@@ -698,7 +729,13 @@ export default function OrdersPage() {
       const fullPed: OrderDTO = res.ok ? await res.json() : pedido;
       setClienteId(fullPed.customerId);
       setClienteBusca(clientes.find((c) => c.id === fullPed.customerId)?.tradeName ?? fullPed.customerName ?? '');
+      setClienteListaAberta(false);
+      setHighlightedClientIndex(0);
       setVendedorId(fullPed.sellerId || '');
+      const vend = vendedores.find((v) => v.id === fullPed.sellerId);
+      setVendedorBusca(vend ? vend.name : fullPed.sellerName || '');
+      setVendedorListaAberta(false);
+      setHighlightedSellerIndex(0);
       setStatus('novo');
       setFormaPagamento(fullPed.paymentMethod || 'Pix');
       setDataPedido(new Date().toISOString().split('T')[0]);
@@ -773,7 +810,16 @@ export default function OrdersPage() {
     const date = p.orderDate?.slice(0, 10) ?? '';
     const matchesFrom = !dateFrom || date >= dateFrom;
     const matchesTo = !dateTo || date <= dateTo;
-    return matchesStatus && matchesFrom && matchesTo;
+
+    let matchesTexto = true;
+    if (filtroTexto.trim()) {
+      const q = filtroTexto.trim().toLowerCase().replace('#', '');
+      const numMatch = String(p.numero).includes(q);
+      const cliMatch = (p.customerName || '').toLowerCase().includes(q);
+      matchesTexto = numMatch || cliMatch;
+    }
+
+    return matchesStatus && matchesFrom && matchesTo && matchesTexto;
   });
 
   return (
@@ -797,7 +843,21 @@ export default function OrdersPage() {
       </div>
 
       {/* Barra de Filtros */}
-      <div className="rounded-xl bg-white p-4 shadow-sm border border-stone-200 grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+      <div className="rounded-xl bg-white p-4 shadow-sm border border-stone-200 grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+        <div>
+          <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">Buscar Pedido / Cliente</label>
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-stone-400" />
+            <input 
+              type="text"
+              value={filtroTexto}
+              onChange={(e) => setFiltroTexto(e.target.value)}
+              placeholder="Nº pedido ou cliente..."
+              className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-stone-200 text-xs focus:outline-none bg-stone-50/50"
+            />
+          </div>
+        </div>
+
         <div>
           <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">Filtrar por Status</label>
           <select 
@@ -1027,15 +1087,46 @@ export default function OrdersPage() {
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Cliente * {primeiroPedido && (<span className="ml-1 inline-block rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-black text-emerald-700 align-middle">1º PEDIDO</span>)}</label>
-                    <button type="button" onClick={abrirCadastroRapido} className="text-[10px] font-bold text-amber-800 hover:underline cursor-pointer inline-flex items-center gap-1"><UserPlus className="h-3 w-3" /> Cadastrar novo</button>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[8px] text-stone-400 italic">Setas ↑↓ e Enter</span>
+                      <button type="button" onClick={abrirCadastroRapido} className="text-[10px] font-bold text-amber-800 hover:underline cursor-pointer inline-flex items-center gap-1"><UserPlus className="h-3 w-3" /> Cadastrar novo</button>
+                    </div>
                   </div>
                   <div className="relative">
                     <input
                       type="text"
                       value={clienteBusca}
-                      onChange={(e) => { setClienteBusca(e.target.value); setClienteListaAberta(true); if (clienteId) setClienteId(''); }}
-                      onFocus={() => setClienteListaAberta(true)}
-                      onBlur={() => window.setTimeout(() => setClienteListaAberta(false), 150)}
+                      onChange={(e) => { 
+                        setClienteBusca(e.target.value); 
+                        setClienteListaAberta(true); 
+                        setHighlightedClientIndex(0);
+                        if (clienteId) setClienteId(''); 
+                      }}
+                      onFocus={() => {
+                        setClienteListaAberta(true);
+                        setHighlightedClientIndex(0);
+                      }}
+                      onBlur={() => window.setTimeout(() => setClienteListaAberta(false), 200)}
+                      onKeyDown={(e) => {
+                        if (!clienteListaAberta || clientesFiltrados.length === 0) return;
+                        if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          setHighlightedClientIndex((prev) => Math.min(clientesFiltrados.length - 1, prev + 1));
+                        } else if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          setHighlightedClientIndex((prev) => Math.max(0, prev - 1));
+                        } else if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const cli = clientesFiltrados[highlightedClientIndex];
+                          if (cli) {
+                            setClienteId(cli.id);
+                            setClienteBusca(cli.tradeName);
+                            setClienteListaAberta(false);
+                          }
+                        } else if (e.key === 'Escape') {
+                          setClienteListaAberta(false);
+                        }
+                      }}
                       placeholder="Digite o nome ou CNPJ do cliente..."
                       className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs bg-stone-50/50 focus:ring-1 focus:ring-amber-500"
                     />
@@ -1044,13 +1135,23 @@ export default function OrdersPage() {
                         {clientesFiltrados.length === 0 ? (
                           <div className="px-3 py-2 text-xs text-stone-400">Nenhum cliente encontrado</div>
                         ) : (
-                          clientesFiltrados.map((c) => (
+                          clientesFiltrados.map((c, idx) => (
                             <button
                               type="button"
                               key={c.id}
                               onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => { setClienteId(c.id); setClienteBusca(c.tradeName); setClienteListaAberta(false); }}
-                              className={`block w-full text-left px-3 py-2 text-xs hover:bg-amber-50 ${c.id === clienteId ? 'bg-amber-50 font-bold' : ''}`}
+                              onClick={() => { 
+                                setClienteId(c.id); 
+                                setClienteBusca(c.tradeName); 
+                                setClienteListaAberta(false); 
+                              }}
+                              className={`block w-full text-left px-3 py-2 text-xs transition-colors ${
+                                idx === highlightedClientIndex
+                                  ? 'bg-amber-100 text-amber-900 font-bold border-l-4 border-amber-600'
+                                  : c.id === clienteId
+                                  ? 'bg-amber-50 font-bold'
+                                  : 'hover:bg-amber-50'
+                              }`}
                             >
                               {c.tradeName}{c.isReseller ? ' (Atacado)' : ''}
                             </button>
@@ -1077,19 +1178,78 @@ export default function OrdersPage() {
                 )}
 
                 <div>
-                  <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">Vendedor</label>
-                  <select 
-                    value={vendedorId}
-                    onChange={(e) => setVendedorId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs bg-stone-50/50 focus:ring-1 focus:ring-amber-500"
-                  >
-                    <option value="">Sem Vendedor (Venda Direta)</option>
-                    {vendedores.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.name} ({Number(v.commissionPct) || 0}%)
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Vendedor</label>
+                    <span className="text-[8px] text-stone-400 italic">Setas ↑↓ e Enter</span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={vendedorBusca}
+                      onChange={(e) => {
+                        setVendedorBusca(e.target.value);
+                        setVendedorListaAberta(true);
+                        setHighlightedSellerIndex(0);
+                        if (vendedorId) setVendedorId('');
+                      }}
+                      onFocus={() => {
+                        setVendedorListaAberta(true);
+                        setHighlightedSellerIndex(0);
+                      }}
+                      onBlur={() => window.setTimeout(() => setVendedorListaAberta(false), 200)}
+                      onKeyDown={(e) => {
+                        if (!vendedorListaAberta || vendedoresFiltrados.length === 0) return;
+                        if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          setHighlightedSellerIndex((prev) => Math.min(vendedoresFiltrados.length - 1, prev + 1));
+                        } else if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          setHighlightedSellerIndex((prev) => Math.max(0, prev - 1));
+                        } else if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const vend = vendedoresFiltrados[highlightedSellerIndex];
+                          if (vend) {
+                            setVendedorId(vend.id);
+                            setVendedorBusca(vend.name);
+                            setVendedorListaAberta(false);
+                          }
+                        } else if (e.key === 'Escape') {
+                          setVendedorListaAberta(false);
+                        }
+                      }}
+                      placeholder="Buscar vendedor..."
+                      className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs bg-stone-50/50 focus:ring-1 focus:ring-amber-500"
+                    />
+                    {vendedorListaAberta && (
+                      <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border border-stone-200 bg-white shadow-lg">
+                        {vendedoresFiltrados.length === 0 ? (
+                          <div className="px-3 py-2 text-xs text-stone-400">Nenhum vendedor encontrado</div>
+                        ) : (
+                          vendedoresFiltrados.map((v, idx) => (
+                            <button
+                              type="button"
+                              key={v.id || 'sem-vendedor'}
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => {
+                                setVendedorId(v.id);
+                                setVendedorBusca(v.name);
+                                setVendedorListaAberta(false);
+                              }}
+                              className={`block w-full text-left px-3 py-2 text-xs transition-colors ${
+                                idx === highlightedSellerIndex
+                                  ? 'bg-amber-100 text-amber-900 font-bold border-l-4 border-amber-600'
+                                  : v.id === vendedorId
+                                  ? 'bg-amber-50 font-bold'
+                                  : 'hover:bg-amber-50'
+                              }`}
+                            >
+                              {v.name} {v.id ? `(${v.commissionPct}%)` : ''}
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div>

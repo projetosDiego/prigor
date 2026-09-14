@@ -7,7 +7,8 @@ import {
   Loader2,
   X,
   Package,
-  MessageCircle
+  MessageCircle,
+  Search
 } from 'lucide-react';
 import { responseErrorMessage } from '@/lib/errors';
 import { useToast } from '@/components/shared/Toast';
@@ -104,10 +105,14 @@ export default function SellerOrdersPage() {
   const [cnpjLoading, setCnpjLoading] = useState(false);
   const [cepLoading, setCepLoading] = useState(false);
 
+  // Filtro de listagem
+  const [filtroTexto, setFiltroTexto] = useState('');
+
   // Form Fields
   const [clienteId, setClienteId] = useState('');
   const [clienteBusca, setClienteBusca] = useState('');
   const [clienteListaAberta, setClienteListaAberta] = useState(false);
+  const [highlightedClientIndex, setHighlightedClientIndex] = useState(0);
   const [enderecoEntregaId, setEnderecoEntregaId] = useState('');
   const [enderecosCliente, setEnderecosCliente] = useState<{ id: string; label: string | null; address: string | null; neighborhood: string | null; city: string | null }[]>([]);
   const [novoEndAberto, setNovoEndAberto] = useState(false);
@@ -517,6 +522,14 @@ export default function SellerOrdersPage() {
     window.open(url, '_blank');
   };
 
+  const pedidosFiltrados = pedidos.filter((p) => {
+    if (!filtroTexto.trim()) return true;
+    const q = filtroTexto.trim().toLowerCase().replace('#', '');
+    const numMatch = String(p.numero).includes(q);
+    const cliMatch = (p.customerName || '').toLowerCase().includes(q);
+    return numMatch || cliMatch;
+  });
+
   return (
     <div className="space-y-4 max-w-md mx-auto">
       {/* Cabeçalho */}
@@ -529,12 +542,31 @@ export default function SellerOrdersPage() {
           <p className="text-[10px] text-stone-500 font-semibold">Consulte e lance novas vendas em campo</p>
         </div>
         <button 
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => {
+            setIsModalOpen(true);
+            setClienteId('');
+            setClienteBusca('');
+            setClienteListaAberta(false);
+            setHighlightedClientIndex(0);
+            setItensTemp([]);
+          }}
           className="rounded-lg bg-amber-700 px-3.5 py-2 text-white font-bold text-xs hover:bg-amber-800 transition-all flex items-center gap-1 cursor-pointer shadow-xs"
         >
           <Plus className="h-4 w-4" />
           Novo Pedido
         </button>
+      </div>
+
+      {/* Busca de Pedidos */}
+      <div className="relative">
+        <Search className="absolute left-3 top-2.5 h-4 w-4 text-stone-400" />
+        <input
+          type="text"
+          value={filtroTexto}
+          onChange={(e) => setFiltroTexto(e.target.value)}
+          placeholder="Buscar por cliente ou nº do pedido..."
+          className="w-full pl-9 pr-3 py-2 rounded-xl border border-stone-200 text-xs bg-white focus:outline-none shadow-xs"
+        />
       </div>
 
       {/* Listagem */}
@@ -547,9 +579,14 @@ export default function SellerOrdersPage() {
           <FileText className="h-10 w-10 text-stone-300 mx-auto mb-2" />
           <p className="text-stone-500 text-xs font-bold">Nenhum pedido lançado ainda</p>
         </div>
+      ) : pedidosFiltrados.length === 0 ? (
+        <div className="text-center py-12 rounded-xl bg-white border border-stone-200 p-4">
+          <Search className="h-10 w-10 text-stone-300 mx-auto mb-2" />
+          <p className="text-stone-500 text-xs font-bold">Nenhum pedido encontrado para a busca</p>
+        </div>
       ) : (
         <div className="space-y-2.5 max-h-[75vh] overflow-y-auto pr-1">
-          {pedidos.map((p) => (
+          {pedidosFiltrados.map((p) => (
             <div key={p.id} className="bg-white p-3.5 rounded-xl border border-stone-200 shadow-xs text-xs font-semibold text-stone-700 flex justify-between items-start">
               <div>
                 <span className="text-stone-850 font-bold text-sm block">Pedido #{p.numero}</span>
@@ -600,20 +637,53 @@ export default function SellerOrdersPage() {
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-[9px] text-stone-400 font-bold uppercase block">Cliente *</label>
-                    <button 
-                      type="button" 
-                      onClick={() => setIsClientModalOpen(true)}
-                      className="text-[9px] text-amber-800 font-bold hover:underline cursor-pointer flex items-center gap-0.5"
-                    >
-                      ➕ Novo Cliente Rápido
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[8px] text-stone-400 italic">Setas ↑↓ e Enter</span>
+                      <button 
+                        type="button" 
+                        onClick={() => setIsClientModalOpen(true)}
+                        className="text-[9px] text-amber-800 font-bold hover:underline cursor-pointer flex items-center gap-0.5"
+                      >
+                        ➕ Novo Cliente Rápido
+                      </button>
+                    </div>
                   </div>
                   <div className="relative">
                     <input
                       type="text"
                       value={clienteBusca}
-                      onFocus={() => setClienteListaAberta(true)}
-                      onChange={(e) => { setClienteBusca(e.target.value); setClienteListaAberta(true); if (clienteId) { setClienteId(''); setItensTemp([]); } }}
+                      onFocus={() => {
+                        setClienteListaAberta(true);
+                        setHighlightedClientIndex(0);
+                      }}
+                      onBlur={() => window.setTimeout(() => setClienteListaAberta(false), 200)}
+                      onChange={(e) => { 
+                        setClienteBusca(e.target.value); 
+                        setClienteListaAberta(true); 
+                        setHighlightedClientIndex(0);
+                        if (clienteId) { setClienteId(''); setItensTemp([]); } 
+                      }}
+                      onKeyDown={(e) => {
+                        if (!clienteListaAberta || clientesFiltrados.length === 0) return;
+                        if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          setHighlightedClientIndex((prev) => Math.min(clientesFiltrados.length - 1, prev + 1));
+                        } else if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          setHighlightedClientIndex((prev) => Math.max(0, prev - 1));
+                        } else if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const cli = clientesFiltrados[highlightedClientIndex];
+                          if (cli) {
+                            setClienteId(cli.id);
+                            setClienteBusca(cli.tradeName);
+                            setClienteListaAberta(false);
+                            setItensTemp([]);
+                          }
+                        } else if (e.key === 'Escape') {
+                          setClienteListaAberta(false);
+                        }
+                      }}
                       placeholder="Digite o nome do cliente..."
                       className="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50/50 text-stone-800 focus:outline-none"
                     />
@@ -622,13 +692,19 @@ export default function SellerOrdersPage() {
                         {clientesFiltrados.length === 0 ? (
                           <div className="px-3 py-2 text-xs text-stone-400">Nenhum cliente encontrado</div>
                         ) : (
-                          clientesFiltrados.map((c) => (
+                          clientesFiltrados.map((c, idx) => (
                             <button
                               type="button"
                               key={c.id}
                               onMouseDown={(e) => e.preventDefault()}
                               onClick={() => { setClienteId(c.id); setClienteBusca(c.tradeName); setClienteListaAberta(false); setItensTemp([]); }}
-                              className={`block w-full text-left px-3 py-2 text-xs hover:bg-amber-50 ${c.id === clienteId ? 'bg-amber-50 font-bold' : ''}`}
+                              className={`block w-full text-left px-3 py-2 text-xs transition-colors ${
+                                idx === highlightedClientIndex
+                                  ? 'bg-amber-100 text-amber-900 font-bold border-l-4 border-amber-600'
+                                  : c.id === clienteId
+                                  ? 'bg-amber-50 font-bold'
+                                  : 'hover:bg-amber-50'
+                              }`}
                             >
                               {c.tradeName}{c.isReseller ? ' (Revendedor)' : ''}
                             </button>
