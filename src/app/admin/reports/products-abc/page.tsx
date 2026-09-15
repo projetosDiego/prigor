@@ -385,7 +385,7 @@ export default function ProductsAbcReportPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
+            <table className="w-full min-w-[700px] text-left text-xs border-collapse">
               <thead>
                 <tr className="border-b border-stone-100 bg-stone-50/70 text-stone-400 font-bold uppercase tracking-wider text-[10px]">
                   <th className="py-3 px-5 text-center">Classe</th>

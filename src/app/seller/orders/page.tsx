@@ -392,7 +392,7 @@ export default function SellerOrdersPage() {
       const data: RespostaCnpj = await res.json();
 
       setQuickClientName(data.nome_fantasia || data.razao_social || '');
-      setQuickClientPhone(data.ddd_telefone_1 || '');
+      setQuickClientPhone(formatPhone(data.ddd_telefone_1 || ''));
       
       setQuickClientAddress(data.logradouro || '');
       setQuickClientNumber(data.numero || '');

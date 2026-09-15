@@ -20,7 +20,9 @@ import {
   Copy,
   History,
   Search,
-  UserPlus
+  UserPlus,
+  Phone,
+  AlertCircle
 } from 'lucide-react';
 import { responseErrorMessage } from '@/lib/errors';
 import { useToast } from '@/components/shared/Toast';
@@ -71,6 +73,14 @@ function addDaysISO(iso: string, days: number): string {
   const base = new Date(Date.UTC(y, m - 1, d));
   base.setUTCDate(base.getUTCDate() + days);
   return base.toISOString().slice(0, 10);
+}
+
+function formatPhone(v: string): string {
+  const d = v.replace(/\D/g, '').slice(0, 11);
+  if (d.length <= 2) return d;
+  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
 }
 
 function statusLabel(v: string | null): string {
@@ -203,6 +213,15 @@ export default function OrdersPage() {
   const [qcIsRev, setQcIsRev] = useState(true);
   const [qcSaving, setQcSaving] = useState(false);
   const [cnpjLoading, setCnpjLoading] = useState(false);
+
+  // Seleção e impressão em lote
+  const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
+  const [batchPrinting, setBatchPrinting] = useState(false);
+
+  // Edição rápida de telefone do cliente no pedido
+  const [editPhoneModal, setEditPhoneModal] = useState(false);
+  const [phoneInputVal, setPhoneInputVal] = useState('');
+  const [savingCustomerPhone, setSavingCustomerPhone] = useState(false);
 
   const fetchBaseData = useCallback(async () => {
     try {
@@ -514,7 +533,7 @@ export default function OrdersPage() {
       if (!res.ok) throw new Error('CNPJ não encontrado ou indisponível.');
       const d = (await res.json()) as { nome_fantasia?: string; razao_social?: string; ddd_telefone_1?: string; logradouro?: string; numero?: string; complemento?: string; bairro?: string; cep?: string };
       setQcName(d.nome_fantasia || d.razao_social || '');
-      setQcPhone(d.ddd_telefone_1 || '');
+      setQcPhone(formatPhone(d.ddd_telefone_1 || ''));
       setQcAddress(d.logradouro || '');
       setQcNumber(d.numero || '');
       setQcNeighborhood(d.bairro || '');
@@ -587,6 +606,28 @@ export default function OrdersPage() {
       toast(err instanceof Error ? err.message : 'Erro ao cadastrar cliente.', 'error');
     } finally {
       setQcSaving(false);
+    }
+  };
+
+  const handleSaveCustomerPhone = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!clienteId) return;
+    setSavingCustomerPhone(true);
+    try {
+      const res = await fetch(`/api/customers/${clienteId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phoneInputVal.trim() || null }),
+      });
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao atualizar telefone.'));
+      const updated = (await res.json()) as CustomerDTO;
+      setClientes((prev) => prev.map((c) => (c.id === clienteId ? { ...c, phone: updated.phone } : c)));
+      setEditPhoneModal(false);
+      toast('Telefone do cliente salvo e atualizado no cadastro!', 'success');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Erro ao salvar telefone.', 'error');
+    } finally {
+      setSavingCustomerPhone(false);
     }
   };
 
@@ -822,6 +863,47 @@ export default function OrdersPage() {
     return matchesStatus && matchesFrom && matchesTo && matchesTexto;
   });
 
+  const toggleSelectOrder = (id: string) => {
+    setSelectedOrderIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const isAllSelected = filteredPedidos.length > 0 && filteredPedidos.every((p) => selectedOrderIds.includes(p.id));
+
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedOrderIds([]);
+    } else {
+      setSelectedOrderIds(filteredPedidos.map((p) => p.id));
+    }
+  };
+
+  const handleBatchPrint = async () => {
+    if (selectedOrderIds.length === 0) {
+      toast('Selecione ao menos um pedido para imprimir.', 'error');
+      return;
+    }
+    setBatchPrinting(true);
+    try {
+      const res = await fetch('/api/orders/batch-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedOrderIds }),
+      });
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao gerar PDF em lote.'));
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      toast(`${selectedOrderIds.length} pedidos combinados para impressão em arquivo único!`, 'success');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Erro ao imprimir pedidos selecionados.', 'error');
+    } finally {
+      setBatchPrinting(false);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* Cabeçalho */}
@@ -936,35 +1018,93 @@ export default function OrdersPage() {
           <p className="text-stone-400 text-xs mt-1">Clique em &quot;Novo Pedido&quot; para realizar uma venda.</p>
         </div>
       ) : (
-        <div className="rounded-2xl bg-white shadow-sm border border-stone-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-stone-200 bg-stone-50 text-stone-400 font-bold uppercase tracking-wider">
-                  <th className="py-3 px-6">Nº Pedido</th>
-                  <th className="py-3 px-6">Cliente</th>
-                  <th className="py-3 px-6">Vendedor</th>
-                  <th className="py-3 px-6">Data Pedido</th>
-                  <th className="py-3 px-6">Previsão Entrega</th>
-                  <th className="py-3 px-6 text-right">Valor Total</th>
-                  <th className="py-3 px-6 text-center">Status</th>
-                  <th className="py-3 px-6 text-center">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-100 font-semibold text-stone-700">
-                {filteredPedidos.map((ped) => (
-                  <tr key={ped.id} className="hover:bg-stone-50/50">
-                    <td className="py-4 px-6 font-bold text-amber-900">#{ped.numero}</td>
-                    <td className="py-4 px-6 text-stone-850 font-bold text-sm">{ped.customerName}</td>
-                    <td className="py-4 px-6 text-stone-500">{ped.sellerName || '—'}</td>
-                    <td className="py-4 px-6 text-stone-400">{formatarData(ped.orderDate)}</td>
-                    <td className="py-4 px-6 text-stone-400">
-                      {formatarData(ped.deliveryDate)}
-                    </td>
-                    <td className="py-4 px-6 text-right font-black text-stone-850">
-                      {ped.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                    </td>
-                    <td className="py-4 px-6 text-center">
+        <div className="space-y-3">
+          {selectedOrderIds.length > 0 && (
+            <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-xs animate-fadeIn">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-700 text-white text-xs font-black">
+                  {selectedOrderIds.length}
+                </span>
+                <span className="text-xs font-bold text-amber-950">
+                  {selectedOrderIds.length === 1 ? '1 pedido selecionado' : `${selectedOrderIds.length} pedidos selecionados`}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedOrderIds([])}
+                  className="px-3 py-1.5 rounded-lg border border-amber-300 bg-white hover:bg-amber-100/50 text-amber-900 text-xs font-bold transition-all cursor-pointer"
+                >
+                  Desmarcar todos
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBatchPrint}
+                  disabled={batchPrinting}
+                  className="px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {batchPrinting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Gerando arquivo único...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Printer className="h-4 w-4" />
+                      <span>Imprimir Selecionados ({selectedOrderIds.length})</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="rounded-2xl bg-white shadow-sm border border-stone-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs min-w-[780px]">
+                <thead>
+                  <tr className="border-b border-stone-200 bg-stone-50 text-stone-400 font-bold uppercase tracking-wider">
+                    <th className="py-3 px-4 text-center w-10">
+                      <input 
+                        type="checkbox" 
+                        checked={isAllSelected} 
+                        onChange={toggleSelectAll} 
+                        title="Selecionar todos os pedidos filtrados"
+                        className="rounded border-stone-300 text-amber-700 focus:ring-amber-500 cursor-pointer h-4 w-4" 
+                      />
+                    </th>
+                    <th className="py-3 px-5">Nº Pedido</th>
+                    <th className="py-3 px-5">Cliente</th>
+                    <th className="py-3 px-5">Vendedor</th>
+                    <th className="py-3 px-5">Data Pedido</th>
+                    <th className="py-3 px-5">Previsão Entrega</th>
+                    <th className="py-3 px-5 text-right">Valor Total</th>
+                    <th className="py-3 px-5 text-center">Status</th>
+                    <th className="py-3 px-5 text-center">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100 font-semibold text-stone-700">
+                  {filteredPedidos.map((ped) => (
+                    <tr key={ped.id} className={`transition-colors ${selectedOrderIds.includes(ped.id) ? 'bg-amber-50/50 hover:bg-amber-50/70' : 'hover:bg-stone-50/50'}`}>
+                      <td className="py-4 px-4 text-center w-10">
+                        <input 
+                          type="checkbox" 
+                          checked={selectedOrderIds.includes(ped.id)} 
+                          onChange={() => toggleSelectOrder(ped.id)} 
+                          className="rounded border-stone-300 text-amber-700 focus:ring-amber-500 cursor-pointer h-4 w-4" 
+                        />
+                      </td>
+                      <td className="py-4 px-5 font-bold text-amber-900">#{ped.numero}</td>
+                      <td className="py-4 px-5 text-stone-850 font-bold text-sm">{ped.customerName}</td>
+                      <td className="py-4 px-5 text-stone-500">{ped.sellerName || '—'}</td>
+                      <td className="py-4 px-5 text-stone-400">{formatarData(ped.orderDate)}</td>
+                      <td className="py-4 px-5 text-stone-400">
+                        {formatarData(ped.deliveryDate)}
+                      </td>
+                      <td className="py-4 px-5 text-right font-black text-stone-850">
+                        {ped.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </td>
+                      <td className="py-4 px-5 text-center">
                       <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
                         ped.status === 'faturado' ? 'bg-emerald-50 text-emerald-700' :
                         ped.status === 'entregue' ? 'bg-sky-50 text-sky-700' :
@@ -1063,25 +1203,26 @@ export default function OrdersPage() {
             </table>
           </div>
         </div>
+      </div>
       )}
 
       {/* Modal Novo / Editar Pedido */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl border border-stone-200 shadow-xl w-full max-w-3xl overflow-hidden my-8 animate-scaleIn">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-stone-100">
-              <h3 className="font-extrabold text-stone-900 text-base">
+        <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-stone-200 shadow-xl w-full max-w-3xl overflow-hidden my-auto max-h-[96vh] flex flex-col animate-scaleIn">
+            <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-b border-stone-100 shrink-0">
+              <h3 className="font-extrabold text-stone-900 text-sm sm:text-base">
                 {modalMode === 'create' ? 'Lançar Novo Pedido de Venda' : `Pedido #${selectedPedido?.numero}`}
               </h3>
               <button 
                 onClick={() => setIsModalOpen(false)} 
-                className="p-1 hover:bg-stone-50 rounded-lg text-stone-400 hover:text-stone-600 transition-all cursor-pointer"
+                className="p-1.5 hover:bg-stone-50 rounded-lg text-stone-400 hover:text-stone-600 transition-all cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
             
-            <form onSubmit={handleSave} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+            <form onSubmit={handleSave} className="p-3.5 sm:p-6 space-y-4 overflow-y-auto flex-1">
               {/* Form Grid */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
@@ -1160,8 +1301,55 @@ export default function OrdersPage() {
                       </div>
                     )}
                   </div>
-                  {clienteId && !primeiroPedido && (
-                    <p className="mt-1 text-[10px] font-bold text-stone-500">Este cliente já fez {pedidosDoCliente} pedido{pedidosDoCliente === 1 ? '' : 's'}.</p>
+                  {clienteId && (
+                    <div className="mt-1.5 space-y-1">
+                      {(() => {
+                        const cli = clientes.find((c) => c.id === clienteId);
+                        const phone = cli?.phone || cli?.mobile;
+                        if (phone) {
+                          return (
+                            <div className="flex items-center justify-between text-[11px] bg-emerald-50 border border-emerald-200/70 rounded-lg px-2.5 py-1 text-emerald-800">
+                              <span className="flex items-center gap-1.5 font-bold">
+                                <Phone className="h-3 w-3 text-emerald-600 shrink-0" />
+                                {formatPhone(phone)}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPhoneInputVal(phone);
+                                  setEditPhoneModal(true);
+                                }}
+                                className="text-[10px] font-bold text-amber-800 hover:underline cursor-pointer"
+                              >
+                                Alterar
+                              </button>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div className="flex items-center justify-between text-[11px] bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1 text-amber-850">
+                            <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-800">
+                              <AlertCircle className="h-3 w-3 text-amber-600 shrink-0" /> Sem telefone cadastrado
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPhoneInputVal('');
+                                setEditPhoneModal(true);
+                              }}
+                              className="text-[10px] font-bold text-amber-800 underline hover:text-amber-950 cursor-pointer"
+                            >
+                              ➕ Adicionar telefone
+                            </button>
+                          </div>
+                        );
+                      })()}
+                      {!primeiroPedido && (
+                        <p className="text-[10px] font-bold text-stone-500">
+                          Este cliente já fez {pedidosDoCliente} pedido{pedidosDoCliente === 1 ? '' : 's'}.
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
 
@@ -1378,8 +1566,8 @@ export default function OrdersPage() {
                   Itens do Pedido
                 </h4>
 
-                <div className="grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
-                  <div className="md:col-span-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 items-end">
+                  <div className="col-span-2 sm:col-span-3 md:col-span-2">
                     <div className="flex items-center justify-between mb-1">
                       <label className="text-[9px] text-stone-400 font-bold uppercase block">Escolher Produto</label>
                       <span className="text-[9px] text-stone-400 italic">Use as setas ↑↓ e Enter</span>
@@ -1501,17 +1689,19 @@ export default function OrdersPage() {
                     />
                   </div>
 
-                  <button 
-                    type="button" 
-                    onClick={handleAddItem}
-                    className="rounded-lg bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs py-2 px-3 text-center cursor-pointer transition-all h-9 flex items-center justify-center shrink-0"
-                  >
-                    Inserir Item
-                  </button>
+                  <div className="col-span-2 sm:col-span-1 md:col-span-1">
+                    <button 
+                      type="button" 
+                      onClick={handleAddItem}
+                      className="w-full rounded-lg bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs py-2 px-3 text-center cursor-pointer transition-all h-9 flex items-center justify-center shrink-0"
+                    >
+                      Inserir Item
+                    </button>
+                  </div>
                 </div>
 
                 {/* Tabela de Itens Temporários */}
-                <div className="border border-stone-200 bg-white rounded-xl overflow-hidden max-h-56 overflow-y-auto">
+                <div className="border border-stone-200 bg-white rounded-xl overflow-hidden max-h-56 overflow-y-auto overflow-x-auto">
                   {itensTemp.length === 0 ? (
                     <div className="text-center py-8 text-stone-400 text-xs font-semibold">
                       Adicione pelo menos um item para faturar.
@@ -1658,25 +1848,25 @@ export default function OrdersPage() {
               </div>
 
               {/* Botões do Modal */}
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-100">
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-4 border-t border-stone-100">
                 <button 
                   type="button" 
                   onClick={() => setIsModalOpen(false)}
-                  className="rounded-lg border border-stone-200 hover:bg-stone-50 px-4 py-2 text-stone-600 font-bold text-xs cursor-pointer transition-all"
+                  className="rounded-lg border border-stone-200 hover:bg-stone-50 px-3 py-2 text-stone-600 font-bold text-xs cursor-pointer transition-all"
                 >
                   Cancelar
                 </button>
                 <button
                   type="button"
                   onClick={() => enviarPedido('confirmado')}
-                  className="rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 px-4 py-2 text-emerald-800 font-bold text-xs cursor-pointer transition-all flex items-center gap-1.5"
+                  className="rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 px-3 py-2 text-emerald-800 font-bold text-xs cursor-pointer transition-all flex items-center gap-1.5"
                 >
                   <CheckCircle2 className="h-4 w-4" /> Concluir
                 </button>
                 <button
                   type="button"
                   onClick={() => enviarPedido('entregue')}
-                  className="rounded-lg border border-sky-300 bg-sky-50 hover:bg-sky-100 px-4 py-2 text-sky-800 font-bold text-xs cursor-pointer transition-all flex items-center gap-1.5"
+                  className="rounded-lg border border-sky-300 bg-sky-50 hover:bg-sky-100 px-3 py-2 text-sky-800 font-bold text-xs cursor-pointer transition-all flex items-center gap-1.5"
                 >
                   <Truck className="h-4 w-4" /> Entregar
                 </button>
@@ -1768,8 +1958,18 @@ export default function OrdersPage() {
                 <input type="text" value={qcName} onChange={(e) => setQcName(e.target.value)} required className="w-full rounded-lg border border-stone-300 bg-stone-50 p-2.5 text-stone-900 focus:bg-white" />
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <div><label className="block mb-1">Telefone</label><input type="text" value={qcPhone} onChange={(e) => setQcPhone(e.target.value)} className="w-full rounded-lg border border-stone-300 bg-stone-50 p-2.5 text-stone-900 focus:bg-white" /></div>
-                <div><label className="block mb-1">Perfil</label>
+                <div>
+                  <label className="block mb-1">Telefone / WhatsApp de Contato</label>
+                  <input 
+                    type="text" 
+                    value={qcPhone} 
+                    onChange={(e) => setQcPhone(formatPhone(e.target.value))} 
+                    placeholder="(21) 99999-9999"
+                    className="w-full rounded-lg border border-stone-300 bg-stone-50 p-2.5 text-stone-900 focus:bg-white font-medium" 
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1">Perfil Comercial</label>
                   <select value={qcIsRev ? 'true' : 'false'} onChange={(e) => setQcIsRev(e.target.value === 'true')} className="w-full rounded-lg border border-stone-300 bg-stone-50 p-2.5 text-stone-900 focus:bg-white">
                     <option value="true">Revendedor (Atacado)</option><option value="false">Consumidor (Varejo)</option>
                   </select>
@@ -1786,6 +1986,53 @@ export default function OrdersPage() {
               <div className="flex justify-end gap-2 pt-2 border-t border-stone-100">
                 <button type="button" onClick={() => setQuickOpen(false)} className="rounded-lg border border-stone-300 px-4 py-2 text-xs font-bold text-stone-600 hover:bg-stone-50 cursor-pointer">Cancelar</button>
                 <button type="submit" disabled={qcSaving} className="rounded-lg bg-amber-700 hover:bg-amber-800 px-4 py-2 text-xs font-bold text-white cursor-pointer disabled:opacity-50">{qcSaving ? 'Salvando...' : 'Cadastrar e selecionar'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {editPhoneModal && (
+        <div className="fixed inset-0 z-[65] bg-black/50 backdrop-blur-xs flex items-center justify-center p-4" onClick={() => setEditPhoneModal(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-sm border border-stone-200 shadow-xl p-5 space-y-3 animate-scaleIn" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-stone-100 pb-2">
+              <h3 className="font-extrabold text-stone-900 text-sm flex items-center gap-1.5">
+                <Phone className="h-4 w-4 text-amber-700" />
+                Telefone de Contato do Cliente
+              </h3>
+              <button onClick={() => setEditPhoneModal(false)} className="text-stone-400 hover:text-stone-600 cursor-pointer"><X className="h-4 w-4" /></button>
+            </div>
+            <p className="text-xs text-stone-500">
+              Atualize o telefone de contato para alimentar o cadastro deste cliente no banco de dados.
+            </p>
+            <form onSubmit={handleSaveCustomerPhone} className="space-y-3">
+              <div>
+                <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">Telefone / WhatsApp</label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  placeholder="(21) 99999-9999"
+                  value={phoneInputVal}
+                  onChange={(e) => setPhoneInputVal(formatPhone(e.target.value))}
+                  className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs bg-stone-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500 font-semibold text-stone-900"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2 border-t border-stone-100">
+                <button
+                  type="button"
+                  onClick={() => setEditPhoneModal(false)}
+                  className="px-3 py-1.5 rounded-lg border border-stone-200 text-xs font-bold text-stone-600 hover:bg-stone-50 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingCustomerPhone}
+                  className="px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-xs font-bold cursor-pointer disabled:opacity-50"
+                >
+                  {savingCustomerPhone ? 'Salvando...' : 'Salvar no cadastro'}
+                </button>
               </div>
             </form>
           </div>

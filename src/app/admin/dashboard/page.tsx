@@ -175,7 +175,7 @@ export default function AdminDashboardPage() {
         </div>
         
         {/* Filtro de Abas */}
-        <div className="bg-stone-150 p-1 rounded-xl flex flex-wrap gap-1 self-start">
+        <div className="bg-stone-150 p-1 rounded-xl flex flex-wrap gap-1 self-start w-full sm:w-auto">
           <button 
             onClick={() => setActiveTab('vendas')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${

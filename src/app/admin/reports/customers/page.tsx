@@ -247,7 +247,7 @@ export default function CustomerReportPage() {
           <div className="p-4 bg-red-50 text-red-700 text-xs text-center">{error}</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-xs min-w-[800px]">
               <thead>
                 <tr className="border-b border-stone-200 bg-stone-50 text-stone-400 font-bold uppercase tracking-wider text-[10px]">
                   <th className="py-3 px-4">Cliente</th>

@@ -371,3 +371,25 @@ export async function renderOrderPdf(
 
   return pdf.save();
 }
+
+/**
+ * Gera um único PDF combinando múltiplos pedidos em sequência,
+ * permitindo a impressão rápida em lote sem necessidade de abrir cada arquivo individualmente.
+ */
+export async function renderOrdersBatchPdf(
+  orders: OrderDTO[],
+  company: CompanyInfo = DEFAULT_COMPANY,
+): Promise<Uint8Array> {
+  const mergedPdf = await PDFDocument.create();
+
+  for (const order of orders) {
+    const singleBytes = await renderOrderPdf(order, company);
+    const singleDoc = await PDFDocument.load(singleBytes);
+    const copiedPages = await mergedPdf.copyPages(singleDoc, singleDoc.getPageIndices());
+    for (const page of copiedPages) {
+      mergedPdf.addPage(page);
+    }
+  }
+
+  return mergedPdf.save();
+}

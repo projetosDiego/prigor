@@ -350,7 +350,7 @@ export default function ProductsPage() {
       ) : (
         <div className="rounded-2xl bg-white shadow-sm border border-stone-200 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full min-w-[700px] text-left text-xs">
               <thead>
                 <tr className="border-b border-stone-200 bg-stone-50 text-stone-400 font-bold uppercase tracking-wider">
                   <th className="py-3 px-6">Produto / SKU</th>

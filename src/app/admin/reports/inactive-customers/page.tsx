@@ -357,7 +357,7 @@ export default function InactiveCustomersReportPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
+            <table className="w-full text-left text-xs border-collapse min-w-[700px]">
               <thead>
                 <tr className="border-b border-stone-100 bg-stone-50/70 text-stone-400 font-bold uppercase tracking-wider text-[10px]">
                   <th className="py-3 px-5">Ponto de Revenda / Loja</th>
