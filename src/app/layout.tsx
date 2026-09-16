@@ -11,8 +11,8 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'Prigor Expansão',
-  description: 'Sistema de Inteligência Comercial e Expansão da Doces Prigor',
+  title: 'Doces Prigor',
+  description: 'Sistema de Gestão Comercial e Operacional da Doces Prigor',
   icons: {
     icon: [
       { url: '/logo.png', type: 'image/png' },

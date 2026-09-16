@@ -146,6 +146,7 @@ export default function OrdersPage() {
   
   // Filtros
   const [statusFilter, setStatusFilter] = useState('');
+  const [deliveryDateFilter, setDeliveryDateFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [filtroTexto, setFiltroTexto] = useState('');
@@ -845,12 +846,24 @@ export default function OrdersPage() {
     }
   };
 
+  const setDeliveryToday = () => {
+    setDeliveryDateFilter(new Date().toISOString().split('T')[0]);
+  };
+
+  const setDeliveryTomorrow = () => {
+    const tomorrow = addDaysISO(new Date().toISOString().split('T')[0], 1);
+    setDeliveryDateFilter(tomorrow);
+  };
+
   // Filtros aplicados localmente
   const filteredPedidos = pedidos.filter(p => {
     const matchesStatus = !statusFilter || p.status === statusFilter;
     const date = p.orderDate?.slice(0, 10) ?? '';
     const matchesFrom = !dateFrom || date >= dateFrom;
     const matchesTo = !dateTo || date <= dateTo;
+
+    const deliveryDate = p.deliveryDate?.slice(0, 10) ?? '';
+    const matchesDelivery = !deliveryDateFilter || deliveryDate === deliveryDateFilter;
 
     let matchesTexto = true;
     if (filtroTexto.trim()) {
@@ -860,7 +873,7 @@ export default function OrdersPage() {
       matchesTexto = numMatch || cliMatch;
     }
 
-    return matchesStatus && matchesFrom && matchesTo && matchesTexto;
+    return matchesStatus && matchesFrom && matchesTo && matchesDelivery && matchesTexto;
   });
 
   const toggleSelectOrder = (id: string) => {
@@ -879,8 +892,9 @@ export default function OrdersPage() {
     }
   };
 
-  const handleBatchPrint = async () => {
-    if (selectedOrderIds.length === 0) {
+  const handleBatchPrint = async (customIds?: string[]) => {
+    const targetIds = Array.isArray(customIds) && customIds.length > 0 ? customIds : selectedOrderIds;
+    if (targetIds.length === 0) {
       toast('Selecione ao menos um pedido para imprimir.', 'error');
       return;
     }
@@ -889,14 +903,14 @@ export default function OrdersPage() {
       const res = await fetch('/api/orders/batch-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: selectedOrderIds }),
+        body: JSON.stringify({ ids: targetIds }),
       });
       if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao gerar PDF em lote.'));
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
       setTimeout(() => URL.revokeObjectURL(url), 60000);
-      toast(`${selectedOrderIds.length} pedidos combinados para impressão em arquivo único!`, 'success');
+      toast(`${targetIds.length} pedidos combinados para impressão em arquivo único!`, 'success');
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Erro ao imprimir pedidos selecionados.', 'error');
     } finally {
@@ -925,72 +939,126 @@ export default function OrdersPage() {
       </div>
 
       {/* Barra de Filtros */}
-      <div className="rounded-xl bg-white p-4 shadow-sm border border-stone-200 grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
-        <div>
-          <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">Buscar Pedido / Cliente</label>
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-stone-400" />
-            <input 
-              type="text"
-              value={filtroTexto}
-              onChange={(e) => setFiltroTexto(e.target.value)}
-              placeholder="Nº pedido ou cliente..."
-              className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-stone-200 text-xs focus:outline-none bg-stone-50/50"
-            />
+      <div className="rounded-2xl bg-white p-4 shadow-sm border border-stone-200 space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
+          {/* Destaque Data de Entrega */}
+          <div className="sm:col-span-2 lg:col-span-4 bg-amber-50/70 p-2.5 rounded-xl border border-amber-200">
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[10px] text-amber-950 font-black uppercase tracking-wider flex items-center gap-1.5">
+                <Truck className="h-3.5 w-3.5 text-amber-700" />
+                Data de Entrega
+              </label>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={setDeliveryToday}
+                  className={`px-2 py-0.5 rounded text-[10px] font-black transition-all cursor-pointer ${
+                    deliveryDateFilter === new Date().toISOString().split('T')[0]
+                      ? 'bg-amber-700 text-white shadow-xs'
+                      : 'bg-white text-amber-900 hover:bg-amber-100 border border-amber-200'
+                  }`}
+                >
+                  Hoje
+                </button>
+                <button
+                  type="button"
+                  onClick={setDeliveryTomorrow}
+                  className={`px-2 py-0.5 rounded text-[10px] font-black transition-all cursor-pointer ${
+                    deliveryDateFilter === addDaysISO(new Date().toISOString().split('T')[0], 1)
+                      ? 'bg-amber-700 text-white shadow-xs'
+                      : 'bg-white text-amber-900 hover:bg-amber-100 border border-amber-200'
+                  }`}
+                >
+                  Amanhã
+                </button>
+                {deliveryDateFilter && (
+                  <button
+                    type="button"
+                    onClick={() => setDeliveryDateFilter('')}
+                    className="px-1 text-[11px] font-bold text-stone-400 hover:text-red-600 transition-colors cursor-pointer"
+                    title="Limpar data de entrega"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="relative">
+              <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-amber-700" />
+              <input 
+                type="date"
+                value={deliveryDateFilter}
+                onChange={(e) => setDeliveryDateFilter(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-amber-200 text-xs font-bold text-amber-950 focus:outline-none bg-white focus:ring-2 focus:ring-amber-500/20"
+              />
+            </div>
           </div>
-        </div>
 
-        <div>
-          <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">Filtrar por Status</label>
-          <select 
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="w-full rounded-lg border border-stone-200 text-xs px-3 py-2 bg-stone-50/50 focus:outline-none"
-          >
-            <option value="">Todos Status</option>
-            <option value="novo">Novo</option>
-            <option value="confirmado">Confirmado</option>
-            <option value="em_producao">Em Produção</option>
-            <option value="entregue">Entregue</option>
-            <option value="faturado">Faturado</option>
-            <option value="cancelado">Cancelado</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">A partir de</label>
-          <div className="relative">
-            <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-stone-400" />
-            <input 
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="w-full pl-9 pr-4 py-1.5 rounded-lg border border-stone-200 text-xs focus:outline-none bg-stone-50/50"
-            />
+          {/* Buscar Pedido / Cliente */}
+          <div className="sm:col-span-2 lg:col-span-3">
+            <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">Buscar Pedido / Cliente</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-stone-400" />
+              <input 
+                type="text"
+                value={filtroTexto}
+                onChange={(e) => setFiltroTexto(e.target.value)}
+                placeholder="Nº pedido ou cliente..."
+                className="w-full pl-9 pr-3 py-2 rounded-lg border border-stone-200 text-xs focus:outline-none bg-stone-50/50 focus:bg-white focus:border-amber-400"
+              />
+            </div>
           </div>
-        </div>
 
-        <div>
-          <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">Até data</label>
-          <div className="relative">
-            <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-stone-400" />
-            <input 
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="w-full pl-9 pr-4 py-1.5 rounded-lg border border-stone-200 text-xs focus:outline-none bg-stone-50/50"
-            />
+          {/* Filtrar por Status */}
+          <div className="sm:col-span-1 lg:col-span-2">
+            <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">Status</label>
+            <select 
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full rounded-lg border border-stone-200 text-xs px-3 py-2 bg-stone-50/50 focus:outline-none focus:bg-white focus:border-amber-400"
+            >
+              <option value="">Todos Status</option>
+              <option value="novo">Novo</option>
+              <option value="confirmado">Confirmado</option>
+              <option value="em_producao">Em Produção</option>
+              <option value="entregue">Entregue</option>
+              <option value="faturado">Faturado</option>
+              <option value="cancelado">Cancelado</option>
+            </select>
           </div>
-        </div>
 
-        <div className="flex gap-2">
-          <button 
-            onClick={fetchBaseData}
-            className="flex-1 rounded-lg border border-stone-200 hover:bg-stone-100 transition-all font-bold text-xs py-2 text-stone-500 cursor-pointer flex items-center justify-center gap-1.5"
-          >
-            <RefreshCw className="h-4 w-4" />
-            Recarregar
-          </button>
+          {/* Período de Emissão (De / Até) */}
+          <div className="sm:col-span-1 lg:col-span-2 flex gap-1.5">
+            <div className="flex-1">
+              <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">Emissão (De)</label>
+              <input 
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="w-full px-2 py-2 rounded-lg border border-stone-200 text-xs focus:outline-none bg-stone-50/50 focus:bg-white"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">(Até)</label>
+              <input 
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="w-full px-2 py-2 rounded-lg border border-stone-200 text-xs focus:outline-none bg-stone-50/50 focus:bg-white"
+              />
+            </div>
+          </div>
+
+          {/* Botão Recarregar */}
+          <div className="sm:col-span-2 lg:col-span-1">
+            <button 
+              onClick={fetchBaseData}
+              title="Recarregar pedidos"
+              className="w-full rounded-lg border border-stone-200 hover:bg-stone-100 transition-all font-bold text-xs py-2 text-stone-600 cursor-pointer flex items-center justify-center gap-1"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1015,10 +1083,81 @@ export default function OrdersPage() {
         <div className="text-center py-12 rounded-xl bg-white border border-stone-200 shadow-sm">
           <FileText className="h-12 w-12 text-stone-300 mx-auto mb-3" />
           <p className="text-stone-500 text-sm font-semibold">Nenhum pedido encontrado</p>
-          <p className="text-stone-400 text-xs mt-1">Clique em &quot;Novo Pedido&quot; para realizar uma venda.</p>
+          <p className="text-stone-400 text-xs mt-1">
+            {deliveryDateFilter 
+              ? `Não há pedidos agendados para entrega em ${formatarData(deliveryDateFilter)}.` 
+              : 'Clique em "Novo Pedido" para realizar uma venda.'}
+          </p>
+          {deliveryDateFilter && (
+            <button
+              onClick={() => setDeliveryDateFilter('')}
+              className="mt-3 px-3 py-1.5 text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-all cursor-pointer"
+            >
+              Limpar filtro de data de entrega
+            </button>
+          )}
         </div>
       ) : (
         <div className="space-y-3">
+          {/* Banner de Entregas do Dia (quando filtro de data de entrega estiver ativo) */}
+          {deliveryDateFilter && (
+            <div className="p-4 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-2xl flex flex-wrap items-center justify-between gap-4 shadow-xs animate-fadeIn">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-700 text-white flex items-center justify-center shadow-xs">
+                  <Truck className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black uppercase tracking-wider text-amber-900">
+                      Entregas para {formatarData(deliveryDateFilter)}
+                    </span>
+                    {deliveryDateFilter === new Date().toISOString().split('T')[0] && (
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase">
+                        Hoje
+                      </span>
+                    )}
+                    {deliveryDateFilter === addDaysISO(new Date().toISOString().split('T')[0], 1) && (
+                      <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-black uppercase">
+                        Amanhã
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-amber-850 font-semibold mt-0.5">
+                    <span className="font-extrabold text-amber-950">{filteredPedidos.length}</span> {filteredPedidos.length === 1 ? 'pedido agendado' : 'pedidos agendados'} · Total: <span className="font-extrabold text-amber-950">{filteredPedidos.reduce((acc, p) => acc + p.total, 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedOrderIds(filteredPedidos.map((p) => p.id));
+                  }}
+                  className="px-3.5 py-2 rounded-xl border border-amber-300 bg-white hover:bg-amber-100/50 text-amber-900 text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                >
+                  Selecionar Todos ({filteredPedidos.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleBatchPrint(filteredPedidos.map((p) => p.id))}
+                  disabled={batchPrinting || filteredPedidos.length === 0}
+                  className="px-4 py-2 rounded-xl bg-amber-700 hover:bg-amber-800 active:scale-98 text-white text-xs font-black flex items-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {batchPrinting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Gerando arquivo único...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Printer className="h-4 w-4" />
+                      <span>Imprimir Todos do Dia ({filteredPedidos.length})</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
           {selectedOrderIds.length > 0 && (
             <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-xs animate-fadeIn">
               <div className="flex items-center gap-2">
@@ -1039,7 +1178,7 @@ export default function OrdersPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={handleBatchPrint}
+                  onClick={() => handleBatchPrint()}
                   disabled={batchPrinting}
                   className="px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50"
                 >
@@ -1098,8 +1237,18 @@ export default function OrdersPage() {
                       <td className="py-4 px-5 text-stone-850 font-bold text-sm">{ped.customerName}</td>
                       <td className="py-4 px-5 text-stone-500">{ped.sellerName || '—'}</td>
                       <td className="py-4 px-5 text-stone-400">{formatarData(ped.orderDate)}</td>
-                      <td className="py-4 px-5 text-stone-400">
-                        {formatarData(ped.deliveryDate)}
+                      <td className="py-4 px-5">
+                        {ped.deliveryDate ? (
+                          <span className={`inline-flex items-center gap-1 text-xs ${
+                            deliveryDateFilter && ped.deliveryDate.slice(0, 10) === deliveryDateFilter
+                              ? 'bg-amber-100 text-amber-900 px-2 py-0.5 rounded-md font-black'
+                              : 'text-stone-500 font-semibold'
+                          }`}>
+                            {formatarData(ped.deliveryDate)}
+                          </span>
+                        ) : (
+                          <span className="text-stone-300 font-normal">—</span>
+                        )}
                       </td>
                       <td className="py-4 px-5 text-right font-black text-stone-850">
                         {ped.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}

@@ -44,7 +44,7 @@ export default function SellerLayoutClient({ children, sessionName }: SellerLayo
       <header className="sticky top-0 z-45 flex h-14 items-center justify-between border-b border-stone-200 bg-white px-4 shadow-sm">
         <div className="flex items-center gap-2">
           <Image src="/logo.png" alt="Doces Prigor" width={532} height={469} priority className="h-7 w-auto object-contain" />
-          <span className="font-black text-stone-900 text-xs tracking-wide uppercase">Prigor Vendedor</span>
+          <span className="font-black text-stone-900 text-xs tracking-wide uppercase">Doces Prigor</span>
         </div>
         
         <div className="flex items-center gap-2">

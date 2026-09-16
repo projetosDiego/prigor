@@ -3,8 +3,8 @@
 import LoginClient from './LoginClient';
 
 export const metadata = {
-  title: 'Login | Prigor Expansão',
-  description: 'Sistema de Inteligência Comercial e Expansão da Doces Prigor',
+  title: 'Login | Doces Prigor',
+  description: 'Sistema de Gestão Comercial e Operacional da Doces Prigor',
 };
 
 export default function LoginPage() {

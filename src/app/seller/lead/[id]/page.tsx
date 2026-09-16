@@ -5,7 +5,7 @@ import { getSession } from '@/server/auth/session';
 import LeadDetailClient from './LeadDetailClient';
 
 export const metadata = {
-  title: 'Detalhes do Lead | Prigor Expansão',
+  title: 'Detalhes do Lead | Doces Prigor',
 };
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
