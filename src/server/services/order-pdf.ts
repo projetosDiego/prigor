@@ -393,3 +393,420 @@ export async function renderOrdersBatchPdf(
 
   return mergedPdf.save();
 }
+
+function sanitizeText(value: string | null | undefined): string {
+  if (!value) return '';
+  return value
+    .normalize('NFC')
+    .replace(/[^\x20-\x7E\xA0-\xFF]/g, ' ')
+    .trim();
+}
+
+/**
+ * Gera um arquivo PDF formatado para Romaneio de Expedição e Checklist de Carga
+ * com todas as entregas do dia, caixas de conferência para caneta, produtos e assinaturas.
+ */
+export async function renderChecklistPdf(
+  orders: OrderDTO[],
+  deliveryDate: string,
+  company: CompanyInfo = DEFAULT_COMPANY,
+): Promise<Uint8Array> {
+  const pdf = await PDFDocument.create();
+  const regular = await pdf.embedFont(StandardFonts.Helvetica);
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const italic = await pdf.embedFont(StandardFonts.HelveticaOblique);
+
+  pdf.setTitle(`Romaneio e Checklist de Carga — ${formatDate(deliveryDate)}`);
+  pdf.setProducer(company.name);
+  pdf.setCreationDate(new Date());
+
+  // Logo da empresa se houver
+  let logoImg: any = null;
+  try {
+    const logoBytes = fs.readFileSync(path.join(process.cwd(), 'logo.png'));
+    logoImg = await pdf.embedPng(logoBytes);
+  } catch {
+    logoImg = null;
+  }
+
+  const C_MARGIN = 28;
+  const C_RIGHT = A4[0] - C_MARGIN;
+  const BOTTOM_LIMIT = 50;
+  const HEAD_BG_CHECK = rgb(0.18, 0.19, 0.22);
+  const HEAD_FG_CHECK = rgb(1, 1, 1);
+  const ZEBRA_CHECK = rgb(0.985, 0.985, 0.995);
+
+  const COL_W = {
+    check: 24,
+    numero: 44,
+    cliente: 112,
+    endereco: 140,
+    itens: 120,
+    financeiro: 65,
+    visto: 34,
+  };
+
+  const COL_X = {
+    check: C_MARGIN,
+    numero: C_MARGIN + COL_W.check,
+    cliente: C_MARGIN + COL_W.check + COL_W.numero,
+    endereco: C_MARGIN + COL_W.check + COL_W.numero + COL_W.cliente,
+    itens: C_MARGIN + COL_W.check + COL_W.numero + COL_W.cliente + COL_W.endereco,
+    financeiro: C_MARGIN + COL_W.check + COL_W.numero + COL_W.cliente + COL_W.endereco + COL_W.itens,
+    visto: C_MARGIN + COL_W.check + COL_W.numero + COL_W.cliente + COL_W.endereco + COL_W.itens + COL_W.financeiro,
+  };
+
+  let currentPage: PDFPage;
+  let curY = 0;
+
+  const totalPedidos = orders.length;
+  const totalVolumes = orders.reduce((sum, o) => {
+    return sum + (o.items ?? []).reduce((acc, i) => acc + (Number(i.quantity) || 0), 0);
+  }, 0);
+  const valorTotal = orders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+
+  const drawHeader = (isFirstPage: boolean) => {
+    if (isFirstPage) {
+      const topY = A4[1] - C_MARGIN;
+      if (logoImg) {
+        const logoH = 26;
+        const logoW = (logoImg.width / logoImg.height) * logoH;
+        currentPage.drawImage(logoImg, { x: C_MARGIN, y: topY - logoH + 2, width: logoW, height: logoH });
+        currentPage.drawText(sanitizeText(company.name).toUpperCase(), {
+          x: C_MARGIN + logoW + 8,
+          y: topY - 10,
+          size: 13,
+          font: bold,
+          color: INK,
+        });
+        currentPage.drawText('ROMANEIO DE EXPEDIÇÃO & CHECKLIST DE CONFERÊNCIA', {
+          x: C_MARGIN + logoW + 8,
+          y: topY - 22,
+          size: 8.5,
+          font: bold,
+          color: MUTED,
+        });
+      } else {
+        currentPage.drawText(sanitizeText(company.name).toUpperCase(), {
+          x: C_MARGIN,
+          y: topY - 10,
+          size: 14,
+          font: bold,
+          color: INK,
+        });
+        currentPage.drawText('ROMANEIO DE EXPEDIÇÃO & CHECKLIST DE CONFERÊNCIA', {
+          x: C_MARGIN,
+          y: topY - 22,
+          size: 9,
+          font: bold,
+          color: MUTED,
+        });
+      }
+
+      // Caixa de Data à direita
+      const dateBoxW = 140;
+      const dateBoxH = 34;
+      const dateBoxX = C_RIGHT - dateBoxW;
+      const dateBoxY = topY - dateBoxH + 4;
+      currentPage.drawRectangle({
+        x: dateBoxX,
+        y: dateBoxY,
+        width: dateBoxW,
+        height: dateBoxH,
+        color: BAR,
+        borderColor: RULE,
+        borderWidth: 0.8,
+      });
+      currentPage.drawText('DATA DA CARGA / ENTREGA', {
+        x: dateBoxX + 8,
+        y: dateBoxY + 20,
+        size: 7,
+        font: bold,
+        color: MUTED,
+      });
+      currentPage.drawText(formatDate(deliveryDate), {
+        x: dateBoxX + 8,
+        y: dateBoxY + 6,
+        size: 11,
+        font: bold,
+        color: INK,
+      });
+
+      // Painel Resumo da Carga
+      const summaryY = topY - 42;
+      const summaryH = 26;
+      currentPage.drawRectangle({
+        x: C_MARGIN,
+        y: summaryY - summaryH + 8,
+        width: C_RIGHT - C_MARGIN,
+        height: summaryH,
+        color: rgb(0.96, 0.96, 0.97),
+        borderColor: RULE,
+        borderWidth: 0.8,
+      });
+
+      const colSw = (C_RIGHT - C_MARGIN) / 3;
+      currentPage.drawText('TOTAL DE PEDIDOS', { x: C_MARGIN + 10, y: summaryY - 3, size: 7, font: bold, color: MUTED });
+      currentPage.drawText(`${totalPedidos} pedidos`, { x: C_MARGIN + 10, y: summaryY - 14, size: 9.5, font: bold, color: INK });
+
+      currentPage.drawText('VOLUMES / CAIXAS TOTAIS', { x: C_MARGIN + colSw + 10, y: summaryY - 3, size: 7, font: bold, color: MUTED });
+      currentPage.drawText(`${totalVolumes} volumes`, { x: C_MARGIN + colSw + 10, y: summaryY - 14, size: 9.5, font: bold, color: INK });
+
+      currentPage.drawText('VALOR TOTAL DA CARGA', { x: C_MARGIN + colSw * 2 + 10, y: summaryY - 3, size: 7, font: bold, color: MUTED });
+      currentPage.drawText(formatBRL(valorTotal), { x: C_MARGIN + colSw * 2 + 10, y: summaryY - 14, size: 9.5, font: bold, color: INK });
+
+      curY = summaryY - summaryH;
+    } else {
+      const topY = A4[1] - C_MARGIN;
+      currentPage.drawText(`${sanitizeText(company.name).toUpperCase()} — ROMANEIO DE CARGA (${formatDate(deliveryDate)})`, {
+        x: C_MARGIN,
+        y: topY - 8,
+        size: 8.5,
+        font: bold,
+        color: INK,
+      });
+      currentPage.drawLine({
+        start: { x: C_MARGIN, y: topY - 14 },
+        end: { x: C_RIGHT, y: topY - 14 },
+        thickness: 0.6,
+        color: RULE,
+      });
+      curY = topY - 20;
+    }
+
+    // Faixa de Título das Colunas
+    const headH = 16;
+    currentPage.drawRectangle({
+      x: C_MARGIN,
+      y: curY - headH + 4,
+      width: C_RIGHT - C_MARGIN,
+      height: headH,
+      color: HEAD_BG_CHECK,
+    });
+
+    const thY = curY - 5;
+    currentPage.drawText('CONF.', { x: COL_X.check + 2, y: thY, size: 6.5, font: bold, color: HEAD_FG_CHECK });
+    currentPage.drawText('PEDIDO', { x: COL_X.numero + 4, y: thY, size: 6.5, font: bold, color: HEAD_FG_CHECK });
+    currentPage.drawText('CLIENTE / CONTATO', { x: COL_X.cliente + 4, y: thY, size: 6.5, font: bold, color: HEAD_FG_CHECK });
+    currentPage.drawText('BAIRRO & ENDEREÇO', { x: COL_X.endereco + 4, y: thY, size: 6.5, font: bold, color: HEAD_FG_CHECK });
+    currentPage.drawText('ITENS / QUANTIDADES', { x: COL_X.itens + 4, y: thY, size: 6.5, font: bold, color: HEAD_FG_CHECK });
+    currentPage.drawText('VALOR / COBRANÇA', { x: COL_X.financeiro + 4, y: thY, size: 6.5, font: bold, color: HEAD_FG_CHECK });
+    currentPage.drawText('VISTO', { x: COL_X.visto + 4, y: thY, size: 6.5, font: bold, color: HEAD_FG_CHECK });
+
+    curY -= headH + 2;
+  };
+
+  currentPage = pdf.addPage(A4);
+  drawHeader(true);
+
+  orders.forEach((ped, idx) => {
+    const isEven = idx % 2 === 0;
+
+    const tel = ped.deliveryAddress?.phone || ped.billingAddress?.phone || '';
+    const cliNome = sanitizeText(ped.customerName ?? 'Cliente não informado');
+    const cliLines = wrap(cliNome, bold, 8, COL_W.cliente - 8);
+    const telFormatted = formatPhone(tel);
+
+    const addr = ped.deliveryAddress ?? ped.billingAddress;
+    const bairro = sanitizeText(addr?.neighborhood || 'Bairro não informado').toUpperCase();
+    const bairroLines = wrap(bairro, bold, 8, COL_W.endereco - 8);
+
+    let enderecoStr = '';
+    if (addr?.address) {
+      enderecoStr = `${addr.address}${addr.number ? `, ${addr.number}` : ''}${addr.complement ? ` - ${addr.complement}` : ''}`;
+    }
+    const endLines = wrap(enderecoStr, regular, 7, COL_W.endereco - 8);
+    const obsLines = ped.notes ? wrap(`Obs: ${ped.notes}`, italic, 6.5, COL_W.endereco - 8) : [];
+
+    const volumesPed = (ped.items ?? []).reduce((acc, i) => acc + (Number(i.quantity) || 0), 0);
+    const itemStrings = (ped.items ?? []).map((i) => `${i.quantity}x ${sanitizeText(i.productName ?? 'Item')}`);
+    const itensJoined = itemStrings.join('; ');
+    const itensLines = wrap(itensJoined, regular, 7, COL_W.itens - 8);
+
+    const valorStr = formatBRL(ped.total);
+    const formaStr = sanitizeText(ped.paymentMethod).toUpperCase();
+    const isPago = ped.paymentStatus === 'pago';
+    const statusCobranca = isPago ? 'PAGO' : 'A RECEBER';
+
+    const clientH = (cliLines.length * 9.5) + (telFormatted ? 9 : 0);
+    const addressH = (bairroLines.length * 9.5) + (endLines.length * 8.5) + (obsLines.length * 8);
+    const itemsH = 10 + (itensLines.length * 8.5);
+    const financeH = 28;
+
+    const contentH = Math.max(clientH, addressH, itemsH, financeH, 26);
+    const rowH = contentH + 8;
+
+    if (curY - rowH < BOTTOM_LIMIT) {
+      currentPage = pdf.addPage(A4);
+      drawHeader(false);
+    }
+
+    const rowTop = curY;
+    const rowBottom = curY - rowH;
+
+    if (isEven) {
+      currentPage.drawRectangle({
+        x: C_MARGIN,
+        y: rowBottom,
+        width: C_RIGHT - C_MARGIN,
+        height: rowH,
+        color: ZEBRA_CHECK,
+      });
+    }
+
+    currentPage.drawLine({
+      start: { x: C_MARGIN, y: rowBottom },
+      end: { x: C_RIGHT, y: rowBottom },
+      thickness: 0.5,
+      color: RULE,
+    });
+
+    // 1. Conf
+    const boxSize = 10;
+    currentPage.drawRectangle({
+      x: COL_X.check + (COL_W.check - boxSize) / 2,
+      y: rowTop - 14,
+      width: boxSize,
+      height: boxSize,
+      color: rgb(1, 1, 1),
+      borderColor: INK,
+      borderWidth: 0.8,
+    });
+
+    // 2. Pedido
+    currentPage.drawText(`#${ped.numero}`, {
+      x: COL_X.numero + 4,
+      y: rowTop - 12,
+      size: 8.5,
+      font: bold,
+      color: INK,
+    });
+
+    // 3. Cliente
+    let cY = rowTop - 11;
+    for (const line of cliLines) {
+      currentPage.drawText(line, { x: COL_X.cliente + 4, y: cY, size: 7.5, font: bold, color: INK });
+      cY -= 9.5;
+    }
+    if (telFormatted) {
+      currentPage.drawText(telFormatted, { x: COL_X.cliente + 4, y: cY, size: 7, font: regular, color: MUTED });
+    }
+
+    // 4. Bairro & Endereço
+    let aY = rowTop - 11;
+    for (const bLine of bairroLines) {
+      currentPage.drawText(bLine, { x: COL_X.endereco + 4, y: aY, size: 7.5, font: bold, color: INK });
+      aY -= 9.5;
+    }
+    for (const eLine of endLines) {
+      currentPage.drawText(eLine, { x: COL_X.endereco + 4, y: aY, size: 7, font: regular, color: rgb(0.3, 0.3, 0.35) });
+      aY -= 8.5;
+    }
+    for (const oLine of obsLines) {
+      currentPage.drawText(oLine, { x: COL_X.endereco + 4, y: aY, size: 6.5, font: italic, color: rgb(0.4, 0.2, 0.1) });
+      aY -= 8;
+    }
+
+    // 5. Itens
+    let iY = rowTop - 11;
+    currentPage.drawText(`Total: ${volumesPed} vol.`, { x: COL_X.itens + 4, y: iY, size: 7.5, font: bold, color: INK });
+    iY -= 9.5;
+    for (const itLine of itensLines) {
+      currentPage.drawText(itLine, { x: COL_X.itens + 4, y: iY, size: 6.5, font: regular, color: rgb(0.25, 0.25, 0.28) });
+      iY -= 8.5;
+    }
+
+    // 6. Financeiro
+    currentPage.drawText(valorStr, { x: COL_X.financeiro + 4, y: rowTop - 11, size: 7.5, font: bold, color: INK });
+    currentPage.drawText(formaStr.slice(0, 14), { x: COL_X.financeiro + 4, y: rowTop - 20, size: 6.5, font: regular, color: MUTED });
+    currentPage.drawText(statusCobranca, {
+      x: COL_X.financeiro + 4,
+      y: rowTop - 29,
+      size: 6.5,
+      font: bold,
+      color: isPago ? rgb(0.1, 0.5, 0.2) : rgb(0.7, 0.15, 0.1),
+    });
+
+    // 7. Visto
+    currentPage.drawLine({
+      start: { x: COL_X.visto + 2, y: rowTop - 16 },
+      end: { x: COL_X.visto + COL_W.visto - 2, y: rowTop - 16 },
+      thickness: 0.6,
+      color: RULE,
+    });
+
+    curY = rowBottom;
+  });
+
+  // Assinaturas no Final
+  const signatureHeight = 65;
+  if (curY - signatureHeight < 40) {
+    currentPage = pdf.addPage(A4);
+    curY = A4[1] - C_MARGIN - 20;
+  } else {
+    curY -= 15;
+  }
+
+  const sigY = curY - 24;
+  const sigWidth = 145;
+
+  currentPage.drawLine({
+    start: { x: C_MARGIN, y: sigY },
+    end: { x: C_MARGIN + sigWidth, y: sigY },
+    thickness: 0.8,
+    color: INK,
+  });
+  currentPage.drawText('CONFERENTE / EXPEDIÇÃO', { x: C_MARGIN, y: sigY - 10, size: 7.5, font: bold, color: INK });
+  currentPage.drawText('Nome e Visto', { x: C_MARGIN, y: sigY - 19, size: 6.5, font: regular, color: MUTED });
+
+  const motX = C_MARGIN + sigWidth + 24;
+  currentPage.drawLine({
+    start: { x: motX, y: sigY },
+    end: { x: motX + sigWidth, y: sigY },
+    thickness: 0.8,
+    color: INK,
+  });
+  currentPage.drawText('MOTORISTA / ENTREGADOR', { x: motX, y: sigY - 10, size: 7.5, font: bold, color: INK });
+  currentPage.drawText('Nome e Assinatura', { x: motX, y: sigY - 19, size: 6.5, font: regular, color: MUTED });
+
+  const metaX = motX + sigWidth + 24;
+  currentPage.drawText('PLACA VEÍCULO: __________________', { x: metaX, y: sigY + 2, size: 7.5, font: bold, color: INK });
+  currentPage.drawText('HORA DE SAÍDA: __________________', { x: metaX, y: sigY - 12, size: 7.5, font: bold, color: INK });
+
+  // Rodapé e Numeração
+  const totalPages = pdf.getPageCount();
+  const pages = pdf.getPages();
+  const nowStr = new Date().toLocaleString('pt-BR');
+
+  pages.forEach((page, index) => {
+    const pageNumText = `Página ${index + 1} de ${totalPages}`;
+    const footerText = `Doces Prigor — Documento interno de conferência e saída · Gerado em ${nowStr}`;
+
+    page.drawLine({
+      start: { x: C_MARGIN, y: 24 },
+      end: { x: C_RIGHT, y: 24 },
+      thickness: 0.5,
+      color: RULE,
+    });
+
+    page.drawText(footerText, {
+      x: C_MARGIN,
+      y: 15,
+      size: 6.5,
+      font: regular,
+      color: MUTED,
+    });
+
+    const pnw = bold.widthOfTextAtSize(pageNumText, 7);
+    page.drawText(pageNumText, {
+      x: C_RIGHT - pnw,
+      y: 15,
+      size: 7,
+      font: bold,
+      color: INK,
+    });
+  });
+
+  return pdf.save();
+}
+

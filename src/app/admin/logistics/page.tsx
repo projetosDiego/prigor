@@ -81,6 +81,7 @@ export default function LogisticsPage() {
   
   // Modo de visualização: 'roteiro' ou 'checklist'
   const [activeTab, setActiveTab] = useState<'roteiro' | 'checklist'>('roteiro');
+  const [generatingPdf, setGeneratingPdf] = useState(false);
 
   // Pedidos selecionados para a rota de entrega
   const [selectedPedidoIds, setSelectedPedidoIds] = useState<string[]>([]);
@@ -127,6 +128,38 @@ export default function LogisticsPage() {
       localStorage.setItem(`prigor_logistics_checked_${selectedDate}`, JSON.stringify(next));
     } catch {
       /* ignora */
+    }
+  };
+
+  const handleDownloadChecklistPdf = async () => {
+    if (pedidosChecklist.length === 0) {
+      toast('Nenhum pedido encontrado na carga para gerar o arquivo.', 'error');
+      return;
+    }
+    setGeneratingPdf(true);
+    try {
+      const res = await fetch('/api/orders/checklist-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ids: pedidosChecklist.map((p) => p.id),
+          date: selectedDate,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(await responseErrorMessage(res, 'Erro ao gerar arquivo PDF.'));
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      toast('Arquivo simples de conferência (PDF) gerado com sucesso!', 'success');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Erro ao gerar arquivo do checklist.', 'error');
+    } finally {
+      setGeneratingPdf(false);
     }
   };
 
@@ -392,13 +425,22 @@ export default function LogisticsPage() {
 
           <button 
             type="button"
-            onClick={() => window.print()}
-            disabled={pedidosChecklist.length === 0}
-            className="rounded-lg bg-stone-900 hover:bg-stone-850 text-white font-bold text-xs py-2 px-3 text-center cursor-pointer transition-all flex items-center justify-center gap-1.5 h-9 shadow-xs disabled:opacity-40"
-            title="Imprimir Checklist e Romaneio de Carga para Prancheta"
+            onClick={handleDownloadChecklistPdf}
+            disabled={pedidosChecklist.length === 0 || generatingPdf}
+            className="rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-bold text-xs py-2 px-3 text-center cursor-pointer transition-all flex items-center justify-center gap-1.5 h-9 shadow-xs disabled:opacity-40"
+            title="Gerar e Baixar Arquivo PDF para Conferência da Carga"
           >
-            <Printer className="h-4 w-4" />
-            Imprimir Romaneio
+            {generatingPdf ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Gerando PDF...</span>
+              </>
+            ) : (
+              <>
+                <Printer className="h-4 w-4" />
+                <span>Gerar Arquivo (PDF)</span>
+              </>
+            )}
           </button>
         </div>
 
@@ -834,11 +876,22 @@ export default function LogisticsPage() {
                     )}
                     <button
                       type="button"
-                      onClick={() => window.print()}
-                      className="px-3.5 py-2 rounded-lg bg-stone-900 hover:bg-stone-850 text-white text-xs font-black cursor-pointer transition-all flex items-center gap-1.5 shadow-2xs"
+                      onClick={handleDownloadChecklistPdf}
+                      disabled={generatingPdf}
+                      className="px-3.5 py-2 rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-xs font-black cursor-pointer transition-all flex items-center gap-1.5 shadow-2xs disabled:opacity-50"
+                      title="Gerar e Baixar Arquivo PDF para Conferência da Carga"
                     >
-                      <Printer className="h-4 w-4" />
-                      Imprimir Romaneio
+                      {generatingPdf ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>Gerando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Printer className="h-4 w-4" />
+                          <span>Gerar Arquivo (PDF)</span>
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>
@@ -926,11 +979,22 @@ export default function LogisticsPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => window.print()}
-                  className="px-3.5 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-850 text-white text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                  onClick={handleDownloadChecklistPdf}
+                  disabled={generatingPdf}
+                  className="px-3.5 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs disabled:opacity-50"
+                  title="Gerar arquivo simples em PDF com todas as entregas do dia para conferência"
                 >
-                  <Printer className="h-3.5 w-3.5" />
-                  Imprimir Folha A4
+                  {generatingPdf ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span>Gerando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Printer className="h-3.5 w-3.5" />
+                      <span>Gerar Arquivo (PDF)</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>

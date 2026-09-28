@@ -52,19 +52,19 @@ export default function AdminLayoutClient({ children, session }: AdminLayoutClie
   const isActive = (path: string) => pathname === path;
 
   return (
-    <div className="flex min-h-screen bg-stone-100">
+    <div className="flex min-h-screen bg-stone-100 print:bg-white print:block">
       {/* Backdrop escuro no celular quando o menu estiver aberto */}
       {isMobileMenuOpen && (
         <div 
           onClick={() => setIsMobileMenuOpen(false)}
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs md:hidden animate-fadeIn"
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs md:hidden animate-fadeIn print:hidden"
           aria-hidden="true"
         />
       )}
 
       {/* Sidebar: Fixa no desktop (md:static) e Gaveta deslizante no celular (fixed) */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 border-r border-stone-850 bg-stone-900 text-stone-300 flex flex-col shrink-0 shadow-2xl md:shadow-none transition-transform duration-300 ease-in-out md:static md:translate-x-0 ${
+        className={`print:hidden fixed inset-y-0 left-0 z-50 w-64 border-r border-stone-850 bg-stone-900 text-stone-300 flex flex-col shrink-0 shadow-2xl md:shadow-none transition-transform duration-300 ease-in-out md:static md:translate-x-0 ${
           isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -383,9 +383,9 @@ export default function AdminLayoutClient({ children, session }: AdminLayoutClie
       </aside>
 
       {/* Main Content Pane */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto print:overflow-visible print:block">
         {/* Top Header responsivo */}
-        <header className="h-16 border-b border-stone-200 bg-white flex items-center justify-between px-4 sm:px-6 md:px-8 shrink-0 sticky top-0 z-30 shadow-2xs">
+        <header className="print:hidden h-16 border-b border-stone-200 bg-white flex items-center justify-between px-4 sm:px-6 md:px-8 shrink-0 sticky top-0 z-30 shadow-2xs">
           <div className="flex items-center gap-3">
             {/* Botão Hambúrguer visível apenas no celular */}
             <button
@@ -421,7 +421,7 @@ export default function AdminLayoutClient({ children, session }: AdminLayoutClie
         </header>
 
         {/* Conteúdo com padding adaptativo (3.5 no celular, 8 no desktop) */}
-        <main className="p-3.5 sm:p-6 md:p-8 flex-1">{children}</main>
+        <main className="p-3.5 sm:p-6 md:p-8 flex-1 print:p-0 print:m-0 print:overflow-visible">{children}</main>
       </div>
     </div>
   );
