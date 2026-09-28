@@ -37,16 +37,35 @@ export interface CompanyInfo {
   email: string;
 }
 
+const FALLBACK_COMPANY = {
+  name: 'Doces Prigor',
+  legalName: '64.189.960 Igor Cordeiro Lopes Moura da Silva',
+  cnpj: '64.189.960/0001-24',
+  address: 'Campo de São Cristóvão - Imperial de São Cristóvão',
+  city: 'Rio de Janeiro',
+  state: 'RJ',
+  zipCode: '20921-440',
+  phone: '21979908138',
+  email: 'vendas@docesprigor.com.br',
+};
+
+function cleanValue(val: string | null | undefined, fallback: string): string {
+  if (!val) return fallback;
+  const trimmed = val.trim().replace(/^["']|["']$/g, '');
+  if (!trimmed || trimmed === '""' || trimmed === "''") return fallback;
+  return trimmed;
+}
+
 export const DEFAULT_COMPANY: CompanyInfo = {
-  name: process.env.COMPANY_NAME ?? 'Doces Prigor',
-  legalName: process.env.COMPANY_LEGAL_NAME ?? '64.189.960 Igor Cordeiro Lopes Moura da Silva',
-  cnpj: process.env.COMPANY_CNPJ ?? '64.189.960/0001-24',
-  address: process.env.COMPANY_ADDRESS ?? 'Campo de São Cristóvão - Imperial de São Cristóvão',
-  city: process.env.COMPANY_CITY ?? 'Rio de Janeiro',
-  state: process.env.COMPANY_STATE ?? 'RJ',
-  zipCode: process.env.COMPANY_ZIP ?? '20921-440',
-  phone: process.env.COMPANY_PHONE ?? '21979908138',
-  email: process.env.COMPANY_EMAIL ?? 'vendas@docesprigor.com.br',
+  name: cleanValue(process.env.COMPANY_NAME, FALLBACK_COMPANY.name),
+  legalName: cleanValue(process.env.COMPANY_LEGAL_NAME, FALLBACK_COMPANY.legalName),
+  cnpj: cleanValue(process.env.COMPANY_CNPJ, FALLBACK_COMPANY.cnpj),
+  address: cleanValue(process.env.COMPANY_ADDRESS, FALLBACK_COMPANY.address),
+  city: cleanValue(process.env.COMPANY_CITY, FALLBACK_COMPANY.city),
+  state: cleanValue(process.env.COMPANY_STATE, FALLBACK_COMPANY.state),
+  zipCode: cleanValue(process.env.COMPANY_ZIP, FALLBACK_COMPANY.zipCode),
+  phone: cleanValue(process.env.COMPANY_PHONE, FALLBACK_COMPANY.phone),
+  email: cleanValue(process.env.COMPANY_EMAIL, FALLBACK_COMPANY.email),
 };
 
 const PAYMENT_LABEL: Record<string, string> = {
@@ -153,21 +172,27 @@ export async function renderOrderPdf(
     // Sem logo: segue sem imagem.
   }
 
+  const compName = 'Doces Prigor';
+  const rawLegal = cleanValue(company.legalName, FALLBACK_COMPANY.legalName);
+  const compLegal = rawLegal === compName ? FALLBACK_COMPANY.legalName : rawLegal;
+  const compCnpj = cleanValue(company.cnpj, FALLBACK_COMPANY.cnpj);
+  const compAddress = cleanValue(company.address, FALLBACK_COMPANY.address);
+  const compCity = cleanValue(company.city, FALLBACK_COMPANY.city);
+  const compState = cleanValue(company.state, FALLBACK_COMPANY.state);
+  const compZip = cleanValue(company.zipCode, FALLBACK_COMPANY.zipCode);
+  const compPhone = cleanValue(company.phone, FALLBACK_COMPANY.phone);
+
   let cy = headerTop;
-  if (company.name) {
-    right(page, company.name, RIGHT, cy, bold, 9, INK);
-    cy -= LINE - 2;
-  }
+  right(page, compName, RIGHT, cy, bold, 9.5, INK);
+  cy -= LINE - 2;
 
   const companyLines = [
-    company.legalName && company.legalName !== company.name ? company.legalName : '',
-    company.cnpj ? `CNPJ: ${formatDoc(company.cnpj)}` : '',
-    company.address,
-    [company.city && `${company.city} - ${company.state}`, company.zipCode ? `CEP: ${formatCep(company.zipCode)}` : '']
-      .filter(Boolean)
-      .join(' · '),
-    company.phone ? `Tel: ${formatPhone(company.phone)}` : '',
-  ].filter(Boolean);
+    compLegal,
+    `CNPJ: ${formatDoc(compCnpj)}`,
+    compAddress,
+    `${compCity} - ${compState} · CEP: ${formatCep(compZip)}`,
+    `Tel: ${formatPhone(compPhone)}`,
+  ];
 
   for (const line of companyLines) {
     right(page, line, RIGHT, cy, regular, 7.5, MUTED);
