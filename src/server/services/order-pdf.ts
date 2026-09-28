@@ -39,14 +39,14 @@ export interface CompanyInfo {
 
 export const DEFAULT_COMPANY: CompanyInfo = {
   name: process.env.COMPANY_NAME ?? 'Doces Prigor',
-  legalName: process.env.COMPANY_LEGAL_NAME ?? 'Doces Prigor',
-  cnpj: process.env.COMPANY_CNPJ ?? '',
-  address: process.env.COMPANY_ADDRESS ?? '',
+  legalName: process.env.COMPANY_LEGAL_NAME ?? '64.189.960 Igor Cordeiro Lopes Moura da Silva',
+  cnpj: process.env.COMPANY_CNPJ ?? '64.189.960/0001-24',
+  address: process.env.COMPANY_ADDRESS ?? 'Campo de São Cristóvão - Imperial de São Cristóvão',
   city: process.env.COMPANY_CITY ?? 'Rio de Janeiro',
   state: process.env.COMPANY_STATE ?? 'RJ',
-  zipCode: process.env.COMPANY_ZIP ?? '',
-  phone: process.env.COMPANY_PHONE ?? '',
-  email: process.env.COMPANY_EMAIL ?? '',
+  zipCode: process.env.COMPANY_ZIP ?? '20921-440',
+  phone: process.env.COMPANY_PHONE ?? '21979908138',
+  email: process.env.COMPANY_EMAIL ?? 'vendas@docesprigor.com.br',
 };
 
 const PAYMENT_LABEL: Record<string, string> = {
@@ -153,23 +153,28 @@ export async function renderOrderPdf(
     // Sem logo: segue sem imagem.
   }
 
+  let cy = headerTop;
+  if (company.name) {
+    right(page, company.name, RIGHT, cy, bold, 9, INK);
+    cy -= LINE - 2;
+  }
+
   const companyLines = [
-    company.legalName,
+    company.legalName && company.legalName !== company.name ? company.legalName : '',
     company.cnpj ? `CNPJ: ${formatDoc(company.cnpj)}` : '',
     company.address,
-    [company.zipCode ? formatCep(company.zipCode) : '', company.city && `${company.city} - ${company.state}`]
+    [company.city && `${company.city} - ${company.state}`, company.zipCode ? `CEP: ${formatCep(company.zipCode)}` : '']
       .filter(Boolean)
-      .join(' - '),
-    company.phone ? formatPhone(company.phone) : '',
+      .join(' · '),
+    company.phone ? `Tel: ${formatPhone(company.phone)}` : '',
   ].filter(Boolean);
 
-  let cy = headerTop;
   for (const line of companyLines) {
-    right(page, line, RIGHT, cy, regular, 8, MUTED);
+    right(page, line, RIGHT, cy, regular, 7.5, MUTED);
     cy -= LINE - 3;
   }
 
-  w.y = Math.min(headerTop - 70, cy) - 6;
+  w.y = Math.min(headerTop - 74, cy) - 6;
 
   // ── Helpers de seção ────────────────────────────────────────────────────────
   const sectionTitle = (title: string): void => {
