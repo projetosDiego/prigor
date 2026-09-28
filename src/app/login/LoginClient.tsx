@@ -63,21 +63,21 @@ export default function LoginClient() {
     <div className="flex min-h-screen items-center justify-center bg-stone-100 px-4 py-12 sm:px-6 lg:px-8">
       <div className="w-full max-w-md space-y-8">
         <div className="flex flex-col items-center">
-          {/* Logo da Doces Prigor */}
+          {/* Logo da Doces Prigor em maior destaque */}
           <Image
             src="/logo.png"
             alt="Doces Prigor Logo"
             width={532}
             height={469}
             priority
-            className="h-28 w-auto object-contain drop-shadow-md"
+            className="h-36 sm:h-44 w-auto object-contain drop-shadow-md"
           />
           
           <h2 className="mt-4 text-center text-2xl font-black tracking-tight text-stone-900">
             DOCES PRIGOR OS
           </h2>
-          <p className="mt-1 text-center text-xs text-stone-500 font-bold uppercase tracking-wider">
-            Ecosystem & Inteligência Comercial
+          <p className="mt-1.5 text-center text-xs sm:text-sm text-stone-600 font-bold tracking-wide">
+            A Felicidade em forma de Brownie!
           </p>
         </div>
 
@@ -92,7 +92,7 @@ export default function LoginClient() {
 
             <div>
               <label htmlFor="email" className="block text-sm font-semibold text-stone-700">
-                E-mail institucional
+                E-mail
               </label>
               <div className="relative mt-1">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
@@ -146,7 +146,7 @@ export default function LoginClient() {
                     Entrando...
                   </span>
                 ) : (
-                  'Entrar no Sistema'
+                  'Entrar'
                 )}
               </button>
             </div>
@@ -155,7 +155,7 @@ export default function LoginClient() {
 
         <div className="text-center">
           <p className="text-xs text-stone-500">
-            Doces Prigor © 2026. Todos os direitos reservados.
+            Doces Prigor © 2024. Todos os direitos reservados.
           </p>
         </div>
       </div>
