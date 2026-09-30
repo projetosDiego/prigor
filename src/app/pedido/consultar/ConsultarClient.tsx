@@ -10,6 +10,7 @@ import {
   Clock,
   FileText,
   Loader2,
+  LogIn,
   Package,
   Search,
   ShoppingCart,
@@ -115,14 +116,16 @@ export default function ConsultarClient() {
         {/* Topo / Cabeçalho */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-white rounded-3xl p-6 shadow-sm border border-stone-200 gap-4">
           <div className="flex items-center gap-4">
-            <Image
-              src="/logo.png"
-              alt="Doces Prigor Logo"
-              width={80}
-              height={70}
-              priority
-              className="h-16 w-auto object-contain"
-            />
+            <Link href="/" title="Voltar para docesprigor.com.br" className="shrink-0 hover:opacity-85 transition-opacity">
+              <Image
+                src="/logo.png"
+                alt="Doces Prigor Logo"
+                width={80}
+                height={70}
+                priority
+                className="h-16 w-auto object-contain cursor-pointer"
+              />
+            </Link>
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 px-2.5 py-0.5 rounded-full">
@@ -136,19 +139,20 @@ export default function ConsultarClient() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Link
               href="/pedido"
-              className="flex items-center gap-1.5 text-xs font-bold text-white bg-amber-700 hover:bg-amber-800 px-3.5 py-2 rounded-xl transition-all shadow-sm"
+              className="flex items-center gap-1.5 text-xs font-bold text-white bg-amber-700 hover:bg-amber-800 px-3.5 py-2 rounded-xl transition-all shadow-xs"
             >
               <ShoppingCart className="h-3.5 w-3.5" />
               Fazer Novo Pedido
             </Link>
             <Link
               href="/login"
-              className="text-xs font-bold text-stone-600 hover:text-stone-900 px-3 py-2 rounded-xl transition-all"
+              className="flex items-center gap-1.5 text-xs font-bold text-stone-700 bg-white hover:bg-stone-50 border border-stone-300 px-3.5 py-2 rounded-xl transition-all shadow-xs"
             >
-              Área da Equipe
+              <LogIn className="h-3.5 w-3.5 text-amber-700" />
+              Voltar ao Início / Login
             </Link>
           </div>
         </div>

@@ -42,10 +42,10 @@ export default function SellerLayoutClient({ children, sessionName }: SellerLayo
     <div className="flex min-h-screen flex-col bg-stone-100 pb-16">
       {/* Mobile Top Header */}
       <header className="sticky top-0 z-45 flex h-14 items-center justify-between border-b border-stone-200 bg-white px-4 shadow-sm">
-        <div className="flex items-center gap-2">
+        <Link href="/seller/dashboard" className="flex items-center gap-2 hover:opacity-90 transition-opacity">
           <Image src="/logo.png" alt="Doces Prigor" width={532} height={469} priority className="h-7 w-auto object-contain" />
           <span className="font-black text-stone-900 text-xs tracking-wide uppercase">Doces Prigor</span>
-        </div>
+        </Link>
         
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 text-stone-600 text-[10px] font-bold bg-stone-50 px-2 py-1 rounded-full border border-stone-200">

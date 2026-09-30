@@ -12,6 +12,7 @@ import {
   CreditCard,
   FileText,
   Loader2,
+  LogIn,
   MapPin,
   Minus,
   Package,
@@ -61,6 +62,7 @@ interface OrderItemState {
   productId: string;
   quantity: number;
   unitPrice: number;
+  rawPrice?: string;
   originalPrice: number;
 }
 
@@ -143,6 +145,7 @@ export default function PedidoClient() {
               productId: p.id,
               quantity: 0,
               unitPrice: p.salePrice,
+              rawPrice: p.salePrice.toFixed(2).replace('.', ','),
               originalPrice: p.salePrice,
             };
           }
@@ -251,11 +254,13 @@ export default function PedidoClient() {
   // Funções de alteração de itens no carrinho
   const handleQuantityChange = (productId: string, delta: number) => {
     setCart((prev) => {
+      const prodPrice = products.find((p) => p.id === productId)?.salePrice || 0;
       const current = prev[productId] || {
         productId,
         quantity: 0,
-        unitPrice: products.find((p) => p.id === productId)?.salePrice || 0,
-        originalPrice: products.find((p) => p.id === productId)?.salePrice || 0,
+        unitPrice: prodPrice,
+        rawPrice: prodPrice.toFixed(2).replace('.', ','),
+        originalPrice: prodPrice,
       };
       const newQty = Math.max(0, current.quantity + delta);
       return {
@@ -266,18 +271,46 @@ export default function PedidoClient() {
   };
 
   const handlePriceChange = (productId: string, val: string) => {
-    const parsed = parseFloat(val.replace(',', '.'));
-    const safePrice = isNaN(parsed) || parsed < 0 ? 0 : parsed;
+    // Permite digitação natural de números, vírgula e ponto:
+    const sanitized = val.replace(/[^\d.,]/g, '');
+    const normalized = sanitized.replace(',', '.');
+    const parsed = parseFloat(normalized);
+    const safePrice = !isNaN(parsed) && parsed >= 0 ? parsed : 0;
+
     setCart((prev) => {
+      const prodPrice = products.find((p) => p.id === productId)?.salePrice || 0;
       const current = prev[productId] || {
         productId,
         quantity: 0,
         unitPrice: safePrice,
-        originalPrice: products.find((p) => p.id === productId)?.salePrice || 0,
+        rawPrice: sanitized,
+        originalPrice: prodPrice,
       };
       return {
         ...prev,
-        [productId]: { ...current, unitPrice: safePrice },
+        [productId]: {
+          ...current,
+          unitPrice: safePrice,
+          rawPrice: sanitized,
+        },
+      };
+    });
+  };
+
+  const handlePriceBlur = (productId: string) => {
+    setCart((prev) => {
+      const current = prev[productId];
+      if (!current) return prev;
+      // Ao sair do campo, formata com duas casas decimais
+      const formatted = current.unitPrice > 0
+        ? current.unitPrice.toFixed(2).replace('.', ',')
+        : (current.rawPrice || '0,00');
+      return {
+        ...prev,
+        [productId]: {
+          ...current,
+          rawPrice: formatted,
+        },
       };
     });
   };
@@ -471,7 +504,7 @@ export default function PedidoClient() {
           <div className="pt-4 flex flex-col sm:flex-row gap-3 justify-center">
             <Link
               href="/pedido/consultar"
-              className="flex-1 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold px-4 py-3 text-sm transition-all"
+              className="flex-1 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold px-4 py-3 text-sm transition-all text-center"
             >
               🔍 Consultar Meus Pedidos
             </Link>
@@ -493,6 +526,16 @@ export default function PedidoClient() {
               🛒 Fazer Novo Pedido
             </button>
           </div>
+
+          <div className="pt-2 text-center">
+            <Link
+              href="/login"
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-stone-500 hover:text-amber-800 py-1 transition-colors"
+            >
+              <LogIn className="h-3.5 w-3.5" />
+              Voltar ao Início / Fazer Login
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -504,14 +547,16 @@ export default function PedidoClient() {
         {/* Topo / Cabeçalho */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-white rounded-3xl p-6 shadow-sm border border-stone-200 gap-4">
           <div className="flex items-center gap-4">
-            <Image
-              src="/logo.png"
-              alt="Doces Prigor Logo"
-              width={80}
-              height={70}
-              priority
-              className="h-16 w-auto object-contain"
-            />
+            <Link href="/" title="Voltar para docesprigor.com.br" className="shrink-0 hover:opacity-85 transition-opacity">
+              <Image
+                src="/logo.png"
+                alt="Doces Prigor Logo"
+                width={80}
+                height={70}
+                priority
+                className="h-16 w-auto object-contain cursor-pointer"
+              />
+            </Link>
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 px-2.5 py-0.5 rounded-full">
@@ -525,19 +570,20 @@ export default function PedidoClient() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Link
               href="/pedido/consultar"
-              className="flex items-center gap-1.5 text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-3.5 py-2 rounded-xl transition-all"
+              className="flex items-center gap-1.5 text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-3.5 py-2 rounded-xl transition-all shadow-xs"
             >
               <Search className="h-3.5 w-3.5" />
               Consultar Pedidos
             </Link>
             <Link
               href="/login"
-              className="text-xs font-bold text-stone-600 hover:text-stone-900 px-3 py-2 rounded-xl transition-all"
+              className="flex items-center gap-1.5 text-xs font-bold text-stone-700 bg-white hover:bg-stone-50 border border-stone-300 px-3.5 py-2 rounded-xl transition-all shadow-xs"
             >
-              Área da Equipe
+              <LogIn className="h-3.5 w-3.5 text-amber-700" />
+              Voltar ao Início / Login
             </Link>
           </div>
         </div>
@@ -1199,11 +1245,12 @@ export default function PedidoClient() {
                                   Preço Un. Negociado (R$)
                                 </label>
                                 <input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  value={item.unitPrice}
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={item.rawPrice !== undefined ? item.rawPrice : item.unitPrice.toFixed(2).replace('.', ',')}
                                   onChange={(e) => handlePriceChange(prod.id, e.target.value)}
+                                  onBlur={() => handlePriceBlur(prod.id)}
+                                  placeholder="0,00"
                                   className={`w-full text-right rounded-xl border py-2 px-2.5 text-xs font-black transition-all ${
                                     isModified
                                       ? 'border-amber-500 bg-amber-50 text-amber-950 ring-1 ring-amber-400'

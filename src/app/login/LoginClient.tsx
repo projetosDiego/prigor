@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Lock, Mail, Loader2, AlertCircle } from 'lucide-react';
 
@@ -60,28 +61,30 @@ export default function LoginClient() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-stone-100 px-4 py-12 sm:px-6 lg:px-8">
-      <div className="w-full max-w-md space-y-8">
-        <div className="flex flex-col items-center">
-          {/* Logo da Doces Prigor em maior destaque */}
-          <Image
-            src="/logo.png"
-            alt="Doces Prigor Logo"
-            width={532}
-            height={469}
-            priority
-            className="h-36 sm:h-44 w-auto object-contain drop-shadow-md"
-          />
+    <div className="min-h-screen flex flex-col justify-center items-center bg-stone-100 px-4 py-8 sm:py-12">
+      <div className="w-full max-w-md my-auto space-y-6 sm:space-y-7">
+        <div className="flex flex-col items-center pt-2">
+          {/* Logo da Doces Prigor */}
+          <Link href="/" title="Doces Prigor - Início" className="hover:opacity-90 transition-opacity">
+            <Image
+              src="/logo.png"
+              alt="Doces Prigor Logo"
+              width={532}
+              height={469}
+              priority
+              className="h-28 sm:h-36 w-auto object-contain drop-shadow-sm cursor-pointer"
+            />
+          </Link>
           
-          <h2 className="mt-4 text-center text-2xl font-black tracking-tight text-stone-900">
+          <h2 className="mt-3 text-center text-2xl font-black tracking-tight text-stone-900">
             DOCES PRIGOR OS
           </h2>
-          <p className="mt-1.5 text-center text-xs sm:text-sm text-stone-600 font-bold tracking-wide">
+          <p className="mt-1 text-center text-xs sm:text-sm text-stone-600 font-bold tracking-wide">
             A Felicidade em forma de Brownie!
           </p>
         </div>
 
-        <div className="rounded-2xl bg-white p-8 shadow-xl border border-stone-200">
+        <div className="rounded-2xl bg-white p-6 sm:p-8 shadow-xl border border-stone-200">
           <form className="space-y-6" onSubmit={handleSubmit}>
             {error && (
               <div className="flex items-center gap-2 rounded-lg bg-red-50 p-4 text-sm text-red-700 border border-red-200 animate-pulse">

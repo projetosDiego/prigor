@@ -70,13 +70,13 @@ export default function AdminLayoutClient({ children, session }: AdminLayoutClie
       >
         {/* Brand Header */}
         <div className="flex h-16 items-center justify-between px-5 border-b border-stone-850">
-          <div className="flex items-center gap-2.5">
+          <Link href="/admin/dashboard" className="flex items-center gap-2.5 hover:opacity-90 transition-opacity">
             <Image src="/logo.png" alt="Doces Prigor" width={532} height={469} priority className="h-9 w-auto object-contain" />
             <div>
               <h1 className="font-black text-white text-xs tracking-tight uppercase leading-none">Doces Prigor</h1>
               <span className="text-[9px] text-amber-500 font-bold uppercase tracking-widest">OS Central</span>
             </div>
-          </div>
+          </Link>
           {/* Botão Fechar no Celular */}
           <button
             type="button"
