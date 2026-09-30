@@ -6,6 +6,7 @@ import { ok, route, readJson } from '@/server/http/respond';
 import { getSellerByCode } from '@/server/services/sellers';
 import { calculateOrder } from '@/server/domain/orders';
 import { num } from '@/server/services/serializers';
+import { sendNewOrderNotification } from '@/server/services/email';
 
 const optionalNullableString = z
   .union([z.string().trim(), z.null()])
@@ -264,6 +265,11 @@ export const POST = route('public.orders.create', async (request) => {
       seller: { select: { name: true } },
       customer: { select: { tradeName: true } },
     },
+  });
+
+  // Dispara notificação por e-mail (Hostinger SMTP) para a administração
+  void sendNewOrderNotification(order.id).catch((err) => {
+    console.error('[PUBLIC_ORDER] Erro ao disparar e-mail de notificação:', err);
   });
 
   return ok({
