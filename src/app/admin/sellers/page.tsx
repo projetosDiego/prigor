@@ -54,6 +54,7 @@ interface SellerPayload {
   name: string;
   email: string;
   phone: string;
+  code?: string;
   goal: string;
   commissionPct: string;
   goalRevenue: string;
@@ -74,6 +75,7 @@ export default function AdminSellersPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
+  const [code, setCode] = useState('');
   const [goal, setGoal] = useState('10');
   const [commissionPct, setCommissionPct] = useState('0');
   const [goalRevenue, setGoalRevenue] = useState('0');
@@ -109,7 +111,17 @@ export default function AdminSellersPage() {
     try {
       const url = sellerId ? `/api/sellers/${sellerId}` : '/api/sellers';
       const method = sellerId ? 'PUT' : 'POST';
-      const payload: SellerPayload = { name, email, phone, goal, commissionPct, goalRevenue: parseMoneyBRL(goalRevenue), active, startDate };
+      const payload: SellerPayload = {
+        name,
+        email,
+        phone,
+        code: code.trim().toUpperCase() || undefined,
+        goal,
+        commissionPct,
+        goalRevenue: parseMoneyBRL(goalRevenue),
+        active,
+        startDate,
+      };
       
       // Senha é obrigatória na criação, opcional na edição
       if (password && password.trim()) {
@@ -131,6 +143,7 @@ export default function AdminSellersPage() {
       setEmail('');
       setPassword('');
       setPhone('');
+      setCode('');
       setGoal('10');
       setActive(true);
       setStartDate('');
@@ -177,6 +190,7 @@ export default function AdminSellersPage() {
             setEmail(''); 
             setPassword(''); 
             setPhone(''); 
+            setCode('');
             setGoal('10'); 
             setActive(true); 
             setStartDate(new Date().toISOString().split('T')[0]);
@@ -204,10 +218,17 @@ export default function AdminSellersPage() {
             <div key={seller.id} className="rounded-2xl bg-white border border-stone-200 p-5 shadow-sm space-y-4 animate-fadeIn">
               <div className="flex justify-between items-start">
                 <div className="min-w-0">
-                  <h4 className="text-sm font-extrabold text-stone-850 flex items-center gap-2 truncate">
-                    <UserSquare2 className="h-4.5 w-4.5 text-amber-700" />
-                    {seller.name}
-                  </h4>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-sm font-extrabold text-stone-850 flex items-center gap-2 truncate">
+                      <UserSquare2 className="h-4.5 w-4.5 text-amber-700" />
+                      {seller.name}
+                    </h4>
+                    {seller.code && (
+                      <span className="text-[10px] font-black uppercase bg-amber-100 text-amber-900 border border-amber-200 px-1.5 py-0.5 rounded shrink-0">
+                        #{seller.code}
+                      </span>
+                    )}
+                  </div>
                   <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded inline-block mt-1 ${
                     seller.active ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' : 'bg-red-50 text-red-800 border border-red-100'
                   }`}>
@@ -223,9 +244,10 @@ export default function AdminSellersPage() {
                       setEmail(seller.user.email); 
                       setPassword(''); // não preencher
                       setPhone(formatPhone(seller.phone || '')); 
+                      setCode(seller.code || '');
                       setGoal(String(seller.goal)); 
-            setCommissionPct(String(seller.commissionPct ?? 0)); 
-            setGoalRevenue(moneyMaskFromNumber(Number(seller.goalRevenue ?? 0))); 
+                      setCommissionPct(String(seller.commissionPct ?? 0)); 
+                      setGoalRevenue(moneyMaskFromNumber(Number(seller.goalRevenue ?? 0))); 
                       setActive(seller.active); 
                       setStartDate(seller.startDate?.split('T')[0] ?? '');
                       setShowForm(true); 
@@ -327,6 +349,18 @@ export default function AdminSellersPage() {
                   className="block w-full rounded-lg border border-stone-300 bg-stone-50 p-2.5 text-stone-900 focus:bg-white"
                   required={!sellerId}
                 />
+              </div>
+
+              <div>
+                <label className="block mb-1">Código de Atendimento (Autoatendimento B2B)</label>
+                <input
+                  type="text"
+                  placeholder="Ex: 101, 102, IGOR..."
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.toUpperCase())}
+                  className="block w-full rounded-lg border border-stone-300 bg-stone-50 p-2.5 text-stone-900 font-bold uppercase focus:bg-white"
+                />
+                <p className="text-[10px] text-stone-400 mt-1">Código digitado pelos clientes para direcionar a venda e comissão a este vendedor.</p>
               </div>
 
               <div className="grid grid-cols-2 gap-2">

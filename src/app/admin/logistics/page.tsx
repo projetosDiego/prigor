@@ -73,6 +73,7 @@ export default function LogisticsPage() {
   const { toast, confirm } = useToast();
 
   const [pedidos, setPedidos] = useState<OrderDTO[]>([]);
+  const [pedidosPendentes, setPedidosPendentes] = useState<OrderDTO[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split('T')[0]
   );
@@ -179,8 +180,10 @@ export default function LogisticsPage() {
 
       const json: Paginated<OrderDTO> = await res.json();
       const daCarga = json.data.filter((p) => STATUS_DE_CARGA.includes(p.status));
+      const pendentes = json.data.filter((p) => p.status === 'novo');
 
       setPedidos(daCarga);
+      setPedidosPendentes(pendentes);
       setSelectedPedidoIds([]);
       setRouteOrders([]);
       setRouteGenerated(false);
@@ -190,6 +193,21 @@ export default function LogisticsPage() {
       setLoading(false);
     }
   }, [selectedDate]);
+
+  const handleConfirmPending = async (orderId: string) => {
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'confirmado', approvedByAdmin: true }),
+      });
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Falha ao confirmar pedido.'));
+      toast('Pedido confirmado com sucesso e integrado à carga!', 'success');
+      await fetchPedidos();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Erro ao confirmar pedido.', 'error');
+    }
+  };
 
   useEffect(() => {
     void (async () => {
@@ -492,6 +510,46 @@ export default function LogisticsPage() {
                   </div>
                 )}
               </div>
+
+              {/* Pedidos Novos Aguardando Confirmação */}
+              {pedidosPendentes.length > 0 && (
+                <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl space-y-2 text-xs">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <span className="font-bold text-amber-900 flex items-center gap-1.5">
+                      <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                      {pedidosPendentes.length} {pedidosPendentes.length === 1 ? 'pedido novo aguardando confirmação' : 'pedidos novos aguardando confirmação'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        for (const p of pedidosPendentes) {
+                          await handleConfirmPending(p.id);
+                        }
+                      }}
+                      className="text-[11px] font-bold bg-amber-700 hover:bg-amber-800 text-white px-2.5 py-1 rounded-lg transition-all shadow-xs cursor-pointer"
+                    >
+                      Confirmar Todos na Carga
+                    </button>
+                  </div>
+                  <div className="divide-y divide-amber-200/60 max-h-36 overflow-y-auto">
+                    {pedidosPendentes.map((p) => (
+                      <div key={p.id} className="py-1.5 flex items-center justify-between text-[11px]">
+                        <div>
+                          <strong>#{p.numero}</strong> - {p.customerName}
+                          <span className="text-amber-800 ml-1">({p.deliveryAddress?.neighborhood || 'Sem bairro'})</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleConfirmPending(p.id)}
+                          className="text-[10px] font-bold text-emerald-700 hover:text-emerald-900 bg-white border border-emerald-300 px-2 py-0.5 rounded-md cursor-pointer hover:bg-emerald-50"
+                        >
+                          Confirmar
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Botão de baixa em lote dos pedidos do dia */}
               {naoEntreguesChecklist.length > 0 && (

@@ -24,3 +24,18 @@ export const DELETE = route<Context>('produtos.arquivar', async (_request, { par
   await archiveProduct(id);
   return ok({ ok: true });
 });
+
+export const PATCH = route<Context>('produtos.atualizarParcial', async (request, { params }) => {
+  await requireManager();
+  const { id } = await params;
+  const body = (await readJson(request)) as { availableInPortal?: boolean };
+  const { prisma } = await import('@/server/db');
+  const updated = await prisma.product.update({
+    where: { id },
+    data: {
+      ...(typeof body.availableInPortal === 'boolean' ? { availableInPortal: body.availableInPortal } : {}),
+    },
+    select: { id: true, availableInPortal: true },
+  });
+  return ok(updated);
+});

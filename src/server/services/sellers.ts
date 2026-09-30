@@ -26,6 +26,7 @@ export interface SellerDTO {
   goalRevenue: number;
   active: boolean;
   notes: string | null;
+  code: string | null;
   /** Quando o vendedor entrou (a data de criação do cadastro). */
   startDate: string | null;
   /** Conta de acesso vinculada. Um vendedor sempre tem uma. */
@@ -57,6 +58,7 @@ interface SellerRow {
   goalRevenue: unknown;
   active: boolean;
   notes: string | null;
+  code?: string | null;
   createdAt: Date;
   user?: { id: string; email: string; phone: string | null; active: boolean } | null;
   neighborhoods?: Array<{ id: string; name: string; region?: { name: string } | null }>;
@@ -73,6 +75,7 @@ function toDTO(row: SellerRow): SellerDTO {
     goalRevenue: num(row.goalRevenue),
     active: row.active,
     notes: row.notes,
+    code: row.code ?? null,
     startDate: timestamp(row.createdAt),
     user: {
       id: row.user?.id ?? row.userId,
@@ -131,6 +134,7 @@ export async function createSeller(
           goal: input.goal,
           goalRevenue: input.goalRevenue,
           notes: input.notes,
+          code: input.code ? input.code.trim().toUpperCase() : null,
           active: input.active,
         },
         include: SELLER_INCLUDE,
@@ -140,7 +144,7 @@ export async function createSeller(
     return toDTO(created);
   } catch (error) {
     if (prismaErrorCode(error) === UNIQUE_VIOLATION) {
-      throw conflict('Já existe um usuário com esse e-mail.');
+      throw conflict('Já existe um usuário com esse e-mail ou código de vendedor.');
     }
     throw error;
   }
@@ -171,6 +175,9 @@ export async function updateSeller(
         const value = (input as Record<string, unknown>)[key];
         if (value !== undefined) sellerData[key] = value;
       }
+      if (input.code !== undefined) {
+        sellerData.code = input.code ? input.code.trim().toUpperCase() : null;
+      }
 
       return tx.seller.update({ where: { id }, data: sellerData, include: SELLER_INCLUDE });
     });
@@ -178,10 +185,25 @@ export async function updateSeller(
     return toDTO(updated);
   } catch (error) {
     if (prismaErrorCode(error) === UNIQUE_VIOLATION) {
-      throw conflict('Já existe um usuário cadastrado com esse e-mail.');
+      throw conflict('Já existe um usuário ou vendedor com esse e-mail ou código.');
     }
     throw error;
   }
+}
+
+export async function getSellerByCode(code: string): Promise<SellerDTO | null> {
+  const cleanCode = code.trim().toUpperCase();
+  const row = await prisma.seller.findFirst({
+    where: {
+      active: true,
+      OR: [
+        { code: { equals: cleanCode, mode: 'insensitive' } },
+        { name: { contains: cleanCode, mode: 'insensitive' } },
+      ],
+    },
+    include: SELLER_INCLUDE,
+  });
+  return row ? toDTO(row) : null;
 }
 
 /**

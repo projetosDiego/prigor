@@ -82,6 +82,7 @@ export interface ProductDTO {
   image: string | null;
   commissionPct: number | null;
   active: boolean;
+  availableInPortal: boolean;
   createdAt: string | null;
   recipe: RecipeLineDTO[];
 }
@@ -122,6 +123,7 @@ export interface ProductRow {
   image: string | null;
   commissionPct: NumericInput;
   active: boolean;
+  availableInPortal?: boolean | null;
   createdAt: Date | string;
   ingredients?: RecipeRow[];
 }
@@ -155,6 +157,7 @@ export function toProductDTO(row: ProductRow): ProductDTO {
     image: row.image,
     commissionPct: row.commissionPct === null || row.commissionPct === undefined ? null : num(row.commissionPct),
     active: row.active,
+    availableInPortal: Boolean(row.availableInPortal),
     createdAt: timestamp(row.createdAt),
     recipe: (row.ingredients ?? []).map((line) => ({
       id: line.id,
@@ -205,6 +208,8 @@ export interface OrderDTO {
   commissionPct: number | null;
   paymentStatus: 'pago' | 'pendente' | 'atrasado' | 'sem_conta';
   receivableId: string | null;
+  hasNegotiatedPrice: boolean;
+  approvedByAdmin: boolean;
   notes: string | null;
   createdAt: string | null;
   updatedAt: string | null;
@@ -255,6 +260,8 @@ export interface OrderRow {
   total: NumericInput;
   commissionVal: NumericInput;
   commissionPct: NumericInput | null;
+  hasNegotiatedPrice?: boolean | null;
+  approvedByAdmin?: boolean | null;
   notes: string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
@@ -299,7 +306,7 @@ function computePaymentStatus(
   return 'pendente';
 }
 
-export function toOrderDTO(row: OrderRow, options: { withAddress?: boolean } = {}): OrderDTO {
+export function toOrderDTO(row: OrderRow, options: { withAddress?: boolean } = { withAddress: true }): OrderDTO {
   const dto: OrderDTO = {
     id: row.id,
     numero: row.numero,
@@ -325,6 +332,8 @@ export function toOrderDTO(row: OrderRow, options: { withAddress?: boolean } = {
     commissionPct: row.commissionPct === null || row.commissionPct === undefined ? null : num(row.commissionPct),
     paymentStatus: computePaymentStatus(row.transactions),
     receivableId: (row.transactions ?? [])[0]?.id ?? null,
+    hasNegotiatedPrice: Boolean(row.hasNegotiatedPrice),
+    approvedByAdmin: row.approvedByAdmin === undefined || row.approvedByAdmin === null ? true : Boolean(row.approvedByAdmin),
     notes: row.notes,
     createdAt: timestamp(row.createdAt),
     updatedAt: timestamp(row.updatedAt),
@@ -341,7 +350,7 @@ export function toOrderDTO(row: OrderRow, options: { withAddress?: boolean } = {
     })),
   };
 
-  if (options.withAddress && row.customer) {
+  if (options.withAddress !== false && row.customer) {
     const main = {
       address: row.customer.address,
       number: row.customer.number,

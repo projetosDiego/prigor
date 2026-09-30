@@ -218,8 +218,37 @@ export async function renderOrderPdf(
   // ── PEDIDO DE VENDA ─────────────────────────────────────────────────────────
   sectionTitle('PEDIDO DE VENDA');
   pair('Pedido:', String(order.numero), MARGIN);
-  pair('Vendedor:', order.sellerName ?? 'Administrador', MARGIN + 150);
+  pair('Vendedor:', order.sellerName ?? 'Administrador', MARGIN + 140);
+
+  const isAprovado = order.approvedByAdmin && order.status !== 'novo';
+  const statusLiberacao = isAprovado ? 'CONFIRMADO' : 'AGUARDANDO LIBERAÇÃO';
+  const statusColor = isAprovado ? rgb(0.12, 0.55, 0.2) : rgb(0.85, 0.45, 0.05);
+  pair('Status:', statusLiberacao, MARGIN + 300, statusColor);
   w.y -= LINE;
+
+  if (!isAprovado) {
+    page.drawRectangle({
+      x: MARGIN,
+      y: w.y - 2,
+      width: RIGHT - MARGIN,
+      height: 16,
+      color: rgb(0.99, 0.95, 0.88),
+      borderColor: rgb(0.9, 0.65, 0.2),
+      borderWidth: 1,
+    });
+    page.drawText(
+      '[!] PEDIDO AGUARDANDO LIBERACAO INTERNA DA GERENCIA - SUJEITO A CONFIRMACAO DE PRECO E ROTA',
+      {
+        x: MARGIN + 8,
+        y: w.y + 2,
+        size: 7.5,
+        font: bold,
+        color: rgb(0.75, 0.35, 0.05),
+      },
+    );
+    w.y -= LINE + 6;
+  }
+
   const cliente = order.customerLegalName && order.customerLegalName !== order.customerName
     ? `${order.customerName} (${order.customerLegalName})`
     : (order.customerName ?? '—');
@@ -235,7 +264,7 @@ export async function renderOrderPdf(
 
   // ── Endereços ────────────────────────────────────────────────────────────────
   const bill = order.billingAddress ?? order.deliveryAddress;
-  const ship = order.deliveryAddress;
+  const ship = order.deliveryAddress ?? order.billingAddress;
   const drawAddress = (titulo: string, a: typeof order.deliveryAddress): void => {
     sectionTitle(titulo);
     pair('Endereço:', a?.address ?? '—', MARGIN);

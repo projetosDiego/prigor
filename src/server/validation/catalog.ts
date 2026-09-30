@@ -74,6 +74,7 @@ export const productInputSchema = z
 
     commissionPct: z.union([percent('Comissão'), z.null()]).optional(),
     active: z.boolean().default(true),
+    availableInPortal: z.boolean().default(false),
 
     recipe: z.array(recipeLineSchema).max(100, 'Ficha técnica com itens demais.').optional(),
   })

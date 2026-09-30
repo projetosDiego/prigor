@@ -701,6 +701,21 @@ export default function OrdersPage() {
     }
   };
 
+  const handleAprovarPreco = async (id: string) => {
+    try {
+      const res = await fetch(`/api/orders/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approvedByAdmin: true, status: 'confirmado' }),
+      });
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao aprovar preço.'));
+      fetchBaseData();
+      toast('Preço aprovado! Pedido confirmado e impressão liberada para o cliente.', 'success');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Erro ao aprovar preço.', 'error');
+    }
+  };
+
   const handleMarcarPago = async (receivableId: string) => {
     try {
       const res = await fetch(`/api/financial/transactions/${receivableId}/settle`, { method: 'POST' });
@@ -1263,6 +1278,13 @@ export default function OrdersPage() {
                       }`}>
                         {ped.status}
                       </span>
+                      {ped.hasNegotiatedPrice && !ped.approvedByAdmin && (
+                        <div className="mt-1">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase bg-amber-100 text-amber-800 border border-amber-300">
+                            Preço Negociado
+                          </span>
+                        </div>
+                      )}
                       {ped.paymentStatus !== 'sem_conta' && (
                         <div className="mt-1">
                           <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${ped.paymentStatus === 'pago' ? 'bg-emerald-100 text-emerald-700' : ped.paymentStatus === 'atrasado' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>
@@ -1273,7 +1295,15 @@ export default function OrdersPage() {
                     </td>
                     <td className="py-4 px-6 text-center">
                       <div className="flex items-center justify-center gap-1.5">
-                        {ped.status === 'novo' && (
+                        {ped.hasNegotiatedPrice && !ped.approvedByAdmin ? (
+                          <button
+                            onClick={() => handleAprovarPreco(ped.id)}
+                            className="p-1.5 border border-amber-300 bg-amber-50 rounded-lg hover:bg-amber-100 text-amber-800 transition-all cursor-pointer"
+                            title="Aprovar Preço Negociado e Liberar Impressão"
+                          >
+                            <CheckCircle2 className="h-4 w-4 text-amber-700" />
+                          </button>
+                        ) : ped.status === 'novo' && (
                           <button
                             onClick={() => handleQuickStatus(ped.id, 'confirmado', 'confirmado')}
                             className="p-1.5 border border-emerald-200 rounded-lg hover:bg-emerald-50 text-emerald-700 transition-all cursor-pointer"
@@ -1372,6 +1402,28 @@ export default function OrdersPage() {
             </div>
             
             <form onSubmit={handleSave} className="p-3.5 sm:p-6 space-y-4 overflow-y-auto flex-1">
+              {/* Alerta de Preço Negociado no Modal */}
+              {selectedPedido?.hasNegotiatedPrice && !selectedPedido?.approvedByAdmin && (
+                <div className="bg-amber-50 border border-amber-300 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900 animate-fadeIn">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+                    <span>
+                      <strong>Pedido com Preço Negociado:</strong> A impressão pública do espelho está travada até a sua aprovação.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await handleAprovarPreco(selectedPedido.id);
+                      setIsModalOpen(false);
+                    }}
+                    className="bg-amber-700 hover:bg-amber-800 text-white font-bold px-3 py-1.5 rounded-lg text-xs shrink-0 cursor-pointer shadow-sm transition-all"
+                  >
+                    Aprovar Preço e Liberar Impressão
+                  </button>
+                </div>
+              )}
+
               {/* Form Grid */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>

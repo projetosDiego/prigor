@@ -177,6 +177,7 @@ model Seller {
   goalRevenue   Decimal  @default(0) @map("meta_faturamento") @db.Decimal(12, 2)
   commissionPct Decimal  @default(0) @map("comissao_pct") @db.Decimal(5, 2)
   notes         String?  @map("observacoes")
+  code          String?  @unique @map("codigo")
   createdAt     DateTime @default(now()) @map("criado_em")
   updatedAt     DateTime @updatedAt @map("atualizado_em")
 
@@ -454,7 +455,8 @@ model Product {
   specifications String?  @map("especificacoes")
   image          String?  @map("imagem")
   commissionPct  Decimal? @map("comissao_pct") @db.Decimal(5, 2)
-  active         Boolean  @default(true) @map("ativo")
+  active            Boolean  @default(true) @map("ativo")
+  availableInPortal Boolean  @default(false) @map("disponivel_portal")
 
   createdAt DateTime @default(now()) @map("criado_em")
   updatedAt DateTime @updatedAt @map("atualizado_em")
@@ -532,6 +534,9 @@ model Order {
   commissionPct Decimal? @map("comissao_pct") @db.Decimal(5, 2) // null = herda o % do vendedor
   deliveryAddressId String? @map("endereco_entrega_id")
   deliveryAddress   CustomerAddress? @relation(fields: [deliveryAddressId], references: [id], onDelete: SetNull)
+
+  hasNegotiatedPrice Boolean @default(false) @map("preco_negociado")
+  approvedByAdmin    Boolean @default(true)  @map("aprovado_gerencia")
 
   notes String? @map("observacoes")
 

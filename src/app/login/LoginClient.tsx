@@ -134,30 +134,58 @@ export default function LoginClient() {
               </div>
             </div>
 
-            <div>
-              <button
-                type="submit"
-                disabled={loading}
-                className="group relative flex w-full justify-center rounded-lg bg-amber-700 px-4 py-3 text-sm font-semibold text-white shadow-md hover:bg-amber-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-600 active:bg-amber-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-              >
-                {loading ? (
-                  <span className="flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Entrando...
-                  </span>
-                ) : (
-                  'Entrar'
-                )}
-              </button>
-            </div>
-          </form>
-        </div>
+              <div>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="group relative flex w-full justify-center rounded-lg bg-amber-700 px-4 py-3 text-sm font-semibold text-white shadow-md hover:bg-amber-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-600 active:bg-amber-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  {loading ? (
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Entrando...
+                    </span>
+                  ) : (
+                    'Entrar'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
 
-        <div className="text-center">
-          <p className="text-xs text-stone-500">
-            Doces Prigor © 2024. Todos os direitos reservados.
-          </p>
-        </div>
+          {/* Bloco de Autoatendimento B2B & Consulta de Pedidos */}
+          <div className="rounded-2xl bg-amber-50/90 p-5 border border-amber-200/80 shadow-sm space-y-3">
+            <div className="text-center">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-amber-200/80 text-amber-900">
+                Área do Cliente & Parceiro
+              </span>
+              <p className="mt-1 text-xs text-stone-600 font-medium">
+                Faça seu pedido diretamente ou consulte o andamento e baixe o espelho.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+              <a
+                href="/pedido"
+                className="flex items-center justify-center gap-2 rounded-xl bg-amber-700 px-3.5 py-2.5 text-xs font-bold text-white shadow hover:bg-amber-800 active:bg-amber-900 transition-all text-center"
+              >
+                <span>🛒</span> Fazer Pedido Rápido
+              </a>
+
+              <a
+                href="/pedido/consultar"
+                className="flex items-center justify-center gap-2 rounded-xl bg-white px-3.5 py-2.5 text-xs font-bold text-stone-700 border border-stone-300 shadow-sm hover:bg-stone-50 hover:border-stone-400 active:bg-stone-100 transition-all text-center"
+              >
+                <span>🔍</span> Meus Pedidos / Baixar
+              </a>
+            </div>
+          </div>
+
+          <div className="text-center">
+            <p className="text-xs text-stone-500">
+              Doces Prigor © 2024. Todos os direitos reservados.
+            </p>
+          </div>
       </div>
     </div>
   );

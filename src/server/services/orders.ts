@@ -308,6 +308,8 @@ export async function createOrder(
         total: calculated.total.toFixed(2),
         commissionVal: calculated.commissionVal.toFixed(2),
         commissionPct: commissionOverride,
+        hasNegotiatedPrice: input.hasNegotiatedPrice ?? false,
+        approvedByAdmin: input.approvedByAdmin ?? true,
         notes: input.notes,
         items: {
           create: calculated.items.map((item) => ({
@@ -512,6 +514,12 @@ export async function updateOrder(
         total: calculated.total.toFixed(2),
         commissionVal: calculated.commissionVal.toFixed(2),
         commissionPct: commissionOverride,
+        ...(input.hasNegotiatedPrice !== undefined ? { hasNegotiatedPrice: input.hasNegotiatedPrice } : {}),
+        ...(input.approvedByAdmin !== undefined
+          ? { approvedByAdmin: input.approvedByAdmin }
+          : nextStatus === 'confirmado'
+            ? { approvedByAdmin: true }
+            : {}),
       },
     });
 

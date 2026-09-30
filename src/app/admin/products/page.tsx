@@ -57,6 +57,7 @@ export default function ProductsPage() {
   const [qtdMinAtacado, setQtdMinAtacado] = useState('0');
   const [estoque, setEstoque] = useState('0');
   const [estoqueMinimo, setEstoqueMinimo] = useState('0');
+  const [availableInPortal, setAvailableInPortal] = useState(false);
   
   // Ingredientes do Produto (Ficha Técnica)
   const [ingredientes, setIngredientes] = useState<LinhaReceita[]>([]);
@@ -119,6 +120,7 @@ export default function ProductsPage() {
     setQtdMinAtacado('0');
     setEstoque('0');
     setEstoqueMinimo('0');
+    setAvailableInPortal(false);
     setIngredientes([]);
     setIngredienteQtd('0');
     setIngredienteObs('');
@@ -138,6 +140,7 @@ export default function ProductsPage() {
     setQtdMinAtacado(String(produto.minWholesaleQty));
     setEstoque(String(produto.stock));
     setEstoqueMinimo(String(produto.minStock));
+    setAvailableInPortal(Boolean(produto.availableInPortal));
 
     // Carrega ingredientes (receita) do produto completo
     try {
@@ -217,6 +220,7 @@ export default function ProductsPage() {
       minWholesaleQty: parseFloat(qtdMinAtacado) || 0,
       stock: parseFloat(estoque) || 0,
       minStock: parseFloat(estoqueMinimo) || 0,
+      availableInPortal,
       recipe: recipePayload,
       active: true
     };
@@ -237,6 +241,23 @@ export default function ProductsPage() {
       fetchData();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Erro ao salvar produto.');
+    }
+  };
+
+  const handleTogglePortal = async (prod: ProductDTO) => {
+    const nextVal = !prod.availableInPortal;
+    try {
+      const res = await fetch(`/api/products/${prod.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ availableInPortal: nextVal }),
+      });
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao atualizar visibilidade.'));
+      setProdutos((prev) =>
+        prev.map((p) => (p.id === prod.id ? { ...p, availableInPortal: nextVal } : p))
+      );
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erro ao atualizar visibilidade no portal.');
     }
   };
 
@@ -360,6 +381,7 @@ export default function ProductsPage() {
                   <th className="py-3 px-6 text-right">Atacado</th>
                   <th className="py-3 px-6 text-center">Lucro (Margem)</th>
                   <th className="py-3 px-6 text-center">Estoque</th>
+                  <th className="py-3 px-6 text-center">Autoatendimento</th>
                   <th className="py-3 px-6 text-center">Ações</th>
                 </tr>
               </thead>
@@ -403,6 +425,30 @@ export default function ProductsPage() {
                           {isLowStock && <AlertTriangle className="h-3.5 w-3.5 text-red-650" />}
                           {prod.stock} un
                         </span>
+                      </td>
+                      <td className="py-4 px-6 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePortal(prod)}
+                          title={prod.availableInPortal ? 'Clique para ocultar do portal /pedido' : 'Clique para exibir no portal /pedido'}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black transition-all cursor-pointer shadow-xs ${
+                            prod.availableInPortal
+                              ? 'bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200'
+                              : 'bg-stone-100 text-stone-400 border border-stone-200 hover:bg-stone-200 hover:text-stone-600'
+                          }`}
+                        >
+                          {prod.availableInPortal ? (
+                            <>
+                              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                              No Portal
+                            </>
+                          ) : (
+                            <>
+                              <span className="h-2 w-2 rounded-full bg-stone-300" />
+                              Oculto
+                            </>
+                          )}
+                        </button>
                       </td>
                       <td className="py-4 px-6 text-center">
                         <div className="flex items-center justify-center gap-2">
@@ -571,6 +617,28 @@ export default function ProductsPage() {
                     </span>
                   </div>
                 </div>
+              </div>
+
+              {/* Disponibilidade no Autoatendimento */}
+              <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 flex items-center justify-between gap-4">
+                <div>
+                  <h4 className="text-xs font-black text-amber-950 uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-amber-500" />
+                    Disponível no Autoatendimento (/pedido)
+                  </h4>
+                  <p className="text-[11px] text-amber-800 mt-0.5">
+                    Quando ativo, este produto fica visível para os clientes fazerem pedidos pelo portal público.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={availableInPortal}
+                    onChange={(e) => setAvailableInPortal(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-stone-300 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-stone-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+                </label>
               </div>
 
               {/* Ficha Técnica / Receitas */}

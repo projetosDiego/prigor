@@ -134,6 +134,7 @@ function toPersistable(input: ProductInput, cost: string): Prisma.ProductUncheck
     image: input.image,
     commissionPct: input.commissionPct ?? null,
     active: input.active,
+    availableInPortal: input.availableInPortal ?? false,
   };
 }
 

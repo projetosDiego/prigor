@@ -58,6 +58,8 @@ export const orderCreateSchema = z.object({
   shipping: money('Frete').default('0.00'),
   otherCosts: money('Outros custos').default('0.00'),
   commissionPct: z.union([percent('Comissão'), z.null()]).optional(),
+  hasNegotiatedPrice: z.boolean().default(false),
+  approvedByAdmin: z.boolean().default(true),
   notes: optionalText(2000),
   items: z
     .array(orderItemSchema)
@@ -83,6 +85,8 @@ export const orderUpdateSchema = z
     shipping: money('Frete').optional(),
     otherCosts: money('Outros custos').optional(),
     commissionPct: z.union([percent('Comissão'), z.null()]).optional(),
+    hasNegotiatedPrice: z.boolean().optional(),
+    approvedByAdmin: z.boolean().optional(),
     notes: optionalText(2000).optional(),
     items: z
       .array(orderItemSchema)
@@ -179,6 +183,7 @@ export const sellerInputSchema = z.object({
   goal: z.coerce.number().int().min(0).default(0),
   goalRevenue: money('Meta de faturamento').default('0.00'),
   notes: optionalText(2000),
+  code: optionalText(30),
   active: z.boolean().default(true),
 });
 

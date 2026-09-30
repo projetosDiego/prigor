@@ -11,7 +11,13 @@ import type { NextRequest } from 'next/server';
 
 import { SESSION_COOKIE, verifyToken } from './server/auth/session';
 
-const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/health'];
+const PUBLIC_PATHS = [
+  '/login',
+  '/api/auth/login',
+  '/api/health',
+  '/pedido',
+  '/api/public',
+];
 
 function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
