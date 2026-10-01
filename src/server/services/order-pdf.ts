@@ -79,8 +79,13 @@ const PAYMENT_LABEL: Record<string, string> = {
 
 function formatDate(value: string | null): string {
   if (!value) return '—';
-  const [year, month, day] = value.split('-');
-  return `${day}/${month}/${year}`;
+  const clean = value.split('T')[0];
+  const parts = clean.split('-');
+  if (parts.length === 3) {
+    const [year, month, day] = parts;
+    return `${day}/${month}/${year}`;
+  }
+  return value;
 }
 
 function onlyDigits(v: string): string {
@@ -424,7 +429,7 @@ export async function renderOrderPdf(
 
   // Rodapé
   w.page.drawText(
-    `Documento gerado em ${new Date().toLocaleString('pt-BR')} · não possui valor fiscal`,
+    'Doces Prigor · Documento não possui valor fiscal',
     { x: MARGIN, y: 30, size: 7, font: regular, color: MUTED },
   );
 
@@ -835,11 +840,9 @@ export async function renderChecklistPdf(
   // Rodapé e Numeração
   const totalPages = pdf.getPageCount();
   const pages = pdf.getPages();
-  const nowStr = new Date().toLocaleString('pt-BR');
-
   pages.forEach((page, index) => {
     const pageNumText = `Página ${index + 1} de ${totalPages}`;
-    const footerText = `Doces Prigor — Documento interno de conferência e saída · Gerado em ${nowStr}`;
+    const footerText = 'Doces Prigor — Documento interno de conferência e saída';
 
     page.drawLine({
       start: { x: C_MARGIN, y: 24 },
