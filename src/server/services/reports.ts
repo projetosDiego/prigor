@@ -184,7 +184,7 @@ function currentMonthRange(): { from: Date; to: Date } {
   const now = new Date();
   return {
     from: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)),
-    to: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)),
+    to: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59, 999)),
   };
 }
 
@@ -199,7 +199,9 @@ export async function sellerReport(
 ): Promise<{ period: { from: string; to: string }; rows: SellerReportRow[] }> {
   const def = currentMonthRange();
   const from = fromIn ?? def.from;
-  const to = toIn ?? def.to;
+  const to = toIn
+    ? new Date(Date.UTC(toIn.getUTCFullYear(), toIn.getUTCMonth(), toIn.getUTCDate(), 23, 59, 59, 999))
+    : def.to;
 
   const sellers = await prisma.seller.findMany({
     where: { active: true },
@@ -323,7 +325,8 @@ export async function sellerReport(
       const commission = num(g?._sum?.commissionVal);
       const orders = g?._count?._all ?? 0;
       const goal = num(sv.goalRevenue);
-      const projection = elapsedDays > 0 ? (realized / elapsedDays) * totalDays : realized;
+      const calcProj = elapsedDays > 0 ? (realized / elapsedDays) * totalDays : realized;
+      const projection = Number.isFinite(calcProj) ? calcProj : realized;
       const pctGoal = goal > 0 ? (realized / goal) * 100 : 0;
       const customerMap = customersBySeller.get(sv.id);
       const customers = customerMap

@@ -1252,7 +1252,7 @@ export default function OrdersPage() {
                     <th className="py-3 px-5">Vendedor</th>
                     <th className="py-3 px-5">Data Pedido</th>
                     <th className="py-3 px-5">Previsão Entrega</th>
-                    <th className="py-3 px-5 text-center">Pagamento</th>
+                    <th className="py-3 px-5">Pagamento</th>
                     <th className="py-3 px-5 text-right">Valor Total</th>
                     <th className="py-3 px-5 text-center">Status</th>
                     <th className="py-3 px-5 text-center">Ações</th>
@@ -1295,20 +1295,8 @@ export default function OrdersPage() {
                           <span className="text-stone-300 font-normal">—</span>
                         )}
                       </td>
-                      <td className="py-4 px-5 text-center">
-                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${
-                          (ped.paymentMethod || '').toLowerCase() === 'pix'
-                            ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
-                            : (ped.paymentMethod || '').toLowerCase().includes('boleto')
-                            ? 'bg-blue-100 text-blue-900 border border-blue-300'
-                            : (ped.paymentMethod || '').toLowerCase() === 'dinheiro'
-                            ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                            : (ped.paymentMethod || '').toLowerCase().includes('cart') || (ped.paymentMethod || '').toLowerCase().includes('credito') || (ped.paymentMethod || '').toLowerCase().includes('debito')
-                            ? 'bg-purple-100 text-purple-900 border border-purple-300'
-                            : 'bg-stone-100 text-stone-700 border border-stone-250'
-                        }`}>
-                          {ped.paymentMethod || 'A combinar'}
-                        </span>
+                      <td className="py-4 px-5 text-stone-600 text-xs font-semibold">
+                        {ped.paymentMethod || <span className="text-stone-300 font-normal">—</span>}
                       </td>
                       <td className="py-4 px-5 text-right font-black text-stone-850">
                         {ped.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
