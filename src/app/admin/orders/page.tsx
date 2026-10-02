@@ -146,6 +146,7 @@ export default function OrdersPage() {
   
   // Filtros
   const [statusFilter, setStatusFilter] = useState('');
+  const [sellerFilter, setSellerFilter] = useState('');
   const [deliveryDateFilter, setDeliveryDateFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -873,6 +874,7 @@ export default function OrdersPage() {
   // Filtros aplicados localmente
   const filteredPedidos = pedidos.filter(p => {
     const matchesStatus = !statusFilter || p.status === statusFilter;
+    const matchesSeller = !sellerFilter || (sellerFilter === 'none' ? !p.sellerId : p.sellerId === sellerFilter);
     const date = p.orderDate?.slice(0, 10) ?? '';
     const matchesFrom = !dateFrom || date >= dateFrom;
     const matchesTo = !dateTo || date <= dateTo;
@@ -888,7 +890,7 @@ export default function OrdersPage() {
       matchesTexto = numMatch || cliMatch;
     }
 
-    return matchesStatus && matchesFrom && matchesTo && matchesDelivery && matchesTexto;
+    return matchesStatus && matchesSeller && matchesFrom && matchesTo && matchesDelivery && matchesTexto;
   });
 
   const toggleSelectOrder = (id: string) => {
@@ -957,7 +959,7 @@ export default function OrdersPage() {
       <div className="rounded-2xl bg-white p-4 shadow-sm border border-stone-200 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
           {/* Destaque Data de Entrega */}
-          <div className="sm:col-span-2 lg:col-span-4 bg-amber-50/70 p-2.5 rounded-xl border border-amber-200">
+          <div className="sm:col-span-2 lg:col-span-3 bg-amber-50/70 p-2.5 rounded-xl border border-amber-200">
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-[10px] text-amber-950 font-black uppercase tracking-wider flex items-center gap-1.5">
                 <Truck className="h-3.5 w-3.5 text-amber-700" />
@@ -1010,7 +1012,7 @@ export default function OrdersPage() {
           </div>
 
           {/* Buscar Pedido / Cliente */}
-          <div className="sm:col-span-2 lg:col-span-3">
+          <div className="sm:col-span-2 lg:col-span-2">
             <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">Buscar Pedido / Cliente</label>
             <div className="relative">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-stone-400" />
@@ -1022,6 +1024,24 @@ export default function OrdersPage() {
                 className="w-full pl-9 pr-3 py-2 rounded-lg border border-stone-200 text-xs focus:outline-none bg-stone-50/50 focus:bg-white focus:border-amber-400"
               />
             </div>
+          </div>
+
+          {/* Filtrar por Vendedor */}
+          <div className="sm:col-span-1 lg:col-span-2">
+            <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">Vendedor</label>
+            <select 
+              value={sellerFilter}
+              onChange={(e) => setSellerFilter(e.target.value)}
+              className="w-full rounded-lg border border-stone-200 text-xs px-3 py-2 bg-stone-50/50 focus:outline-none focus:bg-white focus:border-amber-400 font-medium"
+            >
+              <option value="">Todos Vendedores</option>
+              <option value="none">Sem Vendedor</option>
+              {vendedores.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Filtrar por Status */}
@@ -1232,6 +1252,7 @@ export default function OrdersPage() {
                     <th className="py-3 px-5">Vendedor</th>
                     <th className="py-3 px-5">Data Pedido</th>
                     <th className="py-3 px-5">Previsão Entrega</th>
+                    <th className="py-3 px-5 text-center">Pagamento</th>
                     <th className="py-3 px-5 text-right">Valor Total</th>
                     <th className="py-3 px-5 text-center">Status</th>
                     <th className="py-3 px-5 text-center">Ações</th>
@@ -1239,8 +1260,13 @@ export default function OrdersPage() {
                 </thead>
                 <tbody className="divide-y divide-stone-100 font-semibold text-stone-700">
                   {filteredPedidos.map((ped) => (
-                    <tr key={ped.id} className={`transition-colors ${selectedOrderIds.includes(ped.id) ? 'bg-amber-50/50 hover:bg-amber-50/70' : 'hover:bg-stone-50/50'}`}>
-                      <td className="py-4 px-4 text-center w-10">
+                    <tr 
+                      key={ped.id} 
+                      onClick={() => handleOpenEditModal(ped)}
+                      className={`transition-colors cursor-pointer group ${selectedOrderIds.includes(ped.id) ? 'bg-amber-50/50 hover:bg-amber-50/70' : 'hover:bg-amber-50/30'}`}
+                      title="Clique para abrir e editar o pedido"
+                    >
+                      <td className="py-4 px-4 text-center w-10" onClick={(e) => e.stopPropagation()}>
                         <input 
                           type="checkbox" 
                           checked={selectedOrderIds.includes(ped.id)} 
@@ -1248,8 +1274,12 @@ export default function OrdersPage() {
                           className="rounded border-stone-300 text-amber-700 focus:ring-amber-500 cursor-pointer h-4 w-4" 
                         />
                       </td>
-                      <td className="py-4 px-5 font-bold text-amber-900">#{ped.numero}</td>
-                      <td className="py-4 px-5 text-stone-850 font-bold text-sm">{ped.customerName}</td>
+                      <td className="py-4 px-5 font-bold text-amber-900 group-hover:text-amber-700 transition-colors">
+                        <span className="hover:underline">#{ped.numero}</span>
+                      </td>
+                      <td className="py-4 px-5 text-stone-850 font-bold text-sm group-hover:text-amber-950 transition-colors">
+                        <span className="hover:underline">{ped.customerName}</span>
+                      </td>
                       <td className="py-4 px-5 text-stone-500">{ped.sellerName || '—'}</td>
                       <td className="py-4 px-5 text-stone-400">{formatarData(ped.orderDate)}</td>
                       <td className="py-4 px-5">
@@ -1264,6 +1294,21 @@ export default function OrdersPage() {
                         ) : (
                           <span className="text-stone-300 font-normal">—</span>
                         )}
+                      </td>
+                      <td className="py-4 px-5 text-center">
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${
+                          (ped.paymentMethod || '').toLowerCase() === 'pix'
+                            ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                            : (ped.paymentMethod || '').toLowerCase().includes('boleto')
+                            ? 'bg-blue-100 text-blue-900 border border-blue-300'
+                            : (ped.paymentMethod || '').toLowerCase() === 'dinheiro'
+                            ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                            : (ped.paymentMethod || '').toLowerCase().includes('cart') || (ped.paymentMethod || '').toLowerCase().includes('credito') || (ped.paymentMethod || '').toLowerCase().includes('debito')
+                            ? 'bg-purple-100 text-purple-900 border border-purple-300'
+                            : 'bg-stone-100 text-stone-700 border border-stone-250'
+                        }`}>
+                          {ped.paymentMethod || 'A combinar'}
+                        </span>
                       </td>
                       <td className="py-4 px-5 text-right font-black text-stone-850">
                         {ped.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
@@ -1293,7 +1338,7 @@ export default function OrdersPage() {
                         </div>
                       )}
                     </td>
-                    <td className="py-4 px-6 text-center">
+                    <td className="py-4 px-6 text-center" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-center gap-1.5">
                         {ped.hasNegotiatedPrice && !ped.approvedByAdmin ? (
                           <button

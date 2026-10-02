@@ -57,6 +57,8 @@ interface SellerPayload {
   code?: string;
   goal: string;
   commissionPct: string;
+  supervisorId?: string | null;
+  supervisorCommissionPct?: string;
   goalRevenue: string;
   active: boolean;
   startDate: string;
@@ -78,6 +80,8 @@ export default function AdminSellersPage() {
   const [code, setCode] = useState('');
   const [goal, setGoal] = useState('10');
   const [commissionPct, setCommissionPct] = useState('0');
+  const [supervisorId, setSupervisorId] = useState('');
+  const [supervisorCommissionPct, setSupervisorCommissionPct] = useState('0');
   const [goalRevenue, setGoalRevenue] = useState('0');
   const [active, setActive] = useState(true);
   const [startDate, setStartDate] = useState('');
@@ -118,6 +122,8 @@ export default function AdminSellersPage() {
         code: code.trim().toUpperCase() || undefined,
         goal,
         commissionPct,
+        supervisorId: supervisorId ? supervisorId : null,
+        supervisorCommissionPct: supervisorCommissionPct || '0',
         goalRevenue: parseMoneyBRL(goalRevenue),
         active,
         startDate,
@@ -148,6 +154,8 @@ export default function AdminSellersPage() {
       setActive(true);
       setStartDate('');
       setCommissionPct('0');
+      setSupervisorId('');
+      setSupervisorCommissionPct('0');
       setGoalRevenue('');
       setShowForm(false);
 
@@ -247,6 +255,8 @@ export default function AdminSellersPage() {
                       setCode(seller.code || '');
                       setGoal(String(seller.goal)); 
                       setCommissionPct(String(seller.commissionPct ?? 0)); 
+                      setSupervisorId(seller.supervisorId || '');
+                      setSupervisorCommissionPct(String(seller.supervisorCommissionPct ?? 0));
                       setGoalRevenue(moneyMaskFromNumber(Number(seller.goalRevenue ?? 0))); 
                       setActive(seller.active); 
                       setStartDate(seller.startDate?.split('T')[0] ?? '');
@@ -275,6 +285,12 @@ export default function AdminSellersPage() {
                   <Phone className="h-4 w-4 text-stone-400 shrink-0" />
                   <span>{seller.phone || 'Telefone não cadastrado'}</span>
                 </p>
+                {seller.supervisorName && (
+                  <p className="flex items-center gap-2 text-stone-700">
+                    <UserSquare2 className="h-4 w-4 text-amber-700 shrink-0" />
+                    <span>Supervisor: <strong className="text-stone-900">{seller.supervisorName}</strong> ({seller.supervisorCommissionPct}%)</span>
+                  </p>
+                )}
                 <p className="flex items-center gap-2">
                   <Target className="h-4 w-4 text-stone-400 shrink-0" />
                   <span>Meta Mensal: <strong className="text-amber-800 font-extrabold">{seller.goal} novos pontos</strong></span>
@@ -383,6 +399,40 @@ export default function AdminSellersPage() {
                     onChange={(e) => setGoal(e.target.value)}
                     className="block w-full rounded-lg border border-stone-300 bg-stone-50 p-2.5 text-stone-900 focus:bg-white"
                     required
+                  />
+                </div>
+              </div>
+
+              {/* Supervisor Responsável & Comissão de Supervisão */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block mb-1">Supervisor</label>
+                  <select
+                    value={supervisorId}
+                    onChange={(e) => setSupervisorId(e.target.value)}
+                    className="block w-full rounded-lg border border-stone-300 bg-stone-50 p-2.5 text-stone-900 focus:bg-white text-xs font-semibold"
+                  >
+                    <option value="">Sem supervisor (Direto)</option>
+                    {sellers
+                      .filter((s) => s.id !== sellerId)
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block mb-1">% Supervisor</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    placeholder="Ex: 2.00"
+                    value={supervisorCommissionPct}
+                    onChange={(e) => setSupervisorCommissionPct(e.target.value)}
+                    className="block w-full rounded-lg border border-stone-300 bg-stone-50 p-2.5 text-stone-900 focus:bg-white"
                   />
                 </div>
               </div>

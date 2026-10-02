@@ -180,6 +180,8 @@ export const sellerInputSchema = z.object({
   phone: optionalText(40),
   email: email(),
   commissionPct: percent('Comissão').default('0.00'),
+  supervisorId: optionalUuid('Supervisor'),
+  supervisorCommissionPct: percent('Comissão do Supervisor').default('0.00'),
   goal: z.coerce.number().int().min(0).default(0),
   goalRevenue: money('Meta de faturamento').default('0.00'),
   notes: optionalText(2000),

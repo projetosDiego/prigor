@@ -116,7 +116,17 @@ function toLocalDateString(d: Date): string {
 }
 
 export default function AdminDailySalesReportPage() {
-  const [selectedDate, setSelectedDate] = useState<string>(() => toLocalDateString(new Date()));
+  const todayStr = toLocalDateString(new Date());
+  
+  // Período padrão: Este mês corrente
+  const now = new Date();
+  const firstDayMonth = toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1));
+  const lastDayMonth = toLocalDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+
+  const [fromDate, setFromDate] = useState<string>(firstDayMonth);
+  const [toDate, setToDate] = useState<string>(lastDayMonth);
+  const [activePreset, setActivePreset] = useState<'today' | 'yesterday' | 'week' | 'month' | 'prevMonth' | 'custom'>('month');
+
   const [includeCancelled, setIncludeCancelled] = useState(false);
   const [data, setData] = useState<DailySalesReportResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -127,11 +137,11 @@ export default function AdminDailySalesReportPage() {
   const [statusFilter, setStatusFilter] = useState('todos');
   const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>({});
 
-  const loadReport = useCallback(async (dateToLoad: string, cancelled: boolean) => {
+  const loadReport = useCallback(async (start: string, end: string, cancelled: boolean) => {
     try {
       setLoading(true);
       setError(null);
-      const params = new URLSearchParams({ date: dateToLoad });
+      const params = new URLSearchParams({ from: start, to: end });
       if (cancelled) params.set('includeCancelled', 'true');
 
       const res = await fetch(`/api/reports/sales?${params.toString()}`);
@@ -146,25 +156,34 @@ export default function AdminDailySalesReportPage() {
   }, []);
 
   useEffect(() => {
-    void loadReport(selectedDate, includeCancelled);
-  }, [selectedDate, includeCancelled, loadReport]);
+    void loadReport(fromDate, toDate, includeCancelled);
+  }, [fromDate, toDate, includeCancelled, loadReport]);
 
-  // Navegação de datas
-  const changeDateBy = (days: number) => {
-    const [y, m, d] = selectedDate.split('-').map(Number);
-    const currentDate = new Date(y, m - 1, d);
-    currentDate.setDate(currentDate.getDate() + days);
-    setSelectedDate(toLocalDateString(currentDate));
-  };
-
-  const setDateToToday = () => {
-    setSelectedDate(toLocalDateString(new Date()));
-  };
-
-  const setDateToYesterday = () => {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    setSelectedDate(toLocalDateString(yesterday));
+  const setPreset = (preset: 'today' | 'yesterday' | 'week' | 'month' | 'prevMonth') => {
+    setActivePreset(preset);
+    const d = new Date();
+    if (preset === 'today') {
+      const s = toLocalDateString(d);
+      setFromDate(s);
+      setToDate(s);
+    } else if (preset === 'yesterday') {
+      const y = new Date();
+      y.setDate(y.getDate() - 1);
+      const s = toLocalDateString(y);
+      setFromDate(s);
+      setToDate(s);
+    } else if (preset === 'week') {
+      const w = new Date();
+      w.setDate(w.getDate() - 6);
+      setFromDate(toLocalDateString(w));
+      setToDate(toLocalDateString(d));
+    } else if (preset === 'month') {
+      setFromDate(toLocalDateString(new Date(d.getFullYear(), d.getMonth(), 1)));
+      setToDate(toLocalDateString(new Date(d.getFullYear(), d.getMonth() + 1, 0)));
+    } else if (preset === 'prevMonth') {
+      setFromDate(toLocalDateString(new Date(d.getFullYear(), d.getMonth() - 1, 1)));
+      setToDate(toLocalDateString(new Date(d.getFullYear(), d.getMonth(), 0)));
+    }
   };
 
   const toggleOrderExpand = (orderId: string) => {
@@ -190,7 +209,7 @@ export default function AdminDailySalesReportPage() {
   // Exportar CSV
   const handleExportCSV = () => {
     if (!data?.orders || data.orders.length === 0) {
-      alert('Não há vendas para exportar nesta data.');
+      alert('Não há vendas para exportar no período.');
       return;
     }
 
@@ -235,13 +254,13 @@ export default function AdminDailySalesReportPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `vendas_diarias_${data.date}.csv`);
+    link.setAttribute('download', `relatorio_vendas_${data.date}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  const isToday = selectedDate === toLocalDateString(new Date());
+  const bestProduct = data?.summary?.topProducts?.[0] ?? null;
 
   return (
     <div className="space-y-6">
@@ -251,78 +270,95 @@ export default function AdminDailySalesReportPage() {
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-black text-stone-900 tracking-tight flex items-center gap-2">
               <CalendarDays className="h-6 w-6 text-amber-700" />
-              Vendas Diárias & Faturamento
+              Relatório Gerencial de Vendas
             </h2>
-            {isToday && (
-              <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-extrabold px-2 py-0.5 rounded-full">
-                HOJE
-              </span>
-            )}
+            <span className="bg-amber-100 text-amber-900 border border-amber-250 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+              {data?.formattedDate || 'Período'}
+            </span>
           </div>
-          <p className="text-xs text-stone-500 font-medium">
-            {data?.formattedDate ? (
-              <span>Fechamento comercial de <strong>{data.formattedDate}</strong></span>
-            ) : (
-              'Monitore as vendas e o faturamento detalhado por dia'
-            )}
+          <p className="text-xs text-stone-500 font-medium mt-1">
+            Faturamento consolidado, clientes atendidos, ticket médio e produto campeão por período
           </p>
         </div>
 
-        {/* Barra de Seleção Rápida de Data */}
+        {/* Barra de Seleção de Período e Presets */}
         <div className="flex flex-wrap items-center gap-2 bg-white p-2 rounded-xl border border-stone-200 shadow-xs">
           <button
             type="button"
-            onClick={setDateToYesterday}
-            className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-stone-600 hover:text-stone-900 hover:bg-stone-100 transition-colors cursor-pointer"
+            onClick={() => setPreset('today')}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activePreset === 'today' ? 'bg-amber-700 text-white shadow-xs' : 'text-stone-600 hover:bg-stone-100'
+            }`}
+          >
+            Hoje
+          </button>
+          <button
+            type="button"
+            onClick={() => setPreset('yesterday')}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activePreset === 'yesterday' ? 'bg-amber-700 text-white shadow-xs' : 'text-stone-600 hover:bg-stone-100'
+            }`}
           >
             Ontem
           </button>
           <button
             type="button"
-            onClick={setDateToToday}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-              isToday ? 'bg-amber-700 text-white shadow-xs' : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
+            onClick={() => setPreset('week')}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activePreset === 'week' ? 'bg-amber-700 text-white shadow-xs' : 'text-stone-600 hover:bg-stone-100'
             }`}
           >
-            Hoje
+            Últimos 7 dias
           </button>
-
-          <div className="h-4 w-px bg-stone-200 mx-0.5" />
-
-          {/* Navegador de dia anterior / próximo */}
           <button
             type="button"
-            onClick={() => changeDateBy(-1)}
-            title="Dia anterior"
-            className="p-1.5 rounded-lg text-stone-600 hover:bg-stone-100 transition-colors cursor-pointer"
+            onClick={() => setPreset('month')}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activePreset === 'month' ? 'bg-amber-700 text-white shadow-xs' : 'text-stone-600 hover:bg-stone-100'
+            }`}
           >
-            <ChevronLeft className="h-4 w-4" />
+            Este Mês
+          </button>
+          <button
+            type="button"
+            onClick={() => setPreset('prevMonth')}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activePreset === 'prevMonth' ? 'bg-amber-700 text-white shadow-xs' : 'text-stone-600 hover:bg-stone-100'
+            }`}
+          >
+            Mês Anterior
           </button>
 
-          <div className="relative flex items-center">
+          <div className="h-4 w-px bg-stone-200 mx-1 hidden sm:block" />
+
+          {/* Seletores manuais De / Até */}
+          <div className="flex items-center gap-1.5 text-xs font-bold text-stone-700">
+            <span>De:</span>
             <input
               type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="rounded-lg border border-stone-200 bg-stone-50 px-2.5 py-1 text-xs font-bold text-stone-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-700"
+              value={fromDate}
+              onChange={(e) => {
+                setFromDate(e.target.value);
+                setActivePreset('custom');
+              }}
+              className="rounded-lg border border-stone-200 bg-stone-50 px-2 py-1 text-xs font-bold text-stone-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-700"
+            />
+            <span>Até:</span>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => {
+                setToDate(e.target.value);
+                setActivePreset('custom');
+              }}
+              className="rounded-lg border border-stone-200 bg-stone-50 px-2 py-1 text-xs font-bold text-stone-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-700"
             />
           </div>
 
           <button
             type="button"
-            onClick={() => changeDateBy(1)}
-            title="Próximo dia"
-            className="p-1.5 rounded-lg text-stone-600 hover:bg-stone-100 transition-colors cursor-pointer"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
-
-          <div className="h-4 w-px bg-stone-200 mx-0.5" />
-
-          <button
-            type="button"
-            onClick={() => loadReport(selectedDate, includeCancelled)}
-            title="Recarregar"
+            onClick={() => loadReport(fromDate, toDate, includeCancelled)}
+            title="Atualizar dados"
             disabled={loading}
             className="p-1.5 rounded-lg text-stone-500 hover:bg-stone-100 hover:text-stone-800 transition-colors cursor-pointer"
           >
@@ -358,7 +394,7 @@ export default function AdminDailySalesReportPage() {
             className="flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-bold text-stone-700 hover:bg-stone-50 transition-colors shadow-xs cursor-pointer"
           >
             <Printer className="h-3.5 w-3.5 text-stone-500" />
-            Imprimir
+            Imprimir Relatório
           </button>
         </div>
       </div>
@@ -366,7 +402,7 @@ export default function AdminDailySalesReportPage() {
       {loading ? (
         <div className="flex h-64 items-center justify-center gap-2 bg-white rounded-2xl border border-stone-200 shadow-xs">
           <Loader2 className="h-6 w-6 animate-spin text-amber-700" />
-          <p className="text-xs text-stone-500 font-medium">Buscando dados de vendas de {selectedDate}...</p>
+          <p className="text-xs text-stone-500 font-medium">Buscando fechamento de vendas...</p>
         </div>
       ) : error ? (
         <div className="p-4 bg-red-50 text-red-750 text-xs text-center border border-red-200 rounded-xl">
@@ -374,12 +410,12 @@ export default function AdminDailySalesReportPage() {
         </div>
       ) : data ? (
         <div className="space-y-6">
-          {/* Cards de Métricas do Dia */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-            {/* Card Faturamento */}
-            <div className="rounded-2xl bg-white border border-stone-200 p-4 shadow-xs">
+          {/* Cards de Métricas Principais Solicitadas pelo Gestor */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* 1. Faturamento Total */}
+            <div className="rounded-2xl bg-white border border-stone-200 p-5 shadow-xs">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider">Faturamento do Dia</span>
+                <span className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider">Faturamento Total</span>
                 <div className="rounded-lg bg-emerald-50 p-2 text-emerald-700 border border-emerald-100">
                   <DollarSign className="h-4 w-4" />
                 </div>
@@ -387,64 +423,16 @@ export default function AdminDailySalesReportPage() {
               <p className="mt-2 text-2xl font-black text-stone-900 tracking-tight">
                 {formatBRL(data.summary.totalRevenue)}
               </p>
-              <p className="mt-1 text-[11px] font-medium text-stone-500">
-                Líquido em pedidos válidos
+              <p className="mt-1 text-[11px] font-medium text-emerald-700 flex items-center gap-1">
+                ✓ {data.summary.totalOrders} pedidos realizados no período
               </p>
             </div>
 
-            {/* Card Pedidos */}
-            <div className="rounded-2xl bg-white border border-stone-200 p-4 shadow-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider">Pedidos Fechados</span>
-                <div className="rounded-lg bg-amber-50 p-2 text-amber-700 border border-amber-100">
-                  <ShoppingCart className="h-4 w-4" />
-                </div>
-              </div>
-              <p className="mt-2 text-2xl font-black text-stone-900 tracking-tight">
-                {data.summary.totalOrders}
-              </p>
-              <p className="mt-1 text-[11px] font-medium text-stone-500">
-                {data.summary.totalOrders === 1 ? '1 pedido faturado/ativo' : `${data.summary.totalOrders} pedidos faturados/ativos`}
-              </p>
-            </div>
-
-            {/* Card Ticket Médio */}
-            <div className="rounded-2xl bg-white border border-stone-200 p-4 shadow-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider">Ticket Médio</span>
-                <div className="rounded-lg bg-sky-50 p-2 text-sky-700 border border-sky-100">
-                  <TrendingUp className="h-4 w-4" />
-                </div>
-              </div>
-              <p className="mt-2 text-2xl font-black text-stone-900 tracking-tight">
-                {formatBRL(data.summary.averageTicket)}
-              </p>
-              <p className="mt-1 text-[11px] font-medium text-stone-500">
-                Média por pedido hoje
-              </p>
-            </div>
-
-            {/* Card Unidades Vendidas */}
-            <div className="rounded-2xl bg-white border border-stone-200 p-4 shadow-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider">Unidades de Doces</span>
-                <div className="rounded-lg bg-indigo-50 p-2 text-indigo-700 border border-indigo-100">
-                  <Package className="h-4 w-4" />
-                </div>
-              </div>
-              <p className="mt-2 text-2xl font-black text-stone-900 tracking-tight">
-                {data.summary.totalItems}
-              </p>
-              <p className="mt-1 text-[11px] font-medium text-stone-500">
-                Itens totais entregues
-              </p>
-            </div>
-
-            {/* Card Clientes Atendidos */}
-            <div className="rounded-2xl bg-white border border-stone-200 p-4 shadow-xs">
+            {/* 2. Clientes Atendidos */}
+            <div className="rounded-2xl bg-white border border-stone-200 p-5 shadow-xs">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider">Clientes Atendidos</span>
-                <div className="rounded-lg bg-orange-50 p-2 text-orange-700 border border-orange-100">
+                <div className="rounded-lg bg-sky-50 p-2 text-sky-700 border border-sky-100">
                   <Users className="h-4 w-4" />
                 </div>
               </div>
@@ -452,8 +440,49 @@ export default function AdminDailySalesReportPage() {
                 {data.summary.totalCustomers}
               </p>
               <p className="mt-1 text-[11px] font-medium text-stone-500">
-                Pontos de venda que compraram
+                Revendedores únicos compradores
               </p>
+            </div>
+
+            {/* 3. Ticket Médio */}
+            <div className="rounded-2xl bg-white border border-stone-200 p-5 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider">Ticket Médio</span>
+                <div className="rounded-lg bg-amber-50 p-2 text-amber-700 border border-amber-100">
+                  <TrendingUp className="h-4 w-4" />
+                </div>
+              </div>
+              <p className="mt-2 text-2xl font-black text-stone-900 tracking-tight">
+                {formatBRL(data.summary.averageTicket)}
+              </p>
+              <p className="mt-1 text-[11px] font-medium text-stone-500">
+                Valor médio por compra no período
+              </p>
+            </div>
+
+            {/* 4. Produto Campeão */}
+            <div className="rounded-2xl bg-white border border-amber-300 bg-amber-50/40 p-5 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black text-amber-900 uppercase tracking-wider flex items-center gap-1">
+                  <Award className="h-4 w-4 text-amber-600" />
+                  Produto Campeão
+                </span>
+                <span className="text-[10px] font-bold bg-amber-200/80 text-amber-950 px-1.5 py-0.5 rounded">
+                  Top 1
+                </span>
+              </div>
+              {bestProduct ? (
+                <>
+                  <p className="mt-2 text-base font-black text-stone-900 tracking-tight line-clamp-1" title={bestProduct.productName}>
+                    {bestProduct.productName}
+                  </p>
+                  <p className="mt-1 text-[11px] font-bold text-amber-900">
+                    {bestProduct.quantity} un vendidas • {formatBRL(bestProduct.total)}
+                  </p>
+                </>
+              ) : (
+                <p className="mt-2 text-xs text-stone-400 italic">Nenhum produto vendido</p>
+              )}
             </div>
           </div>
 
@@ -599,7 +628,7 @@ export default function AdminDailySalesReportPage() {
 
             {filteredOrders.length === 0 ? (
               <div className="py-12 text-center text-xs text-stone-400 bg-stone-50 rounded-xl border border-dashed border-stone-200">
-                Nenhum pedido encontrado com os filtros selecionados para o dia {selectedDate}.
+                Nenhum pedido encontrado com os filtros selecionados para o período informado.
               </div>
             ) : (
               <div className="overflow-x-auto">

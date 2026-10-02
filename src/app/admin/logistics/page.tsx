@@ -83,6 +83,7 @@ export default function LogisticsPage() {
   // Modo de visualização: 'roteiro' ou 'checklist'
   const [activeTab, setActiveTab] = useState<'roteiro' | 'checklist'>('roteiro');
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [sellerFilter, setSellerFilter] = useState('');
 
   // Pedidos selecionados para a rota de entrega
   const [selectedPedidoIds, setSelectedPedidoIds] = useState<string[]>([]);
@@ -335,10 +336,31 @@ export default function LogisticsPage() {
     toast('Roteiro copiado para o WhatsApp do motorista!', 'success');
   };
 
-  // Base do checklist: se o usuário selecionou pedidos específicos para a rota, usa eles; senão, usa todos os pedidos do dia
+  // Lista única de vendedores presentes nos pedidos da data
+  const uniqueSellers = Array.from(
+    new Map(
+      [...pedidos, ...pedidosPendentes]
+        .filter((p) => p.sellerName)
+        .map((p) => [p.sellerId || 'none', p.sellerName!])
+    ).entries()
+  ).map(([id, name]) => ({ id, name }));
+
+  const pedidosFiltradosPorVendedor = pedidos.filter((p) => {
+    if (!sellerFilter) return true;
+    if (sellerFilter === 'none') return !p.sellerId;
+    return p.sellerId === sellerFilter;
+  });
+
+  const pedidosPendentesFiltrados = pedidosPendentes.filter((p) => {
+    if (!sellerFilter) return true;
+    if (sellerFilter === 'none') return !p.sellerId;
+    return p.sellerId === sellerFilter;
+  });
+
+  // Base do checklist: se o usuário selecionou pedidos específicos para a rota, usa eles; senão, usa os pedidos filtrados da data
   const pedidosChecklist = selectedPedidoIds.length > 0
-    ? pedidos.filter((p) => selectedPedidoIds.includes(p.id))
-    : pedidos;
+    ? pedidosFiltradosPorVendedor.filter((p) => selectedPedidoIds.includes(p.id))
+    : pedidosFiltradosPorVendedor;
 
   const totalPedidosChecklist = pedidosChecklist.length;
   const totalVolumesChecklist = pedidosChecklist.reduce((acc, p) => acc + totalVolumes(p), 0);
@@ -415,8 +437,8 @@ export default function LogisticsPage() {
           </div>
         </div>
 
-        {/* Barra de Seleção de Data e Ações Globais */}
-        <div className="rounded-2xl bg-white p-4 shadow-sm border border-stone-200 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3.5 items-end">
+        {/* Barra de Seleção de Data, Vendedor e Ações Globais */}
+        <div className="rounded-2xl bg-white p-4 shadow-sm border border-stone-200 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3.5 items-end">
           <div className="sm:col-span-1 md:col-span-2">
             <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">
               Data de Entrega da Carga
@@ -431,6 +453,25 @@ export default function LogisticsPage() {
             </div>
           </div>
 
+          <div className="sm:col-span-1 md:col-span-2">
+            <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">
+              Filtrar por Vendedor
+            </label>
+            <select
+              value={sellerFilter}
+              onChange={(e) => setSellerFilter(e.target.value)}
+              className="w-full rounded-lg border border-stone-200 text-xs px-3 py-2 bg-stone-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500 font-semibold text-stone-900"
+            >
+              <option value="">Todos os Vendedores</option>
+              <option value="none">Sem Vendedor / Direto</option>
+              {uniqueSellers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <button 
             type="button"
             onClick={fetchPedidos}
@@ -438,7 +479,7 @@ export default function LogisticsPage() {
             className="rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-xs py-2 px-3 text-center cursor-pointer transition-all flex items-center justify-center gap-1.5 h-9"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-            Atualizar Carga
+            Atualizar
           </button>
 
           <button 
@@ -483,20 +524,20 @@ export default function LogisticsPage() {
               <div className="flex flex-wrap justify-between items-center border-b border-stone-100 pb-2 gap-2">
                 <div>
                   <h3 className="text-xs font-black text-stone-850 uppercase tracking-wider">
-                    Carga Agendada ({pedidos.length})
+                    Carga Agendada ({pedidosFiltradosPorVendedor.length})
                   </h3>
                   <span className="text-[10px] text-stone-400 font-medium">
                     Selecione os pedidos que entrarão nesta rota
                   </span>
                 </div>
-                {pedidos.length > 0 && (
+                {pedidosFiltradosPorVendedor.length > 0 && (
                   <div className="flex items-center gap-2">
                     <button 
                       type="button"
-                      onClick={() => setSelectedPedidoIds(pedidos.map(p => p.id))}
+                      onClick={() => setSelectedPedidoIds(pedidosFiltradosPorVendedor.map(p => p.id))}
                       className="text-[10px] text-amber-800 font-bold hover:underline cursor-pointer"
                     >
-                      Marcar Todos
+                      Selecionar Todos ({pedidosFiltradosPorVendedor.length})
                     </button>
                     {selectedPedidoIds.length > 0 && (
                       <button 
@@ -504,7 +545,7 @@ export default function LogisticsPage() {
                         onClick={() => setSelectedPedidoIds([])}
                         className="text-[10px] text-stone-400 font-bold hover:underline cursor-pointer"
                       >
-                        Limpar
+                        Desmarcar Todos
                       </button>
                     )}
                   </div>
@@ -512,17 +553,17 @@ export default function LogisticsPage() {
               </div>
 
               {/* Pedidos Novos Aguardando Confirmação */}
-              {pedidosPendentes.length > 0 && (
+              {pedidosPendentesFiltrados.length > 0 && (
                 <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl space-y-2 text-xs">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <span className="font-bold text-amber-900 flex items-center gap-1.5">
                       <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
-                      {pedidosPendentes.length} {pedidosPendentes.length === 1 ? 'pedido novo aguardando confirmação' : 'pedidos novos aguardando confirmação'}
+                      {pedidosPendentesFiltrados.length} {pedidosPendentesFiltrados.length === 1 ? 'pedido novo aguardando confirmação' : 'pedidos novos aguardando confirmação'}
                     </span>
                     <button
                       type="button"
                       onClick={async () => {
-                        for (const p of pedidosPendentes) {
+                        for (const p of pedidosPendentesFiltrados) {
                           await handleConfirmPending(p.id);
                         }
                       }}
@@ -532,7 +573,7 @@ export default function LogisticsPage() {
                     </button>
                   </div>
                   <div className="divide-y divide-amber-200/60 max-h-36 overflow-y-auto">
-                    {pedidosPendentes.map((p) => (
+                    {pedidosPendentesFiltrados.map((p) => (
                       <div key={p.id} className="py-1.5 flex items-center justify-between text-[11px]">
                         <div>
                           <strong>#{p.numero}</strong> - {p.customerName}
@@ -556,14 +597,14 @@ export default function LogisticsPage() {
                 <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between gap-2 text-xs">
                   <span className="text-[11px] font-bold text-amber-950">
                     {selectedPedidoIds.length > 0
-                      ? `${selectedPedidoIds.filter(id => pedidos.find(p => p.id === id)?.status !== 'entregue').length} selecionados pendentes de entrega`
+                      ? `${selectedPedidoIds.filter(id => pedidosFiltradosPorVendedor.find(p => p.id === id)?.status !== 'entregue').length} selecionados pendentes de entrega`
                       : `${naoEntreguesChecklist.length} entrega(s) pendente(s) hoje`}
                   </span>
                   <button
                     type="button"
                     onClick={() => {
                       const idsToMark = selectedPedidoIds.length > 0 
-                        ? selectedPedidoIds.filter(id => pedidos.find(p => p.id === id)?.status !== 'entregue')
+                        ? selectedPedidoIds.filter(id => pedidosFiltradosPorVendedor.find(p => p.id === id)?.status !== 'entregue')
                         : naoEntreguesChecklist.map(p => p.id);
                       handleMarkMultipleAsDelivered(idsToMark);
                     }}
@@ -575,13 +616,13 @@ export default function LogisticsPage() {
                 </div>
               )}
 
-              {pedidos.length === 0 ? (
+              {pedidosFiltradosPorVendedor.length === 0 ? (
                 <div className="text-center py-12 text-stone-400 text-xs italic font-semibold">
-                  Nenhum pedido agendado para entrega em {formatarData(selectedDate)}.
+                  Nenhum pedido agendado para entrega em {formatarData(selectedDate)}{sellerFilter ? ' com este vendedor' : ''}.
                 </div>
               ) : (
                 <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-                  {pedidos.map((p) => {
+                  {pedidosFiltradosPorVendedor.map((p) => {
                     const isSelected = selectedPedidoIds.includes(p.id);
                     const isChecked = checkedOrderIds.includes(p.id);
                     const isEntregue = p.status === 'entregue';
@@ -614,8 +655,13 @@ export default function LogisticsPage() {
                           <span className="text-[10px] text-stone-400 block font-medium mt-1">
                             📍 {enderecoDoPedido(p)} • Bairro: <strong className="text-stone-700">{bairroDoPedido(p)}</strong>
                           </span>
-                          <div className="mt-1 text-[10px] text-amber-850 font-bold">
-                            📦 {volumes} volume(s) / itens
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[10px] text-amber-850 font-bold">
+                              📦 {volumes} volume(s)
+                            </span>
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-stone-100 text-stone-700 border border-stone-200">
+                              👤 {p.sellerName || 'Venda Direta'}
+                            </span>
                           </div>
                         </div>
                         

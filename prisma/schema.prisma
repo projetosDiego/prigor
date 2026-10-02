@@ -175,11 +175,15 @@ model Seller {
   active        Boolean  @default(true) @map("ativo")
   goal          Int      @default(0) @map("meta")
   goalRevenue   Decimal  @default(0) @map("meta_faturamento") @db.Decimal(12, 2)
-  commissionPct Decimal  @default(0) @map("comissao_pct") @db.Decimal(5, 2)
-  notes         String?  @map("observacoes")
-  code          String?  @unique @map("codigo")
-  createdAt     DateTime @default(now()) @map("criado_em")
-  updatedAt     DateTime @updatedAt @map("atualizado_em")
+  commissionPct           Decimal  @default(0) @map("comissao_pct") @db.Decimal(5, 2)
+  supervisorId            String?  @map("supervisor_id")
+  supervisor              Seller?  @relation("SupervisorSubordinates", fields: [supervisorId], references: [id], onDelete: SetNull)
+  subordinates            Seller[] @relation("SupervisorSubordinates")
+  supervisorCommissionPct Decimal  @default(0) @map("comissao_supervisor_pct") @db.Decimal(5, 2)
+  notes                   String?  @map("observacoes")
+  code                    String?  @unique @map("codigo")
+  createdAt               DateTime @default(now()) @map("criado_em")
+  updatedAt               DateTime @updatedAt @map("atualizado_em")
 
   neighborhoods Neighborhood[]
   leads         Lead[]
@@ -188,8 +192,10 @@ model Seller {
   meetings      Meeting[]
   samples       Sample[]
   orders        Order[]
+  advances      Advance[]
 
   @@index([active])
+  @@index([supervisorId])
   @@map("vendedores")
 }
 
@@ -733,6 +739,7 @@ model Employee {
   updatedAt       DateTime @updatedAt @map("atualizado_em")
 
   absences Absence[]
+  advances Advance[]
 
   @@index([active])
   @@map("funcionarios")
@@ -749,4 +756,22 @@ model Absence {
   @@unique([employeeId, date])
   @@index([employeeId])
   @@map("faltas_funcionarios")
+}
+
+model Advance {
+  id         String    @id @default(uuid())
+  employeeId String?   @map("funcionario_id")
+  employee   Employee? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  sellerId   String?   @map("vendedor_id")
+  seller     Seller?   @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  date       DateTime  @map("data") @db.Date
+  amount     Decimal   @map("valor") @db.Decimal(12, 2)
+  reason     String?   @map("motivo")
+  createdAt  DateTime  @default(now()) @map("criado_em")
+  updatedAt  DateTime  @updatedAt @map("atualizado_em")
+
+  @@index([employeeId])
+  @@index([sellerId])
+  @@index([date])
+  @@map("adiantamentos")
 }

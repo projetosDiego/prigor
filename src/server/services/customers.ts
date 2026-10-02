@@ -47,15 +47,22 @@ export async function listCustomers(
 
   if (params.search) {
     const search = params.search;
-    where.OR = [
+    const digitsOnly = search.replace(/\D/g, '');
+    const orConditions: Record<string, unknown>[] = [
       { tradeName: { contains: search, mode: 'insensitive' } },
       { legalName: { contains: search, mode: 'insensitive' } },
-      { cnpj: { contains: search.replace(/\D/g, '') } },
-      { cpf: { contains: search.replace(/\D/g, '') } },
       { neighborhood: { contains: search, mode: 'insensitive' } },
+      { address: { contains: search, mode: 'insensitive' } },
       { phone: { contains: search } },
       { mobile: { contains: search } },
     ];
+    if (digitsOnly.length > 0) {
+      orConditions.push(
+        { cnpj: { contains: digitsOnly } },
+        { cpf: { contains: digitsOnly } },
+      );
+    }
+    where.OR = orConditions;
   }
 
   const [rows, total] = await Promise.all([

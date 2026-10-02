@@ -41,9 +41,16 @@ interface Row {
   orders: number;
   realized: number;
   commission: number;
+  supervisorCommission: number;
+  totalCommission: number;
+  advancesTotal: number;
+  netCommission: number;
   goal: number;
   projection: number;
   pctGoal: number;
+  supervisorName: string | null;
+  subordinatesCount: number;
+  subordinatesSalesTotal: number;
   customers: CustomerSummary[];
 }
 
@@ -66,6 +73,7 @@ export default function SellerReportPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedSellerId, setExpandedSellerId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -92,34 +100,68 @@ export default function SellerReportPage() {
 
   const totOrders = rows.reduce((s, r) => s + r.orders, 0);
   const totRealized = rows.reduce((s, r) => s + r.realized, 0);
-  const totCommission = rows.reduce((s, r) => s + (r.commission ?? 0), 0);
+  const totCommission = rows.reduce((s, r) => s + (r.totalCommission ?? r.commission ?? 0), 0);
+  const totAdvances = rows.reduce((s, r) => s + (r.advancesTotal ?? 0), 0);
+  const totNetCommission = rows.reduce((s, r) => s + (r.netCommission ?? 0), 0);
   const totGoal = rows.reduce((s, r) => s + r.goal, 0);
   const totProjection = rows.reduce((s, r) => s + r.projection, 0);
   const totPct = totGoal > 0 ? (totRealized / totGoal) * 100 : 0;
 
+  const downloadPdf = async (sellerId: string, sellerName: string) => {
+    try {
+      setDownloadingId(sellerId);
+      const params = new URLSearchParams({ sellerId });
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
+      const res = await fetch(`/api/reports/sellers/pdf?${params.toString()}`);
+      if (!res.ok) throw new Error('Erro ao gerar arquivo PDF do vendedor.');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `resumo_comissao_${sellerName.toLowerCase().replace(/[^a-z0-9]/g, '_')}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (err: unknown) {
+      alert(errorMessage(err));
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
   const exportCsv = () => {
     const sep = ';';
-    const head = ['Vendedor', 'Nº Pedidos', 'Realizado', 'Comissão', 'Meta', '% Meta', 'Projeção'].join(sep);
+    const head = ['Vendedor', 'Supervisor', 'Nº Pedidos', 'Realizado', 'Comissão Direta', 'Comissão Supervisão', 'Total Comissão', 'Adiantamentos', 'Líquido a Pagar', 'Meta', '% Meta'].join(sep);
     const n = (v: number) => v.toFixed(2).replace('.', ',');
     const body = rows
       .map((r) => [
         `"${r.sellerName.replace(/"/g, '""')}"`,
+        `"${r.supervisorName || ''}"`,
         r.orders,
         n(r.realized),
         n(r.commission ?? 0),
+        n(r.supervisorCommission ?? 0),
+        n(r.totalCommission ?? 0),
+        n(r.advancesTotal ?? 0),
+        n(r.netCommission ?? 0),
         n(r.goal),
         r.pctGoal.toFixed(1).replace('.', ','),
-        n(r.projection)
       ].join(sep))
       .join('\r\n');
     const totals = [
       'TOTAL',
+      '',
       totOrders,
       n(totRealized),
+      '',
+      '',
       n(totCommission),
+      n(totAdvances),
+      n(totNetCommission),
       n(totGoal),
       totPct.toFixed(1).replace('.', ','),
-      n(totProjection)
     ].join(sep);
     const csv = `\uFEFF${head}\r\n${body}\r\n${totals}\r\n`;
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -143,15 +185,15 @@ export default function SellerReportPage() {
         <div>
           <h2 className="text-2xl font-black text-stone-900 tracking-tight flex items-center gap-2">
             <TrendingUp className="h-6 w-6 text-amber-700" />
-            Relatório por Vendedor
+            Relatório de Vendedores & Supervisão
           </h2>
           <p className="text-xs text-stone-500 font-medium">
-            Vendas, comissões, meta e projeção por vendedor. Clique no vendedor para ver os clientes e pedidos.
+            Acompanhe vendas, comissão direta, bônus de supervisão, adiantamentos e gere o PDF de fechamento de cada vendedor.
           </p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => window.print()} className="flex items-center gap-1.5 rounded-lg border border-stone-300 px-4 py-2 text-xs font-bold text-stone-600 hover:bg-stone-50 cursor-pointer">
-            <Printer className="h-4 w-4" /> Imprimir
+            <Printer className="h-4 w-4" /> Imprimir Relatório
           </button>
           <button onClick={exportCsv} className="flex items-center gap-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 text-xs font-bold cursor-pointer">
             <Download className="h-4 w-4" /> Exportar Excel
@@ -185,29 +227,29 @@ export default function SellerReportPage() {
           <p className="text-[11px] text-stone-500 mt-0.5">{totOrders} pedido{totOrders === 1 ? '' : 's'} no período</p>
         </div>
         <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-xs">
-          <span className="text-[10px] uppercase font-bold text-emerald-600 tracking-wider">Total em Comissões</span>
+          <span className="text-[10px] uppercase font-bold text-emerald-600 tracking-wider">Comissão Total Bruta</span>
           <p className="text-xl font-black text-emerald-700 mt-1">{brl(totCommission)}</p>
-          <p className="text-[11px] text-stone-500 mt-0.5">Comissão dos vendedores</p>
+          <p className="text-[11px] text-stone-500 mt-0.5">Vendas diretas + supervisão</p>
         </div>
         <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-xs">
-          <span className="text-[10px] uppercase font-bold text-stone-400 tracking-wider">Meta Total</span>
-          <p className="text-xl font-black text-stone-900 mt-1">{totGoal > 0 ? brl(totGoal) : '—'}</p>
-          <p className="text-[11px] text-stone-500 mt-0.5">{totGoal > 0 ? `${totPct.toFixed(1)}% atingido` : 'Sem meta configurada'}</p>
+          <span className="text-[10px] uppercase font-bold text-red-600 tracking-wider">Vales / Adiantamentos</span>
+          <p className="text-xl font-black text-red-700 mt-1">{brl(totAdvances)}</p>
+          <p className="text-[11px] text-stone-500 mt-0.5">Adiantado aos vendedores</p>
         </div>
-        <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-xs">
-          <span className="text-[10px] uppercase font-bold text-amber-700 tracking-wider">Projeção do Período</span>
-          <p className="text-xl font-black text-amber-800 mt-1">{brl(totProjection)}</p>
-          <p className="text-[11px] text-stone-500 mt-0.5">Estimativa no ritmo atual</p>
+        <div className="bg-white p-4 rounded-xl border border-emerald-200 bg-emerald-50/50 shadow-xs">
+          <span className="text-[10px] uppercase font-black text-emerald-800 tracking-wider">Líquido a Pagar</span>
+          <p className="text-xl font-black text-emerald-850 mt-1">{brl(totNetCommission)}</p>
+          <p className="text-[11px] text-emerald-750 font-bold mt-0.5">Após desconto de vales</p>
         </div>
       </div>
 
       <div className="report-print rounded-2xl bg-white shadow-sm border border-stone-200 overflow-hidden">
         <div className="p-4 border-b border-stone-100 flex justify-between items-center">
           <div>
-            <h3 className="text-sm font-black text-stone-900">Metas, comissões e vendas por vendedor</h3>
+            <h3 className="text-sm font-black text-stone-900">Metas, comissões, supervisão e fechamento por vendedor</h3>
             {period && <p className="text-xs text-stone-500">Período: {period.from} a {period.to}</p>}
           </div>
-          <span className="text-[11px] text-stone-400 italic no-print">Clique no vendedor para ver os clientes e pedidos</span>
+          <span className="text-[11px] text-stone-400 italic no-print">Clique no vendedor para ver os clientes ou gere o PDF individual</span>
         </div>
         {loading ? (
           <div className="flex h-60 items-center justify-center gap-2">
@@ -221,55 +263,93 @@ export default function SellerReportPage() {
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="border-b border-stone-200 bg-stone-50 text-stone-400 font-bold uppercase tracking-wider">
-                  <th className="py-3 px-6">Vendedor</th>
-                  <th className="py-3 px-6 text-center">Pedidos</th>
-                  <th className="py-3 px-6 text-right">Realizado</th>
-                  <th className="py-3 px-6 text-right text-emerald-700">Comissão</th>
-                  <th className="py-3 px-6 text-right">Meta</th>
-                  <th className="py-3 px-6 text-center">% Meta</th>
-                  <th className="py-3 px-6 text-right">Projeção</th>
-                  <th className="py-3 px-4 text-center no-print">Detalhes</th>
+                  <th className="py-3 px-5">Vendedor / Equipe</th>
+                  <th className="py-3 px-3 text-center">Pedidos</th>
+                  <th className="py-3 px-4 text-right">Realizado</th>
+                  <th className="py-3 px-4 text-right text-emerald-700">Comissão Direta</th>
+                  <th className="py-3 px-4 text-right text-amber-800">Supervisão</th>
+                  <th className="py-3 px-4 text-right text-red-600">Adiantamentos</th>
+                  <th className="py-3 px-4 text-right text-emerald-900 font-black">Líquido a Pagar</th>
+                  <th className="py-3 px-4 text-right">Meta</th>
+                  <th className="py-3 px-3 text-center">% Meta</th>
+                  <th className="py-3 px-4 text-center no-print">Ações &amp; PDF</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100 font-semibold text-stone-700">
                 {rows.length === 0 ? (
-                  <tr><td colSpan={8} className="py-8 text-center text-stone-400">Nenhum vendedor ativo.</td></tr>
+                  <tr><td colSpan={10} className="py-8 text-center text-stone-400">Nenhum vendedor ativo.</td></tr>
                 ) : rows.map((r) => {
                   const isExpanded = expandedSellerId === r.sellerId;
+                  const isGeneratingPdf = downloadingId === r.sellerId;
                   return (
                     <React.Fragment key={r.sellerId}>
                       <tr 
                         onClick={() => toggleExpand(r.sellerId)} 
                         className={`hover:bg-amber-50/40 cursor-pointer transition-colors ${isExpanded ? 'bg-amber-50/30' : ''}`}
                       >
-                        <td className="py-3 px-6 text-stone-850 font-bold text-sm flex items-center gap-2">
-                          <span className="text-stone-400 no-print">
-                            {isExpanded ? <ChevronUp className="h-4 w-4 text-amber-700" /> : <ChevronDown className="h-4 w-4" />}
-                          </span>
-                          {r.sellerName}
-                        </td>
-                        <td className="py-3 px-6 text-center">{r.orders}</td>
-                        <td className="py-3 px-6 text-right font-black text-stone-850">{brl(r.realized)}</td>
-                        <td className="py-3 px-6 text-right font-black text-emerald-700">{brl(r.commission ?? 0)}</td>
-                        <td className="py-3 px-6 text-right text-stone-500">{r.goal > 0 ? brl(r.goal) : '—'}</td>
-                        <td className="py-3 px-6">
-                          {r.goal > 0 ? (
-                            <div className="flex items-center gap-2">
-                              <div className="flex-1 h-2 rounded-full bg-stone-100 overflow-hidden min-w-16">
-                                <div className={`h-full ${r.pctGoal >= 100 ? 'bg-emerald-500' : r.pctGoal >= 60 ? 'bg-amber-500' : 'bg-red-400'}`} style={{ width: `${Math.min(100, r.pctGoal)}%` }} />
-                              </div>
-                              <span className="text-[10px] font-bold text-stone-600 w-10 text-right">{r.pctGoal.toFixed(0)}%</span>
+                        <td className="py-3 px-5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-stone-400 no-print">
+                              {isExpanded ? <ChevronUp className="h-4 w-4 text-amber-700" /> : <ChevronDown className="h-4 w-4" />}
+                            </span>
+                            <div>
+                              <span className="text-stone-850 font-bold text-sm block">{r.sellerName}</span>
+                              {r.supervisorName ? (
+                                <span className="text-[10px] text-stone-400 font-medium block">
+                                  Supervisão: <strong>{r.supervisorName}</strong>
+                                </span>
+                              ) : r.subordinatesCount > 0 ? (
+                                <span className="inline-block mt-0.5 text-[9px] font-black bg-amber-100 text-amber-850 px-1.5 py-0.2 rounded border border-amber-200">
+                                  SUPERVISOR ({r.subordinatesCount} vendedores)
+                                </span>
+                              ) : null}
                             </div>
-                          ) : <span className="text-stone-300">—</span>}
+                          </div>
                         </td>
-                        <td className="py-3 px-6 text-right text-amber-800 font-bold">{brl(r.projection)}</td>
+                        <td className="py-3 px-3 text-center">{r.orders}</td>
+                        <td className="py-3 px-4 text-right font-black text-stone-850">{brl(r.realized)}</td>
+                        <td className="py-3 px-4 text-right font-bold text-emerald-700">{brl(r.commission ?? 0)}</td>
+                        <td className="py-3 px-4 text-right font-bold text-amber-850">
+                          {r.supervisorCommission > 0 ? brl(r.supervisorCommission) : '—'}
+                        </td>
+                        <td className="py-3 px-4 text-right font-bold text-red-600">
+                          {r.advancesTotal > 0 ? `- ${brl(r.advancesTotal)}` : '0,00'}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <span className="inline-block bg-emerald-50 text-emerald-800 font-black px-2 py-0.5 rounded border border-emerald-200 text-xs">
+                            {brl(r.netCommission)}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-right text-stone-500">{r.goal > 0 ? brl(r.goal) : '—'}</td>
+                        <td className="py-3 px-3">
+                          {r.goal > 0 ? (
+                            <span className="text-[10px] font-bold text-stone-600 block text-center">{r.pctGoal.toFixed(0)}%</span>
+                          ) : <span className="text-stone-300 block text-center">—</span>}
+                        </td>
                         <td className="py-3 px-4 text-center no-print">
-                          <button 
-                            type="button" 
-                            className="text-[11px] font-bold text-amber-800 hover:text-amber-900 underline"
-                          >
-                            {isExpanded ? 'Fechar' : 'Ver clientes'}
-                          </button>
+                          <div className="flex items-center justify-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={() => downloadPdf(r.sellerId, r.sellerName)}
+                              disabled={isGeneratingPdf}
+                              className="px-2.5 py-1 rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-bold text-[10px] flex items-center gap-1 transition-all shadow-2xs cursor-pointer disabled:opacity-50"
+                              title="Gerar e Baixar Resumo em PDF deste vendedor"
+                            >
+                              {isGeneratingPdf ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Printer className="h-3.5 w-3.5" />
+                              )}
+                              <span>Gerar PDF</span>
+                            </button>
+                            <button 
+                              type="button" 
+                              onClick={() => toggleExpand(r.sellerId)}
+                              className="text-[11px] font-bold text-stone-500 hover:text-stone-800 underline p-1"
+                            >
+                              {isExpanded ? 'Fechar' : 'Clientes'}
+                            </button>
+                          </div>
                         </td>
                       </tr>
 

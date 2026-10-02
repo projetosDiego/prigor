@@ -163,6 +163,8 @@ export async function removeAbsence(id: string): Promise<void> {
   await prisma.absence.delete({ where: { id } });
 }
 
+import { listAdvances, type AdvanceDTO } from './advances';
+
 // ─── Cálculo mensal ────────────────────────────────────────────────────────────
 
 export interface EmployeeMonthlyCost {
@@ -177,14 +179,43 @@ export interface EmployeeMonthlyCost {
   transportToPay: number;
   transportCreditApplied: number;
   transportCreditNext: number;
+  advances: number;
   total: number;
+  netTotal: number;
+}
+
+export interface SellerMonthlyCost {
+  sellerId: string;
+  name: string;
+  salesTotal: number;
+  ordersCount: number;
+  directCommission: number;
+  supervisorCommission: number;
+  totalCommission: number;
+  advances: number;
+  netCommission: number;
 }
 
 export interface MonthlyCostsDTO {
   year: number;
   month: number;
   employees: EmployeeMonthlyCost[];
-  totals: { pay: number; transport: number; total: number };
+  sellers: SellerMonthlyCost[];
+  advances: AdvanceDTO[];
+  totals: {
+    pay: number;
+    transport: number;
+    employeeGross: number;
+    employeeAdvances: number;
+    employeeNet: number;
+    sellerSales: number;
+    sellerCommission: number;
+    sellerAdvances: number;
+    sellerNet: number;
+    total: number;
+    advancesTotal: number;
+    netTotal: number;
+  };
 }
 
 /** Conta quantos dias do mês caem nos dias-da-semana informados. */
@@ -201,19 +232,39 @@ function countWorkdays(year: number, month: number, days: number[]): number {
 }
 
 export async function getMonthlyCosts(year: number, month: number): Promise<MonthlyCostsDTO> {
-  const employees = await prisma.employee.findMany({
-    where: { active: true },
-    orderBy: { name: 'asc' },
-  });
+  const monthStart = new Date(Date.UTC(year, month - 1, 1));
+  const monthEnd = new Date(Date.UTC(year, month, 1));
+
+  const [employees, advancesList, sellersList] = await Promise.all([
+    prisma.employee.findMany({
+      where: { active: true },
+      orderBy: { name: 'asc' },
+    }),
+    listAdvances(year, month),
+    prisma.seller.findMany({
+      where: { active: true },
+      select: {
+        id: true,
+        name: true,
+        commissionPct: true,
+        supervisorId: true,
+        supervisorCommissionPct: true,
+        subordinates: {
+          where: { active: true },
+          select: { id: true, supervisorCommissionPct: true },
+        },
+      },
+      orderBy: { name: 'asc' },
+    }),
+  ]);
 
   // Faltas do mês atual e do mês anterior (para o crédito de passagem).
   const prevMonth = month === 1 ? 12 : month - 1;
   const prevYear = month === 1 ? year - 1 : year;
   const windowStart = new Date(Date.UTC(prevYear, prevMonth - 1, 1));
-  const windowEnd = new Date(Date.UTC(year, month, 1));
 
   const absences = await prisma.absence.findMany({
-    where: { date: { gte: windowStart, lt: windowEnd } },
+    where: { date: { gte: windowStart, lt: monthEnd } },
     select: { employeeId: true, date: true },
   });
 
@@ -225,7 +276,7 @@ export async function getMonthlyCosts(year: number, month: number): Promise<Mont
         a.date.getUTCMonth() === m - 1,
     ).length;
 
-  const rows: EmployeeMonthlyCost[] = employees.map((e: EmployeeRow) => {
+  const employeeRows: EmployeeMonthlyCost[] = employees.map((e: EmployeeRow) => {
     const dto = toEmployeeDTO(e);
     const expectedDays = countWorkdays(year, month, dto.workDays);
     const absCount = countIn(e.id, year, month);
@@ -242,6 +293,13 @@ export async function getMonthlyCosts(year: number, month: number): Promise<Mont
     const transportToPay = Math.max(Math.round((transportFull - transportCreditApplied) * 100) / 100, 0);
     const transportCreditNext = Math.round(absCount * dto.transportPerDay * 100) / 100;
 
+    const empAdvances = advancesList
+      .filter((a) => a.employeeId === e.id)
+      .reduce((sum, a) => sum + a.amount, 0);
+
+    const total = Math.round((pay + transportToPay) * 100) / 100;
+    const netTotal = Math.max(Math.round((total - empAdvances) * 100) / 100, 0);
+
     return {
       employeeId: e.id,
       name: dto.name,
@@ -254,22 +312,102 @@ export async function getMonthlyCosts(year: number, month: number): Promise<Mont
       transportToPay,
       transportCreditApplied,
       transportCreditNext,
-      total: Math.round((pay + transportToPay) * 100) / 100,
+      advances: Math.round(empAdvances * 100) / 100,
+      total,
+      netTotal,
     };
   });
 
-  const totals = rows.reduce(
-    (acc, r) => {
-      acc.pay += r.pay;
-      acc.transport += r.transportToPay;
-      acc.total += r.total;
-      return acc;
+  // Vendas e comissões dos vendedores no mês
+  const sellerIds = sellersList.map((s) => s.id);
+  const sellerOrders = await prisma.order.groupBy({
+    by: ['sellerId'],
+    where: {
+      status: { not: 'cancelado' },
+      sellerId: { in: sellerIds },
+      orderDate: { gte: monthStart, lt: monthEnd },
     },
-    { pay: 0, transport: 0, total: 0 },
-  );
-  totals.pay = Math.round(totals.pay * 100) / 100;
-  totals.transport = Math.round(totals.transport * 100) / 100;
-  totals.total = Math.round(totals.total * 100) / 100;
+    _count: { _all: true },
+    _sum: { total: true, commissionVal: true },
+  });
 
-  return { year, month, employees: rows, totals };
+  const bySellerOrder = new Map(sellerOrders.map((g) => [g.sellerId, g]));
+
+  const sellerRows: SellerMonthlyCost[] = sellersList.map((s) => {
+    const orderData = bySellerOrder.get(s.id);
+    const salesTotal = num(orderData?._sum.total);
+    const ordersCount = orderData?._count._all ?? 0;
+    const directCommission = Math.round(num(orderData?._sum.commissionVal) * 100) / 100;
+
+    // Comissão de supervisão sobre subordinados
+    let supervisorCommission = 0;
+    if (s.subordinates && s.subordinates.length > 0) {
+      for (const sub of s.subordinates) {
+        const subData = bySellerOrder.get(sub.id);
+        const subSales = num(subData?._sum.total);
+        const subRate = num(sub.supervisorCommissionPct);
+        if (subSales > 0 && subRate > 0) {
+          supervisorCommission += (subSales * subRate) / 100;
+        }
+      }
+    }
+    supervisorCommission = Math.round(supervisorCommission * 100) / 100;
+
+    const totalCommission = Math.round((directCommission + supervisorCommission) * 100) / 100;
+
+    const selAdvances = advancesList
+      .filter((a) => a.sellerId === s.id)
+      .reduce((sum, a) => sum + a.amount, 0);
+
+    const netCommission = Math.max(Math.round((totalCommission - selAdvances) * 100) / 100, 0);
+
+    return {
+      sellerId: s.id,
+      name: s.name,
+      salesTotal,
+      ordersCount,
+      directCommission,
+      supervisorCommission,
+      totalCommission,
+      advances: Math.round(selAdvances * 100) / 100,
+      netCommission,
+    };
+  });
+
+  const employeePay = employeeRows.reduce((sum, r) => sum + r.pay, 0);
+  const employeeTransport = employeeRows.reduce((sum, r) => sum + r.transportToPay, 0);
+  const employeeGross = employeeRows.reduce((sum, r) => sum + r.total, 0);
+  const employeeAdvances = employeeRows.reduce((sum, r) => sum + r.advances, 0);
+  const employeeNet = employeeRows.reduce((sum, r) => sum + r.netTotal, 0);
+
+  const sellerSales = sellerRows.reduce((sum, s) => sum + s.salesTotal, 0);
+  const sellerCommission = sellerRows.reduce((sum, s) => sum + s.totalCommission, 0);
+  const sellerAdvances = sellerRows.reduce((sum, s) => sum + s.advances, 0);
+  const sellerNet = sellerRows.reduce((sum, s) => sum + s.netCommission, 0);
+
+  const grandTotal = Math.round((employeeGross + sellerCommission) * 100) / 100;
+  const advancesTotal = Math.round((employeeAdvances + sellerAdvances) * 100) / 100;
+  const netTotal = Math.round((employeeNet + sellerNet) * 100) / 100;
+
+  return {
+    year,
+    month,
+    employees: employeeRows,
+    sellers: sellerRows,
+    advances: advancesList,
+    totals: {
+      pay: Math.round(employeePay * 100) / 100,
+      transport: Math.round(employeeTransport * 100) / 100,
+      employeeGross: Math.round(employeeGross * 100) / 100,
+      employeeAdvances: Math.round(employeeAdvances * 100) / 100,
+      employeeNet: Math.round(employeeNet * 100) / 100,
+      sellerSales: Math.round(sellerSales * 100) / 100,
+      sellerCommission: Math.round(sellerCommission * 100) / 100,
+      sellerAdvances: Math.round(sellerAdvances * 100) / 100,
+      sellerNet: Math.round(sellerNet * 100) / 100,
+      total: grandTotal,
+      advancesTotal,
+      netTotal,
+    },
+  };
 }

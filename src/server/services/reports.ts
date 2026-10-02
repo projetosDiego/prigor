@@ -167,9 +167,16 @@ export interface SellerReportRow {
   orders: number;
   realized: number;
   commission: number;
+  supervisorCommission: number;
+  totalCommission: number;
+  advancesTotal: number;
+  netCommission: number;
   goal: number;
   projection: number;
   pctGoal: number;
+  supervisorName: string | null;
+  subordinatesCount: number;
+  subordinatesSalesTotal: number;
   customers: SellerReportCustomerDetail[];
 }
 
@@ -183,7 +190,7 @@ function currentMonthRange(): { from: Date; to: Date } {
 
 /**
  * Vendas por vendedor no período, com meta (R$), comissão acumulada,
- * clientes compradores com pedidos e valores, projeção e % da meta.
+ * clientes compradores com pedidos e valores, projeção, supervisão e % da meta.
  * Sem período informado, usa o mês corrente.
  */
 export async function sellerReport(
@@ -196,12 +203,24 @@ export async function sellerReport(
 
   const sellers = await prisma.seller.findMany({
     where: { active: true },
-    select: { id: true, name: true, goalRevenue: true },
+    select: {
+      id: true,
+      name: true,
+      goalRevenue: true,
+      commissionPct: true,
+      supervisorId: true,
+      supervisor: { select: { id: true, name: true } },
+      supervisorCommissionPct: true,
+      subordinates: {
+        where: { active: true },
+        select: { id: true, name: true, supervisorCommissionPct: true },
+      },
+    },
   });
 
   const sellerIds = sellers.map((s) => s.id);
 
-  const [groups, ordersList] = await Promise.all([
+  const [groups, ordersList, advancesList] = await Promise.all([
     prisma.order.groupBy({
       by: ['sellerId'],
       where: { status: { not: 'cancelado' }, sellerId: { in: sellerIds }, orderDate: { gte: from, lte: to } },
@@ -227,16 +246,37 @@ export async function sellerReport(
       },
       orderBy: { orderDate: 'desc' },
     }),
+    prisma.advance.findMany({
+      where: {
+        sellerId: { in: sellerIds },
+        date: { gte: from, lte: to },
+      },
+      select: { sellerId: true, amount: true },
+    }),
   ]);
 
   const bySeller = new Map<string | null, { _count: { _all: number }; _sum: { total: unknown; commissionVal: unknown } }>(
     groups.map((g) => [g.sellerId, g]),
   );
 
+  const advancesBySeller = new Map<string, number>();
+  for (const a of advancesList) {
+    if (a.sellerId) {
+      advancesBySeller.set(a.sellerId, (advancesBySeller.get(a.sellerId) ?? 0) + num(a.amount));
+    }
+  }
+
   // Agrupamento de clientes e pedidos por vendedor
   const customersBySeller = new Map<string, Map<string, SellerReportCustomerDetail>>();
+  const salesTotalBySeller = new Map<string, number>();
+
   for (const o of ordersList) {
     if (!o.sellerId) continue;
+
+    const orderTotal = num(o.total);
+    const orderComm = num(o.commissionVal);
+    salesTotalBySeller.set(o.sellerId, (salesTotalBySeller.get(o.sellerId) ?? 0) + orderTotal);
+
     let custMap = customersBySeller.get(o.sellerId);
     if (!custMap) {
       custMap = new Map();
@@ -256,8 +296,6 @@ export async function sellerReport(
       custMap.set(o.customerId, cust);
     }
 
-    const orderTotal = num(o.total);
-    const orderComm = num(o.commissionVal);
     cust.total += orderTotal;
     cust.commissionVal += orderComm;
     cust.ordersCount += 1;
@@ -292,15 +330,38 @@ export async function sellerReport(
         ? Array.from(customerMap.values()).sort((a, b) => b.total - a.total)
         : [];
 
+      // Comissão de supervisão em cima das vendas dos vendedores subordinados
+      let supervisorCommission = 0;
+      let subordinatesSalesTotal = 0;
+      for (const sub of sv.subordinates) {
+        const subSales = salesTotalBySeller.get(sub.id) ?? 0;
+        subordinatesSalesTotal += subSales;
+        const subPct = num(sub.supervisorCommissionPct);
+        if (subPct > 0) {
+          supervisorCommission += (subSales * subPct) / 100;
+        }
+      }
+
+      const totalCommission = commission + supervisorCommission;
+      const advancesTotal = advancesBySeller.get(sv.id) ?? 0;
+      const netCommission = Math.max(0, totalCommission - advancesTotal);
+
       return {
         sellerId: sv.id,
         sellerName: sv.name,
         orders,
         realized,
         commission,
+        supervisorCommission,
+        totalCommission,
+        advancesTotal,
+        netCommission,
         goal,
         projection,
         pctGoal,
+        supervisorName: sv.supervisor?.name ?? null,
+        subordinatesCount: sv.subordinates.length,
+        subordinatesSalesTotal,
         customers,
       };
     })
@@ -358,17 +419,22 @@ export interface DailySalesReport {
   orders: DailySalesOrderItem[];
 }
 
-export async function dailySalesReport(
+export async function salesReport(
+  fromStr?: string | null,
+  toStr?: string | null,
   dateStr?: string | null,
   includeCancelled = false,
 ): Promise<DailySalesReport> {
-  // Define a data alvo (AAAA-MM-DD)
-  const targetDate = dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)
-    ? dateStr
-    : new Date().toISOString().slice(0, 10);
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const targetFrom = fromStr && /^\d{4}-\d{2}-\d{2}$/.test(fromStr)
+    ? fromStr
+    : (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? dateStr : todayStr);
+  const targetTo = toStr && /^\d{4}-\d{2}-\d{2}$/.test(toStr)
+    ? toStr
+    : (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? dateStr : targetFrom);
 
-  const startOfDay = new Date(`${targetDate}T00:00:00.000Z`);
-  const endOfDay = new Date(`${targetDate}T23:59:59.999Z`);
+  const startOfDay = new Date(`${targetFrom}T00:00:00.000Z`);
+  const endOfDay = new Date(`${targetTo}T23:59:59.999Z`);
 
   const where: Prisma.OrderWhereInput = {
     OR: [
@@ -516,21 +582,30 @@ export async function dailySalesReport(
 
   const topProducts = Array.from(productMap.entries())
     .map(([productName, data]) => ({ productName, ...data }))
-    .sort((a, b) => b.quantity - a.quantity);
+    .sort((a, b) => b.total - a.total);
 
-  // Formata a data em português
-  const [year, month, day] = targetDate.split('-').map(Number);
-  const dateObj = new Date(year, month - 1, day);
-  const formattedDate = dateObj.toLocaleDateString('pt-BR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+  const formatSingleDate = (dStr: string) => {
+    const [y, m, d] = dStr.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('pt-BR');
+  };
+
+  const formattedDate = targetFrom === targetTo
+    ? (() => {
+        const [year, month, day] = targetFrom.split('-').map(Number);
+        const dateObj = new Date(year, month - 1, day);
+        const str = dateObj.toLocaleDateString('pt-BR', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        });
+        return str.charAt(0).toUpperCase() + str.slice(1);
+      })()
+    : `De ${formatSingleDate(targetFrom)} até ${formatSingleDate(targetTo)}`;
 
   return {
-    date: targetDate,
-    formattedDate: formattedDate.charAt(0).toUpperCase() + formattedDate.slice(1),
+    date: targetFrom === targetTo ? targetFrom : `${targetFrom} a ${targetTo}`,
+    formattedDate,
     summary: {
       totalRevenue,
       totalOrders,
@@ -545,6 +620,11 @@ export async function dailySalesReport(
     orders: orderRows,
   };
 }
+
+export const dailySalesReport = (
+  dateStr?: string | null,
+  includeCancelled = false,
+) => salesReport(dateStr, dateStr, dateStr, includeCancelled);
 
 export interface InactiveCustomerRow {
   customerId: string;

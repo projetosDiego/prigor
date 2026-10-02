@@ -15,7 +15,8 @@ import {
   Trash2,
   Edit2,
   X,
-  MessageSquare
+  MessageSquare,
+  Search,
 } from 'lucide-react';
 
 import { errorMessage, apiErrorMessage } from '@/lib/errors';
@@ -176,6 +177,11 @@ export default function AdminCustomersPage() {
   const [naZip, setNaZip] = useState('');
   const [naSaving, setNaSaving] = useState(false);
 
+  const [selectedIndex, setSelectedIndex] = useState<number>(-1);
+  const [isSearching, setIsSearching] = useState(false);
+  const selectedRowRef = React.useRef<HTMLTableRowElement | null>(null);
+  const isFirstRender = React.useRef(true);
+
   const loadSellers = useCallback(async () => {
     try {
       const res = await fetch('/api/sellers');
@@ -186,11 +192,14 @@ export default function AdminCustomersPage() {
     }
   }, []);
 
-  const loadCustomers = useCallback(async () => {
+  const loadCustomers = useCallback(async (searchTerm?: string) => {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch('/api/customers');
+      const url = searchTerm 
+        ? `/api/customers?search=${encodeURIComponent(searchTerm)}&pageSize=200`
+        : '/api/customers?pageSize=500';
+      const res = await fetch(url);
       const data: Paginated<CustomerDTO> = await res.json();
       if (!res.ok) throw new Error(apiErrorMessage(data, 'Erro ao carregar clientes.'));
       setCustomers(data.data ?? []);
@@ -208,6 +217,57 @@ export default function AdminCustomersPage() {
       await Promise.all([loadCustomers(), loadSellers()]);
     })();
   }, [loadCustomers, loadSellers]);
+
+  useEffect(() => {
+    if (selectedRowRef.current) {
+      selectedRowRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [selectedIndex]);
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      const term = buscaCliente.trim();
+      if (term) {
+        setIsSearching(true);
+        fetch(`/api/customers?search=${encodeURIComponent(term)}&pageSize=200`)
+          .then((res) => res.json())
+          .then((data: Paginated<CustomerDTO>) => {
+            if (data?.data) {
+              setCustomers(data.data);
+              setSelectedIndex(data.data.length > 0 ? 0 : -1);
+            }
+          })
+          .catch((err) => console.error(err))
+          .finally(() => setIsSearching(false));
+      } else {
+        loadCustomers();
+        setSelectedIndex(-1);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [buscaCliente, loadCustomers]);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (customersFiltrados.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev < customersFiltrados.length - 1 ? prev + 1 : 0));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev > 0 ? prev - 1 : customersFiltrados.length - 1));
+    } else if (e.key === 'Enter') {
+      if (selectedIndex >= 0 && selectedIndex < customersFiltrados.length) {
+        e.preventDefault();
+        openEditCustomer(customersFiltrados[selectedIndex]);
+      }
+    }
+  };
 
   const handleGeneratePreview = async () => {
     if (!rawJsonData.trim()) {
@@ -596,16 +656,55 @@ export default function AdminCustomersPage() {
       {activeTab === 'list' && (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-            <div className="relative max-w-md w-full">
-              <input
-                type="text"
-                value={buscaCliente}
-                onChange={(e) => setBuscaCliente(e.target.value)}
-                placeholder="Buscar cliente por nome, CNPJ/CPF, bairro ou telefone..."
-                className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
-              />
-              {buscaCliente && (<p className="mt-1 text-[10px] text-stone-400">{customersFiltrados.length} resultado(s)</p>)}
+            <div className="flex items-center gap-2 max-w-md w-full">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-stone-400" />
+                <input
+                  type="text"
+                  value={buscaCliente}
+                  onChange={(e) => setBuscaCliente(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Buscar cliente (nome, CNPJ, CPF, bairro, telefone)..."
+                  className="w-full pl-9 pr-8 py-2 rounded-lg border border-stone-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium"
+                />
+                {isSearching ? (
+                  <Loader2 className="absolute right-2.5 top-2.5 h-4 w-4 animate-spin text-amber-600" />
+                ) : buscaCliente ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBuscaCliente('');
+                      loadCustomers();
+                      setSelectedIndex(-1);
+                    }}
+                    className="absolute right-2.5 top-2.5 text-stone-400 hover:text-stone-600 cursor-pointer"
+                    title="Limpar busca"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (buscaCliente.trim()) {
+                    setIsSearching(true);
+                    loadCustomers(buscaCliente.trim()).finally(() => setIsSearching(false));
+                  } else {
+                    loadCustomers();
+                  }
+                }}
+                className="px-3 py-2 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1 shrink-0"
+              >
+                <Search className="h-3.5 w-3.5" />
+                Buscar
+              </button>
             </div>
+
+            {/* Dica de navegação por teclado */}
+            <span className="text-[10px] text-stone-400 hidden xl:inline-flex items-center gap-1 font-medium">
+              💡 Use as setas <kbd className="px-1 py-0.5 bg-stone-150 rounded border border-stone-250 text-stone-700 font-mono text-[9px]">↑</kbd> <kbd className="px-1 py-0.5 bg-stone-150 rounded border border-stone-250 text-stone-700 font-mono text-[9px]">↓</kbd> para navegar e <kbd className="px-1 py-0.5 bg-stone-150 rounded border border-stone-250 text-stone-700 font-mono text-[9px]">Enter</kbd> para editar.
+            </span>
 
             {/* Filtro Rápido de Status de Recompra */}
             <div className="flex flex-wrap items-center gap-1.5 bg-stone-100 p-1 rounded-xl text-[11px] font-bold">
@@ -679,8 +778,19 @@ export default function AdminCustomersPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-100">
-                    {customersFiltrados.map((cust) => (
-                      <tr key={cust.id} className="hover:bg-stone-50/50">
+                    {customersFiltrados.map((cust, idx) => {
+                      const isHighlighted = idx === selectedIndex;
+                      return (
+                      <tr 
+                        key={cust.id} 
+                        ref={isHighlighted ? selectedRowRef : undefined}
+                        onClick={() => openEditCustomer(cust)}
+                        className={`transition-all cursor-pointer ${
+                          isHighlighted 
+                            ? 'bg-amber-100/70 ring-2 ring-amber-500 font-semibold shadow-xs' 
+                            : 'hover:bg-stone-50/70'
+                        }`}
+                      >
                         <td className="p-4">
                           <span className="font-bold text-stone-850 block">{cust.tradeName}</span>
                           {cust.legalName && <span className="text-[10px] text-stone-400 block">{cust.legalName}</span>}
@@ -749,6 +859,7 @@ export default function AdminCustomersPage() {
                                 )}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
                                 className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-850 hover:bg-emerald-100 transition-colors cursor-pointer"
                                 title="Enviar mensagem no WhatsApp"
                               >
@@ -757,13 +868,19 @@ export default function AdminCustomersPage() {
                               </a>
                             )}
                             <button
-                              onClick={() => openEditCustomer(cust)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openEditCustomer(cust);
+                              }}
                               className="inline-flex items-center gap-1 rounded-lg border border-stone-200 px-2.5 py-1 text-[10px] font-bold text-stone-600 hover:bg-amber-50 hover:text-amber-800 cursor-pointer"
                             >
                               <Edit2 className="h-3.5 w-3.5" /> Editar
                             </button>
                             <button
-                              onClick={() => openAddresses(cust)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openAddresses(cust);
+                              }}
                               className="inline-flex items-center gap-1 rounded-lg border border-stone-200 px-2.5 py-1 text-[10px] font-bold text-stone-600 hover:bg-amber-50 hover:text-amber-800 cursor-pointer"
                             >
                               <MapPin className="h-3.5 w-3.5" /> Endereços
@@ -771,7 +888,7 @@ export default function AdminCustomersPage() {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                    )})}
                   </tbody>
                 </table>
               </div>

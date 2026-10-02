@@ -22,6 +22,9 @@ export interface SellerDTO {
   phone: string | null;
   email: string | null;
   commissionPct: number;
+  supervisorId: string | null;
+  supervisorName: string | null;
+  supervisorCommissionPct: number;
   goal: number;
   goalRevenue: number;
   active: boolean;
@@ -41,6 +44,7 @@ export interface SellerDTO {
 
 const SELLER_INCLUDE = {
   user: { select: { id: true, email: true, phone: true, active: true } },
+  supervisor: { select: { id: true, name: true } },
   neighborhoods: {
     select: { id: true, name: true, region: { select: { name: true } } },
     orderBy: { name: 'asc' as const },
@@ -54,6 +58,8 @@ interface SellerRow {
   phone: string | null;
   email: string | null;
   commissionPct: unknown;
+  supervisorId?: string | null;
+  supervisorCommissionPct?: unknown;
   goal: number;
   goalRevenue: unknown;
   active: boolean;
@@ -61,6 +67,7 @@ interface SellerRow {
   code?: string | null;
   createdAt: Date;
   user?: { id: string; email: string; phone: string | null; active: boolean } | null;
+  supervisor?: { id: string; name: string } | null;
   neighborhoods?: Array<{ id: string; name: string; region?: { name: string } | null }>;
 }
 
@@ -71,6 +78,9 @@ function toDTO(row: SellerRow): SellerDTO {
     phone: row.phone,
     email: row.email,
     commissionPct: num(row.commissionPct),
+    supervisorId: row.supervisorId ?? null,
+    supervisorName: row.supervisor?.name ?? null,
+    supervisorCommissionPct: num(row.supervisorCommissionPct),
     goal: row.goal,
     goalRevenue: num(row.goalRevenue),
     active: row.active,
@@ -131,6 +141,8 @@ export async function createSeller(
           phone: input.phone,
           email: input.email,
           commissionPct: input.commissionPct,
+          supervisorId: input.supervisorId ?? null,
+          supervisorCommissionPct: input.supervisorCommissionPct ?? 0,
           goal: input.goal,
           goalRevenue: input.goalRevenue,
           notes: input.notes,
@@ -171,7 +183,7 @@ export async function updateSeller(
       }
 
       const sellerData: Record<string, unknown> = {};
-      for (const key of ['name', 'phone', 'email', 'commissionPct', 'goal', 'goalRevenue', 'notes', 'active'] as const) {
+      for (const key of ['name', 'phone', 'email', 'commissionPct', 'supervisorId', 'supervisorCommissionPct', 'goal', 'goalRevenue', 'notes', 'active'] as const) {
         const value = (input as Record<string, unknown>)[key];
         if (value !== undefined) sellerData[key] = value;
       }
