@@ -9,7 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type PDFImage } from 'pdf-lib';
 
 import { formatBRL } from '../domain/money';
 import type { OrderDTO } from './serializers';
@@ -485,7 +485,7 @@ export async function renderChecklistPdf(
   pdf.setCreationDate(new Date());
 
   // Logo da empresa se houver
-  let logoImg: any = null;
+  let logoImg: PDFImage | null = null;
   try {
     const logoBytes = fs.readFileSync(path.join(process.cwd(), 'logo.png'));
     logoImg = await pdf.embedPng(logoBytes);
