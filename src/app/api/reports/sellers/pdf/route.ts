@@ -5,10 +5,10 @@ import { requireManager } from '@/server/auth/guard';
 import { route } from '@/server/http/respond';
 import { optionalIsoDate, parseQuery, uuid } from '@/server/validation/common';
 import { sellerReport } from '@/server/services/reports';
-import { renderSellerReportPdf } from '@/server/services/seller-pdf';
+import { renderSellerReportPdf, renderSellersSummaryPdf } from '@/server/services/seller-pdf';
 
 const querySchema = z.object({
-  sellerId: uuid('Vendedor'),
+  sellerId: uuid('Vendedor').optional(),
   from: optionalIsoDate('Data inicial'),
   to: optionalIsoDate('Data final'),
 });
@@ -18,6 +18,19 @@ export const GET = route('relatorios.vendedor_pdf', async (request) => {
   const { sellerId, from, to } = parseQuery(request, querySchema);
 
   const report = await sellerReport(from, to);
+
+  // Sem vendedor: relatório geral (todos os vendedores) em um único PDF.
+  if (!sellerId) {
+    const summary = await renderSellersSummaryPdf(report.rows, report.period);
+    return new NextResponse(summary as unknown as BodyInit, {
+      status: 200,
+      headers: {
+        'content-type': 'application/pdf',
+        'content-disposition': `attachment; filename="relatorio_vendedores_${report.period.from}_a_${report.period.to}.pdf"`,
+        'cache-control': 'no-store',
+      },
+    });
+  }
   const sellerRow = report.rows.find((r) => r.sellerId === sellerId);
 
   if (!sellerRow) {

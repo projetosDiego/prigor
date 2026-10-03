@@ -107,23 +107,37 @@ export default function SellerReportPage() {
   const totProjection = rows.reduce((s, r) => s + r.projection, 0);
   const totPct = totGoal > 0 ? (totRealized / totGoal) * 100 : 0;
 
-  const downloadPdf = async (sellerId: string, sellerName: string) => {
+  /** Sem sellerId baixa o relatório geral; com sellerId, o fechamento individual. */
+  const downloadPdf = async (sellerId?: string, sellerName?: string) => {
+    const key = sellerId ?? '__all__';
     try {
-      setDownloadingId(sellerId);
-      const params = new URLSearchParams({ sellerId });
+      setDownloadingId(key);
+      const params = new URLSearchParams();
+      if (sellerId) params.set('sellerId', sellerId);
       if (from) params.set('from', from);
       if (to) params.set('to', to);
       const res = await fetch(`/api/reports/sellers/pdf?${params.toString()}`);
-      if (!res.ok) throw new Error('Erro ao gerar arquivo PDF do vendedor.');
+      if (!res.ok) {
+        let msg = 'Erro ao gerar o arquivo PDF.';
+        try {
+          const body = await res.json();
+          msg = body?.error?.message ?? body?.detail ?? (typeof body?.error === 'string' ? body.error : msg);
+        } catch {
+          // resposta sem JSON
+        }
+        throw new Error(msg);
+      }
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `resumo_comissao_${sellerName.toLowerCase().replace(/[^a-z0-9]/g, '_')}.pdf`;
+      a.download = sellerId
+        ? `resumo_comissao_${(sellerName ?? 'vendedor').toLowerCase().replace(/[^a-z0-9]/g, '_')}.pdf`
+        : `relatorio-vendedores${from ? `-${from}` : ''}${to ? `-a-${to}` : ''}.pdf`;
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
       a.remove();
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
     } catch (err: unknown) {
       alert(errorMessage(err));
     } finally {
@@ -192,8 +206,12 @@ export default function SellerReportPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => window.print()} className="flex items-center gap-1.5 rounded-lg border border-stone-300 px-4 py-2 text-xs font-bold text-stone-600 hover:bg-stone-50 cursor-pointer">
-            <Printer className="h-4 w-4" /> Imprimir Relatório
+          <button
+            onClick={() => downloadPdf()}
+            disabled={downloadingId === '__all__'}
+            className="flex items-center gap-1.5 rounded-lg border border-stone-300 px-4 py-2 text-xs font-bold text-stone-600 hover:bg-stone-50 cursor-pointer disabled:opacity-60"
+          >
+            <Printer className="h-4 w-4" /> {downloadingId === '__all__' ? 'Gerando PDF...' : 'Baixar PDF Geral'}
           </button>
           <button onClick={exportCsv} className="flex items-center gap-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 text-xs font-bold cursor-pointer">
             <Download className="h-4 w-4" /> Exportar Excel
