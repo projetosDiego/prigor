@@ -62,9 +62,26 @@ export function buildNotaasPayload(req: FiscalInvoiceRequest): Record<string, un
       quantidade: Number(i.quantity),
       valorUnitario: money(i.unitPrice),
       valorTotal: money(i.total),
+      ...(i.discount && money(i.discount) > 0 ? { desconto: money(i.discount) } : {}),
     })),
     pagamentos: req.payments.map((p) => ({ tipoPagamento: p.code, valor: money(p.value) })),
-    ...(req.additionalInfo ? { informacoesComplementares: req.additionalInfo.slice(0, 2000) } : {}),
+    ...(req.shipping && money(req.shipping) > 0
+      ? { valorFrete: money(req.shipping), transporte: { modalidadeFrete: 0 } }
+      : { transporte: { modalidadeFrete: 9 } }),
+    ...(req.billing
+      ? {
+          cobranca: {
+            fatura: {
+              numero: req.billing.invoiceNumber,
+              valorOriginal: money(req.billing.original),
+              desconto: money(req.billing.discount),
+              valorLiquido: money(req.billing.net),
+            },
+            parcelas: req.billing.installments.map((p) => ({ numero: p.number, vencimento: p.dueDate, valor: money(p.value) })),
+          },
+        }
+      : {}),
+    ...(req.additionalInfo ? { infCpl: req.additionalInfo.slice(0, 2000) } : {}),
   };
 }
 

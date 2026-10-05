@@ -252,19 +252,26 @@ const NF_STATUS: Record<Invoice['status'], { label: string; cls: string }> = {
 };
 
 function InvoiceSection({ order }: { order: BillingOrder }) {
-  const { toast, confirm } = useToast();
+  const { toast } = useToast();
   const [notas, setNotas] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [cancelId, setCancelId] = useState<string | null>(null);
   const [reason, setReason] = useState('');
+  const [defaultMessage, setDefaultMessage] = useState('');
+  const [orderNotes, setOrderNotes] = useState('');
+  const [issueOpen, setIssueOpen] = useState(false);
+  const [message, setMessage] = useState('');
+  const [notes, setNotes] = useState('');
 
   const load = useCallback(async () => {
     try {
       const res = await fetch(`/api/orders/${order.id}/notas`);
       if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao carregar notas.'));
-      const d = (await res.json()) as { data?: Invoice[] };
+      const d = (await res.json()) as { data?: Invoice[]; defaultMessage?: string; orderNotes?: string | null };
       setNotas(d.data ?? []);
+      setDefaultMessage(d.defaultMessage ?? '');
+      setOrderNotes(d.orderNotes ?? '');
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Erro ao carregar notas.', 'error');
     } finally {
@@ -295,14 +302,18 @@ function InvoiceSection({ order }: { order: BillingOrder }) {
     }
   };
 
+  const openIssue = () => {
+    setMessage(defaultMessage);
+    setNotes('');
+    setIssueOpen(true);
+  };
+
   const issue = async () => {
-    const ok = await confirm({
-      title: 'Emitir NF-e',
-      message: `Emitir nota fiscal de ${brl(order.total)} para ${order.customerName ?? 'o cliente'} (pedido #${order.numero})?`,
-      confirmLabel: 'Emitir NF-e',
-      cancelLabel: 'Voltar',
+    const ok = await post('issue', `/api/orders/${order.id}/notas`, 'Nota enviada. Clique em "Atualizar status" em alguns segundos.', {
+      message: message.trim() || null,
+      notes: notes.trim() || null,
     });
-    if (ok) await post('issue', `/api/orders/${order.id}/notas`, 'Nota enviada. Clique em "Atualizar status" em alguns segundos.');
+    if (ok) setIssueOpen(false);
   };
 
   const open = async (n: Invoice, kind: 'danfe' | 'xml') => {
@@ -361,12 +372,56 @@ function InvoiceSection({ order }: { order: BillingOrder }) {
             {ieProblem ? 'Problema de IE: atualizar IE do cliente pelo CNPJ' : 'Atualizar IE do cliente pelo CNPJ'}
           </button>
         </div>
-        {!hasActive && order.status !== 'cancelado' && (
-          <button onClick={issue} disabled={busy !== null} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-stone-900 text-white text-xs font-bold disabled:opacity-60 cursor-pointer">
-            {busy === 'issue' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Emitir NF-e
+        {!hasActive && !issueOpen && order.status !== 'cancelado' && (
+          <button onClick={openIssue} disabled={busy !== null} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-stone-900 text-white text-xs font-bold disabled:opacity-60 cursor-pointer">
+            <Plus className="h-4 w-4" /> Emitir NF-e
           </button>
         )}
       </div>
+
+      {issueOpen && (
+        <div className="rounded-xl border border-stone-200 bg-stone-50/60 p-3 space-y-2">
+          <p className="text-[11px] text-stone-600">
+            NF-e de <strong>{brl(order.total)}</strong> para <strong>{order.customerName ?? 'o cliente'}</strong> — pedido #{order.numero}
+          </p>
+          <div>
+            <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">Mensagem na nota</label>
+            <textarea
+              rows={2}
+              maxLength={500}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              className="w-full px-2 py-1.5 rounded border border-stone-200 text-xs bg-white"
+              placeholder="Ex.: Obrigado pela preferência!"
+            />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">Observação deste pedido (opcional)</label>
+              {orderNotes && !notes && (
+                <button type="button" onClick={() => setNotes(orderNotes)} className="text-[10px] font-bold text-amber-700 hover:underline cursor-pointer">
+                  Usar observação do pedido
+                </button>
+              )}
+            </div>
+            <textarea
+              rows={2}
+              maxLength={1000}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="w-full px-2 py-1.5 rounded border border-stone-200 text-xs bg-white"
+              placeholder="Ex.: Entregar na cozinha, falar com o João."
+            />
+          </div>
+          <p className="text-[10px] text-stone-400">Sai em &quot;Informações complementares&quot; da nota, depois do número do pedido.</p>
+          <div className="flex justify-end gap-1.5">
+            <button className={btn} onClick={() => setIssueOpen(false)} disabled={busy !== null}>Voltar</button>
+            <button onClick={issue} disabled={busy !== null} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-900 text-white text-[11px] font-bold disabled:opacity-60 cursor-pointer">
+              {busy === 'issue' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Receipt className="h-3.5 w-3.5" />} Emitir NF-e
+            </button>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-4 text-stone-400"><Loader2 className="h-5 w-5 animate-spin" /></div>

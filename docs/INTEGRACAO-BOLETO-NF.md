@@ -322,3 +322,15 @@ Cada fase fecha com `npm run verify` verde e roteiro de teste em `docs/TESTE-LOC
 - Falta validar em homologação: DANFE, XML, cancelamento; pedido com desconto/frete.
 - Para produção: confirmar NCM/CFOP/CSOSN com o contador, "Ativar Produção" no painel da Notaas,
   `FISCAL_ENV=producao` e `BILLING_ENABLED=true`.
+
+### DANFE da Prigor e mensagem da nota (06/10/2026)
+- DANFE próprio gerado do XML autorizado (`services/danfe-pdf.ts` + `domain/nfe-xml.ts` + `lib/barcode128.ts`):
+  canhoto, logo, quadro DANFE, código de barras Code 128-C (validado contra python-barcode), destinatário,
+  faturas/duplicatas, impostos com total em destaque, transportador, produtos (pagina sozinho), dados
+  adicionais e marca d'água "SEM VALOR FISCAL" (homologação) / "CANCELADA". Falhou → usa o do provedor;
+  `?modelo=provedor` força o da Notaas.
+- Mensagem padrão (Configuração Fiscal › "Mensagem padrão na nota", coluna `config_fiscal.mensagem_nf`)
+  vai em infCpl junto com o nº do pedido; na emissão dá para trocar a mensagem e incluir observação.
+- Correção: o campo de informações complementares da Notaas é `infCpl` (antes era enviado com nome errado).
+- Liberados na NF: desconto (por item + rateio do desconto do pedido) e frete (`valorFrete`, modFrete 0).
+  Boleto com vencimento gera grupo de cobrança (fatura PED-<nº> + duplicata 001). "Outros custos" segue bloqueado.

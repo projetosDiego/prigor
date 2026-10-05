@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import { buildNotaasPayload, parseNotaasInvoice } from '@/server/integrations/fiscal/notaas';
 import type { FiscalInvoiceRequest } from '@/server/integrations/fiscal/provider';
-import { canCancelInvoice, ieIndicatorFor, invoiceAdjustmentsBlocker, paymentCodeFor } from '@/server/domain/invoice';
+import {
+  buildInfCpl,
+  canCancelInvoice,
+  distributeDiscount,
+  ieIndicatorFor,
+  invoiceAdjustmentsBlocker,
+  paymentCodeFor,
+} from '@/server/domain/invoice';
 
 type Payload = Record<string, unknown> & {
   dest: Record<string, unknown> & { endereco: Record<string, unknown> };
@@ -94,10 +101,24 @@ describe('regras de NF do pedido', () => {
     expect(paymentCodeFor('Dinheiro na entrega')).toBe('01');
     expect(paymentCodeFor('A combinar')).toBe('99');
   });
-  it('bloqueia desconto/frete até validar em homologação', () => {
-    expect(invoiceAdjustmentsBlocker({ discount: '0', shipping: '0.00', otherCosts: '0', itemDiscounts: ['0.00'] })).toBeNull();
-    expect(invoiceAdjustmentsBlocker({ discount: '5', shipping: '10', otherCosts: '0', itemDiscounts: [] })).toMatch(/desconto, frete/);
-    expect(invoiceAdjustmentsBlocker({ discount: '0', shipping: '0', otherCosts: '0', itemDiscounts: ['1.00'] })).toMatch(/desconto/);
+  it('só "outros custos" bloqueia a NF', () => {
+    expect(invoiceAdjustmentsBlocker({ otherCosts: '0.00' })).toBeNull();
+    expect(invoiceAdjustmentsBlocker({ otherCosts: '5' })).toMatch(/outros custos/);
+  });
+  it('rateia o desconto do pedido entre os itens, somando exato', () => {
+    const r = distributeDiscount(
+      [{ gross: '100.00', itemDiscount: '0' }, { gross: '50.00', itemDiscount: '5.00' }, { gross: '33.33', itemDiscount: '0' }],
+      '10.00',
+    );
+    const total = r.reduce((a, b) => a + Number(b), 0);
+    expect(total.toFixed(2)).toBe('15.00'); // 10 do pedido + 5 do item
+    expect(r).toEqual(['5.61', '7.52', '1.87']); // 5 do item + 2,52 de rateio no 2º
+  });
+  it('monta infCpl com pedido, mensagem e observação', () => {
+    expect(buildInfCpl({ orderNumber: 1115, message: 'Obrigado!', notes: 'Entregar na cozinha' })).toBe(
+      'Pedido PRIGOR nº 1115. Obrigado! Obs.: Entregar na cozinha',
+    );
+    expect(buildInfCpl({ orderNumber: 7 })).toBe('Pedido PRIGOR nº 7.');
   });
   it('cancelamento só até 24h após autorização', () => {
     const auth = new Date('2026-10-06T10:00:00Z');

@@ -19,7 +19,9 @@ import { logger } from '../http/logger';
 import { type SessionPayload, isManagement } from '../auth/guard';
 import { buildInvoiceRef, nextSequence } from '../domain/billing';
 import {
+  buildInfCpl,
   canCancelInvoice,
+  distributeDiscount,
   ieIndicatorFor,
   invoiceAdjustmentsBlocker,
   invoiceReadinessProblems,
@@ -34,6 +36,7 @@ import {
   type FiscalInvoiceResult,
 } from '../integrations/fiscal';
 import { lookupStateRegistration } from '../integrations/cnpjws';
+import { renderDanfe } from './danfe-pdf';
 import { logOrderEvent } from './order-history';
 import { timestamp } from './serializers';
 
@@ -156,17 +159,34 @@ async function loadInvoiceForAccess(session: SessionPayload, id: string) {
 
 // ─── Leitura ────────────────────────────────────────────────────────────────
 
-export async function listOrderInvoices(session: SessionPayload, orderId: string): Promise<InvoiceDTO[]> {
-  const order = await prisma.order.findUnique({ where: { id: orderId }, select: { sellerId: true } });
+export async function listOrderInvoices(
+  session: SessionPayload,
+  orderId: string,
+): Promise<{ data: InvoiceDTO[]; defaultMessage: string; orderNotes: string | null }> {
+  const order = await prisma.order.findUnique({ where: { id: orderId }, select: { sellerId: true, notes: true } });
   if (!order) throw notFound('Pedido');
   if (!isManagement(session) && order.sellerId !== session.sellerId) throw notFound('Pedido');
-  const rows = await prisma.invoice.findMany({ where: { orderId }, orderBy: { createdAt: 'desc' } });
-  return rows.map(toDTO);
+  const [rows, settings] = await Promise.all([
+    prisma.invoice.findMany({ where: { orderId }, orderBy: { createdAt: 'desc' } }),
+    prisma.fiscalSettings.findFirst({ select: { invoiceMessage: true } }),
+  ]);
+  return { data: rows.map(toDTO), defaultMessage: settings?.invoiceMessage ?? '', orderNotes: order.notes };
+}
+
+export interface IssueInvoiceOptions {
+  /** Mensagem desta nota (padrão: a da Configuração Fiscal). */
+  message?: string | null;
+  /** Observação específica deste pedido. */
+  notes?: string | null;
 }
 
 // ─── Emissão ────────────────────────────────────────────────────────────────
 
-export async function issueInvoice(session: SessionPayload, orderId: string): Promise<InvoiceDTO> {
+export async function issueInvoice(
+  session: SessionPayload,
+  orderId: string,
+  options: IssueInvoiceOptions = {},
+): Promise<InvoiceDTO> {
   assertFiscalReady();
 
   const order = await prisma.order.findUnique({
@@ -180,6 +200,7 @@ export async function issueInvoice(session: SessionPayload, orderId: string): Pr
       shipping: true,
       otherCosts: true,
       paymentMethod: true,
+      dueDate: true,
       customerId: true,
       customer: {
         select: {
@@ -222,12 +243,7 @@ export async function issueInvoice(session: SessionPayload, orderId: string): Pr
     throw conflict('Cliente sem CNPJ. Para emitir NF para pessoa física, ative a opção em Configuração Fiscal.');
   }
 
-  const adjustments = invoiceAdjustmentsBlocker({
-    discount: String(order.discount),
-    shipping: String(order.shipping),
-    otherCosts: String(order.otherCosts),
-    itemDiscounts: order.items.map((i: { discountItem: unknown }) => String(i.discountItem)),
-  });
+  const adjustments = invoiceAdjustmentsBlocker({ otherCosts: String(order.otherCosts) });
   if (adjustments) throw conflict(adjustments);
 
   const issuerState = settings?.state ?? null;
@@ -266,6 +282,17 @@ export async function issueInvoice(session: SessionPayload, orderId: string): Pr
   }
 
   const csosn = settings!.defaultCsosn!;
+  // Valor bruto por item (qtd × unitário) e desconto total do item (item + rateio do pedido).
+  const gross = order.items.map((i: { quantity: unknown; unitPrice: unknown }) =>
+    (Math.round(Number(i.quantity) * Number(i.unitPrice) * 100) / 100).toFixed(2),
+  );
+  const discounts = distributeDiscount(
+    order.items.map((i: { discountItem: unknown }, k: number) => ({ gross: gross[k], itemDiscount: String(i.discountItem) })),
+    String(order.discount),
+  );
+  const paymentCode = paymentCodeFor(order.paymentMethod);
+  const dueIso = order.dueDate ? order.dueDate.toISOString().slice(0, 10) : null;
+  const message = options.message !== undefined ? options.message : settings?.invoiceMessage ?? null;
   let result: FiscalInvoiceResult;
   try {
     result = await fiscalProvider().issue({
@@ -294,7 +321,7 @@ export async function issueInvoice(session: SessionPayload, orderId: string): Pr
         (i: {
           quantity: unknown; unitPrice: unknown; subtotal: unknown;
           product: { id: string; sku: string | null; internalCode: string | null; name: string; unit: string; ncm: string | null; cfop: string | null };
-        }) => ({
+        }, k: number) => ({
           code: i.product.sku || i.product.internalCode || i.product.id.slice(0, 8),
           description: i.product.name,
           ncm: i.product.ncm!,
@@ -306,11 +333,23 @@ export async function issueInvoice(session: SessionPayload, orderId: string): Pr
           unit: i.product.unit || 'UN',
           quantity: String(i.quantity),
           unitPrice: String(i.unitPrice),
-          total: String(i.subtotal),
+          total: gross[k],
+          discount: discounts[k],
         }),
       ),
-      payments: [{ code: paymentCodeFor(order.paymentMethod), value: String(order.total) }],
-      additionalInfo: `Pedido PRIGOR #${order.numero}. Documento emitido por ME ou EPP optante pelo Simples Nacional.`,
+      payments: [{ code: paymentCode, value: String(order.total) }],
+      shipping: String(order.shipping),
+      billing:
+        paymentCode === '15' && dueIso
+          ? {
+              invoiceNumber: `PED-${order.numero}`,
+              original: String(order.total),
+              discount: '0.00',
+              net: String(order.total),
+              installments: [{ number: '001', dueDate: dueIso, value: String(order.total) }],
+            }
+          : null,
+      additionalInfo: buildInfCpl({ orderNumber: order.numero, message, notes: options.notes }),
     });
   } catch (err) {
     const message = `Provedor recusou a nota: ${describeError(err)}`;
@@ -405,3 +444,38 @@ export async function invoiceDocument(
     throw badRequest(`Não consegui baixar o documento: ${describeError(err)}`);
   }
 }
+
+/**
+ * DANFE: o da Prigor (gerado do XML autorizado) por padrão; o do provedor se
+ * pedido ou se o gerador próprio falhar — a nota nunca fica sem DANFE.
+ */
+export async function invoiceDanfe(
+  session: SessionPayload,
+  id: string,
+  opts: { provider?: boolean } = {},
+): Promise<{ data: Buffer; filename: string }> {
+  const inv = await loadInvoiceForAccess(session, id);
+  if (!inv.providerId || !['autorizada', 'cancelada'].includes(inv.status)) {
+    throw conflict('DANFE disponível só para nota autorizada ou cancelada.');
+  }
+  const filename = `danfe-nfe-${inv.number ?? inv.providerRef}-pedido-${inv.order.numero}.pdf`;
+  const provider = fiscalProvider();
+  if (!opts.provider) {
+    try {
+      const xml = (await provider.xml(inv.providerId)).toString('utf8');
+      const pdf = await renderDanfe(xml, {
+        cancelled: inv.status === 'cancelada',
+        footer: `Pedido PRIGOR nº ${inv.order.numero} · Doces Prigor · docesprigor.com.br`,
+      });
+      return { data: pdf, filename };
+    } catch (error) {
+      logger.warn('DANFE próprio falhou; usando o do provedor', { route: 'invoices.danfe', invoiceId: id, error });
+    }
+  }
+  try {
+    return { data: await provider.danfe(inv.providerId), filename };
+  } catch (err) {
+    throw badRequest(`Não consegui gerar o DANFE: ${describeError(err)}`);
+  }
+}
+

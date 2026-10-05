@@ -32,6 +32,7 @@ export const fiscalSettingsSchema = z.object({
   defaultCfopOutState: cfop('CFOP interestadual'),
   defaultCsosn: digits('CSOSN', { length: [3] }),
   invoiceForConsumers: z.boolean().default(false),
+  invoiceMessage: optionalText(500),
   boletoInstructions: optionalText(400),
   boletoFinePct: z.union([percent('Multa'), z.null()]).optional(),
   boletoInterestPct: z.union([percent('Juros ao mês'), z.null()]).optional(),

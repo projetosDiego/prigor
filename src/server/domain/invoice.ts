@@ -143,23 +143,43 @@ export function paymentCodeFor(paymentMethod: string | null | undefined): '01' |
 }
 
 /**
- * Desconto/frete/outros custos no pedido mudam o cálculo dos totais da NF.
- * Enquanto o envio desses campos à Notaas não for validado em homologação,
- * a emissão é bloqueada com mensagem clara em vez de gerar nota com total errado.
+ * "Outros custos" do pedido ainda não têm campo validado na Notaas.
+ * Desconto (por item e do pedido) e frete já vão na nota.
  */
-export function invoiceAdjustmentsBlocker(input: {
-  discount: string;
-  shipping: string;
-  otherCosts: string;
-  itemDiscounts: string[];
-}): string | null {
-  const nonZero = (v: string) => Math.abs(Number(v) || 0) > 0.0049;
-  const parts: string[] = [];
-  if (nonZero(input.discount) || input.itemDiscounts.some(nonZero)) parts.push('desconto');
-  if (nonZero(input.shipping)) parts.push('frete');
-  if (nonZero(input.otherCosts)) parts.push('outros custos');
-  if (!parts.length) return null;
-  return `Este pedido tem ${parts.join(', ')}. A emissão de NF com esses valores ainda não foi validada — emita esta nota pelo painel da Notaas por enquanto.`;
+export function invoiceAdjustmentsBlocker(input: { otherCosts: string }): string | null {
+  if (Math.abs(Number(input.otherCosts) || 0) > 0.0049) {
+    return 'Este pedido tem "outros custos". A emissão de NF com esse valor ainda não foi validada — remova do pedido ou emita pelo painel da Notaas por enquanto.';
+  }
+  return null;
+}
+
+/**
+ * Rateia o desconto do pedido entre os itens, proporcional ao valor líquido de
+ * cada um (HALF_UP em centavos); a sobra de arredondamento vai no último item.
+ * Devolve o desconto TOTAL de cada item (desconto do item + rateio), em string.
+ */
+export function distributeDiscount(
+  items: Array<{ gross: string; itemDiscount: string }>,
+  orderDiscount: string,
+): string[] {
+  const cents = (v: string) => Math.round(Number(v || 0) * 100);
+  const nets = items.map((i) => cents(i.gross) - cents(i.itemDiscount));
+  const base = nets.reduce((a, b) => a + b, 0);
+  const total = cents(orderDiscount);
+  const shares = nets.map((n) => (base > 0 ? Math.round((total * n) / base) : 0));
+  const diff = total - shares.reduce((a, b) => a + b, 0);
+  if (shares.length) shares[shares.length - 1] += diff;
+  return items.map((it, k) => ((cents(it.itemDiscount) + shares[k]) / 100).toFixed(2));
+}
+
+/** Texto das informações complementares (infCpl): pedido + mensagem + observação. */
+export function buildInfCpl(input: { orderNumber: number; message?: string | null; notes?: string | null }): string {
+  const parts = [`Pedido PRIGOR nº ${input.orderNumber}.`];
+  const msg = (input.message ?? '').trim();
+  const notes = (input.notes ?? '').trim();
+  if (msg) parts.push(msg);
+  if (notes) parts.push(`Obs.: ${notes}`);
+  return parts.join(' ').replace(/\s+/g, ' ').slice(0, 2000);
 }
 
 /** NF-e só pode ser cancelada até 24h após a autorização. */

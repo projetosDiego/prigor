@@ -29,7 +29,10 @@ export interface FiscalInvoiceItem {
   unit: string;
   quantity: string;
   unitPrice: string;
+  /** Valor bruto (quantidade × unitário). */
   total: string;
+  /** Desconto do item (inclui rateio do desconto do pedido). */
+  discount?: string;
 }
 
 /** Códigos de forma de pagamento da NF-e (tPag). */
@@ -52,6 +55,16 @@ export interface FiscalInvoiceRequest {
   };
   items: FiscalInvoiceItem[];
   payments: Array<{ code: FiscalPaymentCode; value: string }>;
+  /** Frete cobrado na nota (rateado pelo provedor). */
+  shipping?: string;
+  /** Fatura/duplicatas (ex.: boleto com vencimento). */
+  billing?: {
+    invoiceNumber: string;
+    original: string;
+    discount: string;
+    net: string;
+    installments: Array<{ number: string; dueDate: string; value: string }>;
+  } | null;
   additionalInfo?: string | null;
 }
 

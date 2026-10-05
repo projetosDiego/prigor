@@ -901,6 +901,8 @@ model FiscalSettings {
   defaultCfopOutState String?  @map("cfop_padrao_interestadual")
   defaultCsosn        String?  @map("csosn_padrao")
   invoiceForConsumers Boolean  @default(false) @map("emitir_nf_consumidor")
+  /// Mensagem padrão nas informações complementares da NF (editável por pedido na emissão).
+  invoiceMessage      String?  @map("mensagem_nf")
   boletoInstructions  String?  @map("instrucoes_boleto")
   boletoFinePct       Decimal? @map("multa_boleto_pct") @db.Decimal(5, 2)
   boletoInterestPct   Decimal? @map("juros_mes_boleto_pct") @db.Decimal(5, 2)

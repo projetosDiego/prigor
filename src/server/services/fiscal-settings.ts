@@ -33,6 +33,7 @@ export interface FiscalSettingsDTO {
   defaultCfopOutState: string | null;
   defaultCsosn: string | null;
   invoiceForConsumers: boolean;
+  invoiceMessage: string | null;
   boletoInstructions: string | null;
   boletoFinePct: number | null;
   boletoInterestPct: number | null;
@@ -51,8 +52,13 @@ function toDTO(r: Row): FiscalSettingsDTO {
 }
 
 /** Linha única; cria vazia (com os padrões do schema) na primeira leitura. */
+export const DEFAULT_INVOICE_MESSAGE = 'Obrigado pela preferência! Doces Prigor agradece a parceria.';
+
 async function getOrCreate(): Promise<Row> {
-  return (await prisma.fiscalSettings.findFirst()) ?? prisma.fiscalSettings.create({ data: {} });
+  return (
+    (await prisma.fiscalSettings.findFirst()) ??
+    prisma.fiscalSettings.create({ data: { invoiceMessage: DEFAULT_INVOICE_MESSAGE } })
+  );
 }
 
 export async function getFiscalSettings(): Promise<{

@@ -33,6 +33,7 @@ interface FiscalSettings {
   defaultCfopOutState: string | null;
   defaultCsosn: string | null;
   invoiceForConsumers: boolean;
+  invoiceMessage: string | null;
   boletoInstructions: string | null;
   boletoFinePct: number | null;
   boletoInterestPct: number | null;
@@ -135,6 +136,7 @@ export default function FiscalSettingsPage() {
         defaultCfopInState: str('defaultCfopInState'), defaultCfopOutState: str('defaultCfopOutState'),
         defaultCsosn: str('defaultCsosn'),
         invoiceForConsumers: Boolean(form.invoiceForConsumers),
+        invoiceMessage: str('invoiceMessage'),
         boletoInstructions: str('boletoInstructions'),
         boletoFinePct: str('boletoFinePct'), boletoInterestPct: str('boletoInterestPct'),
       };
@@ -229,6 +231,18 @@ export default function FiscalSettingsPage() {
                 <option value="homologacao">Homologação (teste)</option>
                 <option value="producao">Produção</option>
               </select>
+            </div>
+            <div className="md:col-span-3">
+              <label className={label}>Mensagem padrão na nota (informações complementares)</label>
+              <textarea
+                rows={2}
+                maxLength={500}
+                className={input}
+                placeholder="Ex.: Obrigado pela preferência! Doces Prigor agradece a parceria."
+                value={String(form.invoiceMessage ?? '')}
+                onChange={(e) => set('invoiceMessage', e.target.value)}
+              />
+              <p className="text-[10px] text-stone-400 mt-1">Sai em toda NF-e e pode ser alterada na hora de emitir cada pedido.</p>
             </div>
             <label className="md:col-span-3 flex items-center gap-2 text-xs text-stone-700">
               <input type="checkbox" className="accent-amber-600" checked={Boolean(form.invoiceForConsumers)} onChange={(e) => set('invoiceForConsumers', e.target.checked)} />
