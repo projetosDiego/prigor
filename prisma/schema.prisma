@@ -141,6 +141,7 @@ enum InvoiceStatus {
   rejeitada
   cancelada
   erro
+  descartada
 }
 
 model PaymentOption {

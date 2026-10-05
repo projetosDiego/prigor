@@ -40,7 +40,7 @@ import { renderDanfe } from './danfe-pdf';
 import { logOrderEvent } from './order-history';
 import { timestamp } from './serializers';
 
-export type InvoiceStatus = 'processando' | 'autorizada' | 'rejeitada' | 'cancelada' | 'erro';
+export type InvoiceStatus = 'processando' | 'autorizada' | 'rejeitada' | 'cancelada' | 'erro' | 'descartada';
 
 export interface InvoiceDTO {
   id: string;
@@ -119,6 +119,11 @@ async function applyResult(
   result: FiscalInvoiceResult,
   userId: string | null,
 ): Promise<InvoiceRow> {
+  // O que foi enviado (ex.: situação da IE) acompanha a rejeição, para diagnóstico.
+  const sent = ((row.raw ?? {}) as { sent?: string }).sent;
+  if (result.status === 'rejeitada' && sent && /\b(IE|inscri)/i.test(result.rejectionReason ?? '')) {
+    result = { ...result, rejectionReason: `${result.rejectionReason} (${sent})` };
+  }
   const updated = await prisma.invoice.update({
     where: { id: row.id },
     data: {
@@ -133,7 +138,7 @@ async function applyResult(
           ? result.authorizedAt ? new Date(result.authorizedAt) : new Date()
           : row.authorizedAt,
       canceledAt: result.status === 'cancelada' && !row.canceledAt ? new Date() : row.canceledAt,
-      raw: { environment: integrationEnv().FISCAL_ENV, response: result.raw } as Prisma.InputJsonValue,
+      raw: { environment: integrationEnv().FISCAL_ENV, sent, response: result.raw } as Prisma.InputJsonValue,
     },
   });
   if (updated.status !== row.status) {
@@ -282,6 +287,9 @@ export async function issueInvoice(
   }
 
   const csosn = settings!.defaultCsosn!;
+  const ieIndicator = ieIndicatorFor(c.ie, c.ieIndicator);
+  // Resumo do que foi enviado sobre a IE — aparece junto da rejeição para facilitar o diagnóstico.
+  const ieSent = `enviado: ${ieIndicator === 1 ? `contribuinte, IE ${c.ie}` : ieIndicator === 2 ? 'isento' : 'não contribuinte, sem IE'}`;
   // Valor bruto por item (qtd × unitário) e desconto total do item (item + rateio do pedido).
   const gross = order.items.map((i: { quantity: unknown; unitPrice: unknown }) =>
     (Math.round(Number(i.quantity) * Number(i.unitPrice) * 100) / 100).toFixed(2),
@@ -304,7 +312,7 @@ export async function issueInvoice(
         cnpj: c.cnpj,
         cpf: c.cpf,
         ie: c.ie,
-        ieIndicator: ieIndicatorFor(c.ie, c.ieIndicator),
+        ieIndicator,
         email: c.email,
         address: {
           street: c.address ?? '',
@@ -368,6 +376,8 @@ export async function issueInvoice(
   // nota órfã e permitiria emitir outra). Se gravar o retorno falhar, guarda o
   // id do provedor no texto para recuperar e devolve erro de sistema.
   try {
+    await prisma.invoice.update({ where: { id: row.id }, data: { raw: { sent: ieSent } as Prisma.InputJsonValue } });
+    row = { ...row, raw: { sent: ieSent } as Prisma.JsonValue };
     row = await applyResult(row, result, session.userId);
   } catch (err) {
     logger.error('NF aceita pelo provedor, mas falhou ao gravar o retorno', {
@@ -409,7 +419,7 @@ export async function cancelInvoice(session: SessionPayload, id: string, reason:
   try {
     const result = await fiscalProvider().cancel(inv.providerId, reason);
     // Cancelamento entra em fila no provedor: mantém autorizada até a consulta confirmar.
-    const next = result.status === 'cancelada' ? result : { ...result, status: inv.status as InvoiceStatus };
+    const next: FiscalInvoiceResult = result.status === 'cancelada' ? result : { ...result, status: 'autorizada' };
     return toDTO(await applyResult(inv, next, session.userId));
   } catch (err) {
     throw badRequest(`O provedor não aceitou o cancelamento: ${describeError(err)}`);
@@ -420,7 +430,7 @@ export async function cancelInvoice(session: SessionPayload, id: string, reason:
 export async function discardInvoice(session: SessionPayload, id: string): Promise<InvoiceDTO> {
   const inv = await loadInvoiceForAccess(session, id);
   if (inv.status !== 'erro' && inv.status !== 'rejeitada') throw conflict('Só nota com erro ou rejeitada pode ser descartada.');
-  const updated = await prisma.invoice.update({ where: { id }, data: { status: 'cancelada', canceledAt: new Date() } });
+  const updated = await prisma.invoice.update({ where: { id }, data: { status: 'descartada' } });
   return toDTO(updated);
 }
 

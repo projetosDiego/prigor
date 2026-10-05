@@ -236,7 +236,7 @@ interface Invoice {
   number: number | null;
   series: number | null;
   accessKey: string | null;
-  status: 'processando' | 'autorizada' | 'rejeitada' | 'cancelada' | 'erro';
+  status: 'processando' | 'autorizada' | 'rejeitada' | 'cancelada' | 'erro' | 'descartada';
   rejectionReason: string | null;
   authorizedAt: string | null;
   canCancel: boolean;
@@ -249,6 +249,7 @@ const NF_STATUS: Record<Invoice['status'], { label: string; cls: string }> = {
   rejeitada: { label: 'Rejeitada', cls: 'bg-red-50 text-red-700 border border-red-100' },
   cancelada: { label: 'Cancelada', cls: 'bg-stone-100 text-stone-500' },
   erro: { label: 'Erro', cls: 'bg-red-50 text-red-700 border border-red-100' },
+  descartada: { label: 'Descartada', cls: 'bg-stone-100 text-stone-400' },
 };
 
 function InvoiceSection({ order }: { order: BillingOrder }) {
@@ -425,11 +426,11 @@ function InvoiceSection({ order }: { order: BillingOrder }) {
 
       {loading ? (
         <div className="flex justify-center py-4 text-stone-400"><Loader2 className="h-5 w-5 animate-spin" /></div>
-      ) : notas.length === 0 ? (
+      ) : notas.filter((n) => n.status !== 'descartada').length === 0 ? (
         <p className="text-sm text-stone-400 text-center py-2">Nenhuma nota emitida para este pedido.</p>
       ) : (
         <ul className="space-y-3">
-          {notas.map((n) => (
+          {notas.filter((n) => n.status !== 'descartada').map((n) => (
             <li key={n.id} className="rounded-xl border border-stone-200 p-3 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-mono text-stone-600">
