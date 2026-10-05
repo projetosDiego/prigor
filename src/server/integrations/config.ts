@@ -31,7 +31,7 @@ const schema = z.object({
   SICOOB_MODALIDADE: z.coerce.number().int().positive().default(1),
 
   // ─── Provedor fiscal (NF-e) ───────────────────────────────────────────
-  FISCAL_PROVIDER: z.enum(['', 'focus', 'nuvemfiscal', 'plugnotas']).default(''),
+  FISCAL_PROVIDER: z.enum(['', 'notaas', 'focus', 'nuvemfiscal', 'plugnotas']).default(''),
   FISCAL_API_TOKEN: z.string().trim().default(''),
   FISCAL_ENV: z.enum(['homologacao', 'producao']).default('homologacao'),
   FISCAL_WEBHOOK_SECRET: z.string().trim().default(''),
