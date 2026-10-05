@@ -300,3 +300,17 @@ Cada fase fecha com `npm run verify` verde e roteiro de teste em `docs/TESTE-LOC
 - Ligar: `SICOOB_ENV="production"`, `SICOOB_NUMERO_CLIENTE`, `SICOOB_MODALIDADE` (gerente) e `BILLING_ENABLED="true"`.
 - Roteiro do 1º teste real: cliente com cadastro completo → pedido de valor baixo com vencimento futuro →
   Gerar boleto → conferir PDF/linha digitável → Dar baixa → conferir no Sicoobnet.
+
+### Fase 4 — Caminho da NF-e via Notaas (06/10/2026, aguardando teste em homologação)
+- Provedor escolhido: **Notaas** (plano Free, 50 notas/mês; NF-e modelo 55). Emitente, IE (16.100.96-0) e
+  certificado A1 cadastrados no painel da Notaas; chave da API gravada com `npm run fiscal:setup`.
+- Modal Faturamento do pedido ganhou a seção **Nota fiscal**: Emitir NF-e (confere cadastro do cliente,
+  NCM/CFOP dos produtos e CSOSN padrão antes de enviar), Atualizar status, DANFE, XML, Cancelar (até 24h,
+  motivo ≥ 15 caracteres) e Descartar tentativa com erro. Notas de homologação aparecem marcadas "(TESTE)".
+- Código IBGE do município do cliente é buscado pelo CEP (ViaCEP) na hora da emissão.
+- Produtos: campos NCM e CFOP na tela de produtos (antes a tela apagava esses campos ao salvar).
+- **Bloqueado por enquanto:** pedido com desconto, frete ou outros custos — validar campos na Notaas em
+  homologação antes de liberar. Cliente sem CNPJ só se "Permitir NF para consumidor" estiver ligado.
+- Migration `20261006120000_nota_fiscal_id_provedor` (coluna `notas_fiscais.id_provedor`).
+- Adapter: `integrations/fiscal/notaas.ts` (payload e leitura de status testados). Webhook da Notaas
+  (`nfe.issued/error/cancelled`, assinatura HMAC-SHA256) entra na fase 3.

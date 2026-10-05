@@ -111,6 +111,14 @@ function describeEvent(ev: OrderEvent): string {
       return `Boleto pago (${ev.to ?? ''}) — baixa no financeiro`;
     case 'boleto_baixado':
       return `Boleto baixado/cancelado no banco (${ev.to ?? ''})`;
+    case 'nf_enviada':
+      return `NF-e enviada ao provedor (${ev.to ?? ''})`;
+    case 'nf_autorizada':
+      return `NF-e autorizada pela SEFAZ (${ev.to ?? ''})`;
+    case 'nf_rejeitada':
+      return `NF-e rejeitada (${ev.to ?? ''})`;
+    case 'nf_cancelada':
+      return `NF-e cancelada (${ev.to ?? ''})`;
     case 'boleto_sem_liberacao':
       return `Boleto lançado para cliente não liberado (${ev.to ?? 'boleto'}) — autorizado pela gerência`;
     default:
@@ -1401,7 +1409,7 @@ export default function OrdersPage() {
                         <button
                           onClick={() => setBillingOrder(ped)}
                           className="p-1.5 border border-stone-200 rounded-lg hover:bg-amber-50 text-amber-700 transition-all cursor-pointer"
-                          title="Faturamento (boleto)"
+                          title="Faturamento (boleto e nota fiscal)"
                         >
                           <Landmark className="h-4 w-4" />
                         </button>

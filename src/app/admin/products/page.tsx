@@ -50,6 +50,8 @@ export default function ProductsPage() {
   const [nome, setNome] = useState('');
   const [sku, setSku] = useState('');
   const [codigoBarras, setCodigoBarras] = useState('');
+  const [ncm, setNcm] = useState('');
+  const [cfop, setCfop] = useState('');
   const [categoria, setCategoria] = useState('');
   const [unidade, setUnidade] = useState('un');
   const [precoVenda, setPrecoVenda] = useState('0');
@@ -113,6 +115,8 @@ export default function ProductsPage() {
     setNome('');
     setSku('');
     setCodigoBarras('');
+    setNcm('');
+    setCfop('');
     setCategoria('');
     setUnidade('un');
     setPrecoVenda('0');
@@ -133,6 +137,8 @@ export default function ProductsPage() {
     setNome(produto.name);
     setSku(produto.sku || '');
     setCodigoBarras(produto.barCode || '');
+    setNcm(produto.ncm || '');
+    setCfop(produto.cfop || '');
     setCategoria(produto.category || '');
     setUnidade(produto.unit);
     setPrecoVenda(String(produto.salePrice));
@@ -212,6 +218,9 @@ export default function ProductsPage() {
       name: nome,
       sku: sku || undefined,
       barCode: codigoBarras || undefined,
+      // Sempre enviados: ausente no PUT apagaria o valor gravado.
+      ncm: ncm.replace(/\D/g, '') || null,
+      cfop: cfop.replace(/\D/g, '') || null,
       category: categoria || undefined,
       type: 'venda',
       unit: unidade,
@@ -524,6 +533,28 @@ export default function ProductsPage() {
                     value={codigoBarras}
                     onChange={(e) => setCodigoBarras(e.target.value)}
                     placeholder="EAN-13"
+                    className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs focus:ring-1 focus:ring-amber-500 bg-stone-50/50"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">NCM (nota fiscal)</label>
+                  <input
+                    type="text"
+                    value={ncm}
+                    onChange={(e) => setNcm(e.target.value)}
+                    placeholder="8 dígitos — confirmar com o contador"
+                    className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs focus:ring-1 focus:ring-amber-500 bg-stone-50/50"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">CFOP (opcional)</label>
+                  <input
+                    type="text"
+                    value={cfop}
+                    onChange={(e) => setCfop(e.target.value)}
+                    placeholder="Vazio = padrão da Configuração Fiscal"
                     className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs focus:ring-1 focus:ring-amber-500 bg-stone-50/50"
                   />
                 </div>

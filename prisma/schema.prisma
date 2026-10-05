@@ -840,6 +840,8 @@ model Invoice {
   order           Order         @relation(fields: [orderId], references: [id], onDelete: Restrict)
   /// Referência enviada ao provedor fiscal (idempotência): NF-<numero do pedido>-<sequência>.
   providerRef     String        @unique @map("referencia")
+  /// Id da nota no provedor fiscal (ex.: invoiceId da Notaas), usado para consultar/cancelar/baixar.
+  providerId      String?       @unique @map("id_provedor")
   number          Int?          @map("numero")
   series          Int?          @map("serie")
   accessKey       String?       @unique @map("chave_acesso")

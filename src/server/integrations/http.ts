@@ -24,6 +24,8 @@ export interface HttpResponse<T = unknown> {
   headers: Record<string, string | string[] | undefined>;
   body: T;
   rawBody: string;
+  /** Corpo cru em bytes — use para PDF e outros binários. */
+  buffer: Buffer;
 }
 
 export class IntegrationHttpError extends Error {
@@ -65,7 +67,8 @@ export function httpRequest<T = unknown>(req: HttpRequest): Promise<HttpResponse
         const chunks: Buffer[] = [];
         res.on('data', (c: Buffer) => chunks.push(c));
         res.on('end', () => {
-          const rawBody = Buffer.concat(chunks).toString('utf8');
+          const buffer = Buffer.concat(chunks);
+          const rawBody = buffer.toString('utf8');
           let body: unknown = rawBody;
           if (rawBody && String(res.headers['content-type'] ?? '').includes('json')) {
             try {
@@ -74,7 +77,7 @@ export function httpRequest<T = unknown>(req: HttpRequest): Promise<HttpResponse
               body = rawBody;
             }
           }
-          resolve({ status: res.statusCode ?? 0, headers: res.headers, body: body as T, rawBody });
+          resolve({ status: res.statusCode ?? 0, headers: res.headers, body: body as T, rawBody, buffer });
         });
       },
     );

@@ -21,7 +21,11 @@ export type OrderEventAction =
   | 'boleto_emitido'
   | 'boleto_erro'
   | 'boleto_pago'
-  | 'boleto_baixado';
+  | 'boleto_baixado'
+  | 'nf_enviada'
+  | 'nf_autorizada'
+  | 'nf_rejeitada'
+  | 'nf_cancelada';
 
 export interface OrderEventDTO {
   id: string;

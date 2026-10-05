@@ -1,12 +1,12 @@
 /**
  * Contrato do provedor fiscal (NF-e modelo 55).
  *
- * O PRIGOR não fala direto com a SEFAZ: um provedor (Focus NFe, Nuvem Fiscal,
- * PlugNotas…) assina com o certificado A1, transmite, guarda o XML e devolve
- * o DANFE. Todo provedor implementa esta interface; trocar de provedor é
- * trocar o adapter, sem mexer em pedido, tela ou banco.
+ * O PRIGOR não fala direto com a SEFAZ: o provedor assina com o certificado A1
+ * (enviado no painel dele), transmite, guarda o XML e gera o DANFE. Todo
+ * provedor implementa esta interface; trocar de provedor é trocar o adapter.
  *
- * O adapter concreto entra na fase 4, depois da escolha do provedor.
+ * Dinheiro e quantidade chegam como string decimal (nunca number) e só viram
+ * número na borda, dentro do adapter.
  */
 
 export interface FiscalAddress {
@@ -15,7 +15,7 @@ export interface FiscalAddress {
   complement?: string | null;
   neighborhood: string;
   city: string;
-  cityIbgeCode?: string | null;
+  cityIbgeCode: string;
   state: string;
   zipCode: string;
 }
@@ -25,61 +25,71 @@ export interface FiscalInvoiceItem {
   description: string;
   ncm: string;
   cfop: string;
+  csosn: string;
   unit: string;
-  quantity: string; // decimal em string — nunca number
+  quantity: string;
   unitPrice: string;
   total: string;
-  discount?: string;
 }
 
+/** Códigos de forma de pagamento da NF-e (tPag). */
+export type FiscalPaymentCode = '01' | '03' | '04' | '15' | '17' | '99';
+
 export interface FiscalInvoiceRequest {
-  /** Referência única (idempotência) — `NF-<pedido>-<seq>`. */
+  /** Nossa referência (idempotência) — `NF-<pedido>-<seq>`. */
   ref: string;
   environment: 'homologacao' | 'producao';
-  series: number;
-  issuedAt: string; // ISO
-  operationNature: string; // ex.: "Venda de mercadoria"
-  issuer: { cnpj: string; ie: string; crt: number; csosn: string };
+  operationNature: string;
   recipient: {
     name: string;
     cnpj?: string | null;
     cpf?: string | null;
     ie?: string | null;
-    ieIndicator?: string | null;
     email?: string | null;
     address: FiscalAddress;
   };
   items: FiscalInvoiceItem[];
-  shipping?: string;
-  discount?: string;
-  total: string;
+  payments: Array<{ code: FiscalPaymentCode; value: string }>;
   additionalInfo?: string | null;
 }
 
 export type FiscalInvoiceStatus = 'processando' | 'autorizada' | 'rejeitada' | 'cancelada' | 'erro';
 
 export interface FiscalInvoiceResult {
-  ref: string;
+  /** Id da nota no provedor. */
+  providerId: string;
   status: FiscalInvoiceStatus;
   number?: number | null;
   series?: number | null;
   accessKey?: string | null;
-  xmlUrl?: string | null;
-  danfeUrl?: string | null;
   rejectionReason?: string | null;
+  authorizedAt?: string | null;
   raw: unknown;
 }
 
 export interface FiscalProvider {
   readonly name: string;
   issue(request: FiscalInvoiceRequest): Promise<FiscalInvoiceResult>;
-  get(ref: string): Promise<FiscalInvoiceResult>;
-  cancel(ref: string, reason: string): Promise<FiscalInvoiceResult>;
+  get(providerId: string): Promise<FiscalInvoiceResult>;
+  cancel(providerId: string, reason: string): Promise<FiscalInvoiceResult>;
+  danfe(providerId: string): Promise<Buffer>;
+  xml(providerId: string): Promise<Buffer>;
 }
 
 export class FiscalProviderNotConfiguredError extends Error {
   constructor(missing: string[]) {
     super(`Emissão de nota fiscal não configurada: falta ${missing.join(', ')}.`);
     this.name = 'FiscalProviderNotConfiguredError';
+  }
+}
+
+export class FiscalProviderError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly body: unknown,
+  ) {
+    super(message);
+    this.name = 'FiscalProviderError';
   }
 }

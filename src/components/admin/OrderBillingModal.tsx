@@ -1,12 +1,12 @@
 'use client';
 
 /**
- * Faturamento do pedido: caminho do BOLETO (Sicoob).
- * Emissão é manual e só da gerência — este modal fica na tela de pedidos do admin.
- * O caminho da nota fiscal entra aqui na fase 4.
+ * Faturamento do pedido: dois caminhos independentes e manuais (só gerência):
+ *  - BOLETO (Sicoob);
+ *  - NOTA FISCAL (NF-e via provedor fiscal).
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { Ban, Copy, FileText, Landmark, Loader2, Plus, RefreshCw, X } from 'lucide-react';
+import { Ban, Copy, FileCode, FileText, Landmark, Loader2, Plus, Receipt, RefreshCw, X } from 'lucide-react';
 
 import { useToast } from '@/components/shared/Toast';
 import { responseErrorMessage } from '@/lib/errors';
@@ -220,12 +220,202 @@ export default function OrderBillingModal({ order, onClose }: { order: BillingOr
             </ul>
           )}
 
-          <div className="border-t border-stone-100 pt-3">
-            <p className="text-xs font-black text-stone-400 uppercase tracking-widest">Nota fiscal</p>
-            <p className="text-[11px] text-stone-400">Em breve.</p>
-          </div>
+          <InvoiceSection order={order} />
         </div>
       </div>
     </div>
   );
 }
+
+// ─── Nota fiscal ────────────────────────────────────────────────────────────
+
+interface Invoice {
+  id: string;
+  ref: string;
+  number: number | null;
+  series: number | null;
+  accessKey: string | null;
+  status: 'processando' | 'autorizada' | 'rejeitada' | 'cancelada' | 'erro';
+  rejectionReason: string | null;
+  authorizedAt: string | null;
+  canCancel: boolean;
+  environment: string | null;
+}
+
+const NF_STATUS: Record<Invoice['status'], { label: string; cls: string }> = {
+  processando: { label: 'Processando', cls: 'bg-sky-50 text-sky-700 border border-sky-100' },
+  autorizada: { label: 'Autorizada', cls: 'bg-emerald-50 text-emerald-700 border border-emerald-100' },
+  rejeitada: { label: 'Rejeitada', cls: 'bg-red-50 text-red-700 border border-red-100' },
+  cancelada: { label: 'Cancelada', cls: 'bg-stone-100 text-stone-500' },
+  erro: { label: 'Erro', cls: 'bg-red-50 text-red-700 border border-red-100' },
+};
+
+function InvoiceSection({ order }: { order: BillingOrder }) {
+  const { toast, confirm } = useToast();
+  const [notas, setNotas] = useState<Invoice[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [cancelId, setCancelId] = useState<string | null>(null);
+  const [reason, setReason] = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/orders/${order.id}/notas`);
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao carregar notas.'));
+      const d = (await res.json()) as { data?: Invoice[] };
+      setNotas(d.data ?? []);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Erro ao carregar notas.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [order.id, toast]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const post = async (key: string, url: string, okMsg: string, body?: unknown) => {
+    setBusy(key);
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}),
+      });
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro na operação.'));
+      toast(okMsg, 'success');
+      return true;
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Erro na operação.', 'error');
+      return false;
+    } finally {
+      setBusy(null);
+      await load();
+    }
+  };
+
+  const issue = async () => {
+    const ok = await confirm({
+      title: 'Emitir NF-e',
+      message: `Emitir nota fiscal de ${brl(order.total)} para ${order.customerName ?? 'o cliente'} (pedido #${order.numero})?`,
+      confirmLabel: 'Emitir NF-e',
+      cancelLabel: 'Voltar',
+    });
+    if (ok) await post('issue', `/api/orders/${order.id}/notas`, 'Nota enviada. Clique em "Atualizar status" em alguns segundos.');
+  };
+
+  const open = async (n: Invoice, kind: 'danfe' | 'xml') => {
+    setBusy(`${kind}-${n.id}`);
+    try {
+      const res = await fetch(`/api/notas/${n.id}/${kind}`);
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao baixar o documento.'));
+      const url = URL.createObjectURL(await res.blob());
+      if (kind === 'danfe') window.open(url, '_blank');
+      else {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `nfe-${n.number ?? n.ref}.xml`;
+        a.click();
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Erro ao baixar o documento.', 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const hasActive = notas.some((n) => n.status === 'processando' || n.status === 'autorizada');
+  const btn = 'inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-stone-200 text-[11px] font-bold hover:bg-stone-50 disabled:opacity-50 cursor-pointer';
+
+  return (
+    <div className="border-t border-stone-100 pt-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-black text-amber-700 uppercase tracking-widest flex items-center gap-1">
+            <Receipt className="h-3.5 w-3.5" /> Nota fiscal (NF-e)
+          </p>
+          <p className="text-[11px] text-stone-500">Confere cadastro e dados fiscais antes de enviar.</p>
+        </div>
+        {!hasActive && order.status !== 'cancelado' && (
+          <button onClick={issue} disabled={busy !== null} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-stone-900 text-white text-xs font-bold disabled:opacity-60 cursor-pointer">
+            {busy === 'issue' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Emitir NF-e
+          </button>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-4 text-stone-400"><Loader2 className="h-5 w-5 animate-spin" /></div>
+      ) : notas.length === 0 ? (
+        <p className="text-sm text-stone-400 text-center py-2">Nenhuma nota emitida para este pedido.</p>
+      ) : (
+        <ul className="space-y-3">
+          {notas.map((n) => (
+            <li key={n.id} className="rounded-xl border border-stone-200 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-mono text-stone-600">
+                  {n.number ? `NF-e nº ${n.number}${n.series ? ` série ${n.series}` : ''}` : n.ref}
+                  {n.environment === 'homologacao' && <span className="ml-1 text-[9px] font-bold text-amber-700">(TESTE)</span>}
+                </span>
+                <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${NF_STATUS[n.status].cls}`}>{NF_STATUS[n.status].label}</span>
+              </div>
+              {n.accessKey && <p className="text-[10px] font-mono text-stone-500 break-all">Chave: {n.accessKey}</p>}
+              {n.rejectionReason && <p className="text-[11px] text-red-700 bg-red-50 rounded p-2">{n.rejectionReason}</p>}
+              <div className="flex flex-wrap gap-1.5">
+                {(n.status === 'processando' || n.status === 'autorizada') && (
+                  <button className={btn} disabled={busy !== null} onClick={() => post(`ref-${n.id}`, `/api/notas/${n.id}/atualizar`, 'Status atualizado.')}>
+                    {busy === `ref-${n.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Atualizar status
+                  </button>
+                )}
+                {(n.status === 'autorizada' || n.status === 'cancelada') && (
+                  <>
+                    <button className={btn} disabled={busy !== null} onClick={() => open(n, 'danfe')}>
+                      {busy === `danfe-${n.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />} DANFE
+                    </button>
+                    <button className={btn} disabled={busy !== null} onClick={() => open(n, 'xml')}>
+                      {busy === `xml-${n.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileCode className="h-3.5 w-3.5" />} XML
+                    </button>
+                  </>
+                )}
+                {n.status === 'autorizada' && n.canCancel && cancelId !== n.id && (
+                  <button className={`${btn} text-red-700`} disabled={busy !== null} onClick={() => { setCancelId(n.id); setReason(''); }}>
+                    <Ban className="h-3.5 w-3.5" /> Cancelar NF
+                  </button>
+                )}
+                {(n.status === 'erro' || n.status === 'rejeitada') && (
+                  <button className={btn} disabled={busy !== null} onClick={() => post(`del-${n.id}`, `/api/notas/${n.id}/descartar`, 'Tentativa descartada.')}>
+                    <X className="h-3.5 w-3.5" /> Descartar
+                  </button>
+                )}
+              </div>
+              {cancelId === n.id && (
+                <div className="space-y-2 bg-red-50/50 rounded-lg p-2">
+                  <textarea
+                    rows={2}
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    placeholder="Motivo do cancelamento (mínimo 15 caracteres)"
+                    className="w-full px-2 py-1.5 rounded border border-stone-200 text-xs"
+                  />
+                  <div className="flex gap-1.5 justify-end">
+                    <button className={btn} onClick={() => setCancelId(null)}>Voltar</button>
+                    <button
+                      className={`${btn} text-red-700`}
+                      disabled={busy !== null || reason.trim().length < 15}
+                      onClick={async () => {
+                        if (await post(`can-${n.id}`, `/api/notas/${n.id}/cancelar`, 'Cancelamento enviado. Atualize o status em instantes.', { reason: reason.trim() })) setCancelId(null);
+                      }}
+                    >
+                      Confirmar cancelamento
+                    </button>
+                  </div>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+

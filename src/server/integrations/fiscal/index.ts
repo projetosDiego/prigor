@@ -1,14 +1,14 @@
-/**
- * Escolhe o adapter do provedor fiscal conforme `FISCAL_PROVIDER`.
- * Nenhum adapter concreto ainda: entra na fase 4, depois da escolha.
- */
+/** Escolhe o adapter do provedor fiscal conforme `FISCAL_PROVIDER`. */
 import { integrationStatus } from '../config';
+import { notaasProvider } from './notaas';
 import { FiscalProviderNotConfiguredError, type FiscalProvider } from './provider';
 
 export function fiscalProvider(): FiscalProvider {
   const status = integrationStatus().fiscal;
   if (!status.ready) throw new FiscalProviderNotConfiguredError(status.missing);
-  throw new FiscalProviderNotConfiguredError([`adapter para "${status.provider}" (fase 4)`]);
+  if (status.provider === 'notaas') return notaasProvider;
+  throw new FiscalProviderNotConfiguredError([`adapter para "${status.provider}"`]);
 }
 
-export type { FiscalProvider } from './provider';
+export { FiscalProviderError, FiscalProviderNotConfiguredError } from './provider';
+export type { FiscalProvider, FiscalInvoiceRequest, FiscalInvoiceResult } from './provider';

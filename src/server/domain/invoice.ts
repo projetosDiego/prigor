@@ -77,12 +77,21 @@ export function invoiceReadinessProblems(input: {
   issuer: InvoiceIssuer | null;
   customer: InvoiceCustomer;
   items: InvoiceItem[];
+  /**
+   * Quando o provedor guarda os dados do emitente (CNPJ, IE, endereço — caso da
+   * Notaas), só se confere aqui o que o PRIGOR envia: UF e CSOSN padrão.
+   */
+  issuerManagedByProvider?: boolean;
 }): string[] {
   const problems: string[] = [];
   const { issuer, customer, items } = input;
 
   // Emitente
-  if (!issuer) {
+  if (input.issuerManagedByProvider) {
+    if (!issuer || blank(issuer.state)) problems.push('Configuração Fiscal: UF da empresa não informada.');
+    if (!issuer || blank(issuer.defaultCsosn))
+      problems.push('Configuração Fiscal: CSOSN padrão não informado (confirmar com o contador).');
+  } else if (!issuer) {
     problems.push('Configuração fiscal da empresa não preenchida (Admin › Configuração fiscal).');
   } else {
     if (onlyDigits(issuer.cnpj).length !== 14) problems.push('Empresa: CNPJ do emitente inválido ou vazio.');
@@ -119,3 +128,43 @@ export function invoiceReadinessProblems(input: {
 
   return problems;
 }
+
+// ─── Pagamento e ajustes do pedido ──────────────────────────────────────────
+
+/** Código tPag da NF-e a partir do nome da forma de pagamento do pedido. */
+export function paymentCodeFor(paymentMethod: string | null | undefined): '01' | '03' | '04' | '15' | '17' | '99' {
+  const s = (paymentMethod ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (s.includes('boleto')) return '15';
+  if (s.includes('pix')) return '17';
+  if (s.includes('debito')) return '04';
+  if (s.includes('credito') || s.includes('cartao')) return '03';
+  if (s.includes('dinheiro') || s.includes('especie')) return '01';
+  return '99';
+}
+
+/**
+ * Desconto/frete/outros custos no pedido mudam o cálculo dos totais da NF.
+ * Enquanto o envio desses campos à Notaas não for validado em homologação,
+ * a emissão é bloqueada com mensagem clara em vez de gerar nota com total errado.
+ */
+export function invoiceAdjustmentsBlocker(input: {
+  discount: string;
+  shipping: string;
+  otherCosts: string;
+  itemDiscounts: string[];
+}): string | null {
+  const nonZero = (v: string) => Math.abs(Number(v) || 0) > 0.0049;
+  const parts: string[] = [];
+  if (nonZero(input.discount) || input.itemDiscounts.some(nonZero)) parts.push('desconto');
+  if (nonZero(input.shipping)) parts.push('frete');
+  if (nonZero(input.otherCosts)) parts.push('outros custos');
+  if (!parts.length) return null;
+  return `Este pedido tem ${parts.join(', ')}. A emissão de NF com esses valores ainda não foi validada — emita esta nota pelo painel da Notaas por enquanto.`;
+}
+
+/** NF-e só pode ser cancelada até 24h após a autorização. */
+export function canCancelInvoice(authorizedAt: Date | null, now: Date): boolean {
+  if (!authorizedAt) return false;
+  return now.getTime() - authorizedAt.getTime() <= 24 * 60 * 60 * 1000;
+}
+
