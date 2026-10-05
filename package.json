@@ -5,6 +5,7 @@
   "scripts": {
     "bootstrap": "node scripts/bootstrap.mjs",
     "dev": "next dev",
+    "dev:leve": "node scripts/check-env.mjs && next dev --webpack",
     "predev": "node scripts/check-env.mjs",
     "build": "prisma generate && next build",
     "start": "next start",
