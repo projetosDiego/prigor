@@ -37,7 +37,9 @@ export function buildNotaasPayload(req: FiscalInvoiceRequest): Record<string, un
     dest: {
       ...(cnpj.length === 14 ? { cnpj } : { cpf }),
       nome: req.recipient.name.trim().slice(0, 60),
-      ...(ie ? { ie } : {}),
+      indicadorIE: req.recipient.ieIndicator,
+      // IE só vai para contribuinte (1); isento/não contribuinte omitem.
+      ...(req.recipient.ieIndicator === 1 && ie ? { ie } : {}),
       ...(req.recipient.email ? { email: req.recipient.email.trim() } : {}),
       endereco: {
         logradouro: a.street.trim().slice(0, 60),

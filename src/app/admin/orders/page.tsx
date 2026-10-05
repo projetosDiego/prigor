@@ -2206,6 +2206,7 @@ export default function OrdersPage() {
         <OrderBillingModal
           order={{
             id: billingOrder.id,
+            customerId: billingOrder.customerId,
             numero: billingOrder.numero,
             total: billingOrder.total,
             dueDate: billingOrder.dueDate,

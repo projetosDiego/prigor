@@ -8,6 +8,7 @@
 import { requireUser } from '@/server/auth/guard';
 import { notFound } from '@/server/http/errors';
 import { logger } from '@/server/http/logger';
+import { CnpjLookupError, lookupStateRegistration } from '@/server/integrations/cnpjws';
 import { ok, route } from '@/server/http/respond';
 import { parseQuery } from '@/server/validation/common';
 import { cnpjQuerySchema } from '@/server/validation/crm';
@@ -135,7 +136,19 @@ export const GET = route('ferramentas.cnpj', async (request) => {
 
       const normalized = source.normalize(json, cnpj);
       if (normalized) {
-        return ok({ success: true, source: source.name, ...normalized });
+        // IE vem de outra base (CNPJ.ws). Melhor esforço: se falhar, o resto vale igual.
+        let fiscal: { inscricao_estadual: string | null; indicador_ie: string | null; aviso_ie?: string } = {
+          inscricao_estadual: null,
+          indicador_ie: null,
+        };
+        try {
+          const reg = await lookupStateRegistration(cnpj, normalized.uf);
+          fiscal = { inscricao_estadual: reg.ie, indicador_ie: reg.indicator };
+        } catch (error) {
+          fiscal.aviso_ie =
+            error instanceof CnpjLookupError ? error.message : 'Não foi possível consultar a Inscrição Estadual agora.';
+        }
+        return ok({ success: true, source: source.name, ...normalized, ...fiscal });
       }
     } catch (error) {
       logger.debug('base de CNPJ indisponível', {

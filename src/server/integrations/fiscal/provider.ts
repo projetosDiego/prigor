@@ -45,6 +45,8 @@ export interface FiscalInvoiceRequest {
     cnpj?: string | null;
     cpf?: string | null;
     ie?: string | null;
+    /** indIEDest: 1 contribuinte · 2 isento · 9 não contribuinte. */
+    ieIndicator: 1 | 2 | 9;
     email?: string | null;
     address: FiscalAddress;
   };

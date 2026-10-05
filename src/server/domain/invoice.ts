@@ -168,3 +168,13 @@ export function canCancelInvoice(authorizedAt: Date | null, now: Date): boolean 
   return now.getTime() - authorizedAt.getTime() <= 24 * 60 * 60 * 1000;
 }
 
+/**
+ * indIEDest da NF-e: 1 contribuinte (com IE), 2 isento, 9 não contribuinte.
+ * IE preenchida manda; sem IE, vale o indicador gravado; sem nada → 9.
+ */
+export function ieIndicatorFor(ie: string | null | undefined, indicator: string | null | undefined): 1 | 2 | 9 {
+  if ((ie ?? '').replace(/\D/g, '').length > 0) return 1;
+  if (indicator === '2') return 2;
+  return 9;
+}
+

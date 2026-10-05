@@ -158,6 +158,9 @@ export const customerInputSchema = z.object({
   active: z.boolean().default(true),
   creditLimit: money('Limite de crédito').default('0.00'),
   /** Só a gerência altera (o serviço descarta para vendedor). */
+  /** Inscrição Estadual e indicador (1 contribuinte · 2 isento · 9 não contribuinte). */
+  ie: optionalText(20),
+  ieIndicator: z.union([z.enum(['1', '2', '9']), z.null()]).optional(),
   boletoAllowed: z.boolean().default(false),
   invoiceRequired: z.boolean().default(false),
 });

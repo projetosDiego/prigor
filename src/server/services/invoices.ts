@@ -20,6 +20,7 @@ import { type SessionPayload, isManagement } from '../auth/guard';
 import { buildInvoiceRef, nextSequence } from '../domain/billing';
 import {
   canCancelInvoice,
+  ieIndicatorFor,
   invoiceAdjustmentsBlocker,
   invoiceReadinessProblems,
   paymentCodeFor,
@@ -32,6 +33,7 @@ import {
   FiscalProviderNotConfiguredError,
   type FiscalInvoiceResult,
 } from '../integrations/fiscal';
+import { lookupStateRegistration } from '../integrations/cnpjws';
 import { logOrderEvent } from './order-history';
 import { timestamp } from './serializers';
 
@@ -178,9 +180,10 @@ export async function issueInvoice(session: SessionPayload, orderId: string): Pr
       shipping: true,
       otherCosts: true,
       paymentMethod: true,
+      customerId: true,
       customer: {
         select: {
-          tradeName: true, legalName: true, cnpj: true, cpf: true, ie: true, email: true,
+          tradeName: true, legalName: true, cnpj: true, cpf: true, ie: true, ieIndicator: true, email: true,
           address: true, number: true, complement: true, neighborhood: true, city: true, state: true, zipCode: true,
         },
       },
@@ -200,7 +203,20 @@ export async function issueInvoice(session: SessionPayload, orderId: string): Pr
   }
 
   const settings = await prisma.fiscalSettings.findFirst();
-  const c = order.customer;
+  const c = { ...order.customer };
+
+  // IE nunca verificada em cliente com CNPJ → consulta automática (CNPJ.ws) e grava.
+  // Falha na consulta não trava: segue como não contribuinte e a SEFAZ dirá se precisar.
+  if ((c.cnpj ?? '').replace(/\D/g, '').length === 14 && !c.ie && !c.ieIndicator) {
+    try {
+      const reg = await lookupStateRegistration(c.cnpj!, c.state);
+      await prisma.customer.update({ where: { id: order.customerId }, data: { ie: reg.ie, ieIndicator: reg.indicator } });
+      c.ie = reg.ie;
+      c.ieIndicator = reg.indicator;
+    } catch (error) {
+      logger.warn('consulta automática de IE falhou', { route: 'invoices.issue', error });
+    }
+  }
   const isConsumer = (c.cnpj ?? '').replace(/\D/g, '').length !== 14;
   if (isConsumer && !settings?.invoiceForConsumers) {
     throw conflict('Cliente sem CNPJ. Para emitir NF para pessoa física, ative a opção em Configuração Fiscal.');
@@ -261,6 +277,7 @@ export async function issueInvoice(session: SessionPayload, orderId: string): Pr
         cnpj: c.cnpj,
         cpf: c.cpf,
         ie: c.ie,
+        ieIndicator: ieIndicatorFor(c.ie, c.ieIndicator),
         email: c.email,
         address: {
           street: c.address ?? '',

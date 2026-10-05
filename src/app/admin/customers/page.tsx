@@ -80,6 +80,9 @@ interface CnpjLookup {
   complemento?: string;
   bairro?: string;
   cep?: string;
+  inscricao_estadual?: string | null;
+  indicador_ie?: '1' | '2' | '9' | null;
+  aviso_ie?: string;
 }
 
 /** Resposta da consulta de CEP. */
@@ -163,6 +166,8 @@ export default function AdminCustomersPage() {
   const [formCreditLimit, setFormCreditLimit] = useState('0');
   const [formBoletoAllowed, setFormBoletoAllowed] = useState(false);
   const [formInvoiceRequired, setFormInvoiceRequired] = useState(false);
+  const [formIe, setFormIe] = useState('');
+  const [formIeIndicator, setFormIeIndicator] = useState<'' | '1' | '2' | '9'>('');
   const [editCustomerId, setEditCustomerId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [cnpjLoading, setCnpjLoading] = useState(false);
@@ -370,7 +375,18 @@ export default function AdminCustomersPage() {
       setFormComplement(data.complemento || '');
       setFormNeighborhood(data.bairro || '');
       setFormZipCode(data.cep || '');
-      toast('Dados preenchidos a partir da Receita Federal!', 'success');
+      if (data.indicador_ie) {
+        setFormIe(data.inscricao_estadual ?? '');
+        setFormIeIndicator(data.indicador_ie);
+      }
+      toast(
+        data.aviso_ie
+          ? `Dados preenchidos. IE não consultada: ${data.aviso_ie}`
+          : data.inscricao_estadual
+            ? `Dados preenchidos. IE ${data.inscricao_estadual} encontrada (contribuinte).`
+            : 'Dados preenchidos. Sem IE ativa — não contribuinte.',
+        data.aviso_ie ? 'error' : 'success',
+      );
     } catch (err: unknown) {
       toast('Erro ao buscar CNPJ: ' + errorMessage(err), 'error');
     } finally {
@@ -479,6 +495,8 @@ export default function AdminCustomersPage() {
     setFormCreditLimit('0');
     setFormBoletoAllowed(false);
     setFormInvoiceRequired(false);
+    setFormIe('');
+    setFormIeIndicator('');
   };
 
   const openCreateCustomer = () => {
@@ -505,6 +523,8 @@ export default function AdminCustomersPage() {
     setFormCreditLimit(String(cust.creditLimit ?? 0));
     setFormBoletoAllowed(!!cust.boletoAllowed);
     setFormInvoiceRequired(!!cust.invoiceRequired);
+    setFormIe(cust.ie ?? '');
+    setFormIeIndicator((cust.ieIndicator as '' | '1' | '2' | '9') ?? '');
     setEditCustomerId(cust.id);
     setIsCreateModalOpen(true);
   };
@@ -537,6 +557,8 @@ export default function AdminCustomersPage() {
       creditLimit: formCreditLimit || '0',
       boletoAllowed: formBoletoAllowed,
       invoiceRequired: formInvoiceRequired,
+      ie: formIe.replace(/\D/g, '') || null,
+      ieIndicator: formIeIndicator || null,
     };
     // Na criação fixa coordenadas padrão e status; na edição não sobrescreve o pin.
     if (!isEdit) {
@@ -1174,6 +1196,29 @@ export default function AdminCustomersPage() {
                     >
                       {cnpjLoading ? <Loader2 className="h-4 w-4 animate-spin text-white" /> : 'Consultar CNPJ'}
                     </button>
+                    <div className="col-span-2">
+                      <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">Inscrição Estadual</label>
+                      <input
+                        type="text"
+                        placeholder="Preenchida pelo Consultar CNPJ"
+                        value={formIe}
+                        onChange={(e) => { setFormIe(e.target.value); if (e.target.value.trim()) setFormIeIndicator('1'); }}
+                        className="w-full px-3 py-2 rounded-lg border border-stone-200 bg-white focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1">Contribuinte ICMS</label>
+                      <select
+                        value={formIeIndicator}
+                        onChange={(e) => setFormIeIndicator(e.target.value as '' | '1' | '2' | '9')}
+                        className="w-full px-2 py-2 rounded-lg border border-stone-200 bg-white focus:outline-none text-[11px]"
+                      >
+                        <option value="">Não verificado</option>
+                        <option value="1">Contribuinte</option>
+                        <option value="2">Isento</option>
+                        <option value="9">Não contribuinte</option>
+                      </select>
+                    </div>
                   </div>
                 ) : (
                   <div>

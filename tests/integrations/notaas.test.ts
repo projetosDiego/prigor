@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { buildNotaasPayload, parseNotaasInvoice } from '@/server/integrations/fiscal/notaas';
 import type { FiscalInvoiceRequest } from '@/server/integrations/fiscal/provider';
-import { canCancelInvoice, invoiceAdjustmentsBlocker, paymentCodeFor } from '@/server/domain/invoice';
+import { canCancelInvoice, ieIndicatorFor, invoiceAdjustmentsBlocker, paymentCodeFor } from '@/server/domain/invoice';
 
 type Payload = Record<string, unknown> & {
   dest: Record<string, unknown> & { endereco: Record<string, unknown> };
@@ -18,6 +18,7 @@ const req: FiscalInvoiceRequest = {
     name: 'Padaria Exemplo LTDA',
     cnpj: '11.222.333/0001-81',
     ie: '12.345.678',
+    ieIndicator: 1,
     email: 'compras@padaria.com',
     address: {
       street: 'Rua A', number: '10', neighborhood: 'Centro', city: 'Rio de Janeiro',
@@ -34,7 +35,7 @@ describe('buildNotaasPayload', () => {
   it('monta NF-e modelo 55 em homologação com destinatário PJ', () => {
     const p = buildNotaasPayload(req) as Payload;
     expect(p).toMatchObject({ modelo: 55, tpAmb: 2, referencia: 'NF-11001-1', naturezaOperacao: 'Venda de mercadoria' });
-    expect(p.dest).toMatchObject({ cnpj: '11222333000181', ie: '12345678', nome: 'Padaria Exemplo LTDA' });
+    expect(p.dest).toMatchObject({ cnpj: '11222333000181', ie: '12345678', indicadorIE: 1, nome: 'Padaria Exemplo LTDA' });
     expect(p.dest.cpf).toBeUndefined();
     expect(p.dest.endereco).toMatchObject({ codigoMunicipio: 3304557, uf: 'RJ', cep: '20000000', numero: '10' });
     expect(p.items[0]).toMatchObject({ ncm: '19059090', cfop: '5101', csosn: '102', quantidade: 10, valorUnitario: 4.9, valorTotal: 49, unidade: 'UN' });
@@ -42,8 +43,9 @@ describe('buildNotaasPayload', () => {
   });
 
   it('produção usa tpAmb 1 e PF manda CPF', () => {
-    const p = buildNotaasPayload({ ...req, environment: 'producao', recipient: { ...req.recipient, cnpj: null, cpf: '123.456.789-09', ie: null } }) as Payload;
+    const p = buildNotaasPayload({ ...req, environment: 'producao', recipient: { ...req.recipient, cnpj: null, cpf: '123.456.789-09', ie: null, ieIndicator: 9 } }) as Payload;
     expect(p.tpAmb).toBe(1);
+    expect(p.dest.indicadorIE).toBe(9);
     expect(p.dest.cpf).toBe('12345678909');
     expect(p.dest.ie).toBeUndefined();
   });
@@ -66,6 +68,20 @@ describe('parseNotaasInvoice', () => {
   });
   it('usa o id conhecido quando a consulta não devolve', () => {
     expect(parseNotaasInvoice({ status: 'cancelled' }, 'xyz')).toMatchObject({ providerId: 'xyz', status: 'cancelada' });
+  });
+});
+
+describe('indicador de IE', () => {
+  it('IE preenchida = contribuinte; senão vale o indicador; padrão não contribuinte', () => {
+    expect(ieIndicatorFor('86123456', null)).toBe(1);
+    expect(ieIndicatorFor(null, '2')).toBe(2);
+    expect(ieIndicatorFor('', '9')).toBe(9);
+    expect(ieIndicatorFor(null, null)).toBe(9);
+  });
+  it('não contribuinte não manda IE para a Notaas', () => {
+    const p = buildNotaasPayload({ ...req, recipient: { ...req.recipient, ieIndicator: 9 } }) as Payload;
+    expect(p.dest.ie).toBeUndefined();
+    expect(p.dest.indicadorIE).toBe(9);
   });
 });
 

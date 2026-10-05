@@ -9,7 +9,8 @@ import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 
 import { prisma, prismaErrorCode, UNIQUE_VIOLATION } from '../db';
-import { conflict, notFound } from '../http/errors';
+import { badRequest, conflict, notFound, rateLimited } from '../http/errors';
+import { CnpjLookupError, lookupStateRegistration } from '../integrations/cnpjws';
 import { isManagement, sellerScope, type SessionPayload } from '../auth/guard';
 import { paginated, toCustomerDTO, type CustomerDTO, type Paginated } from './serializers';
 import type {
@@ -128,6 +129,8 @@ function toPersistable(
     'creditLimit',
     'boletoAllowed',
     'invoiceRequired',
+    'ie',
+    'ieIndicator',
   ];
 
   for (const key of keys) {
@@ -136,6 +139,7 @@ function toPersistable(
   }
 
   if (typeof data.state === 'string') data.state = (data.state as string).toUpperCase();
+  if (typeof data.ie === 'string') data.ie = (data.ie as string).replace(/\D/g, '') || null;
 
   // A copia e feita por lista de chaves, entao o TypeScript so ve
   // `Record<string, unknown>`. Quem garante os campos obrigatorios e o zod,
@@ -296,3 +300,50 @@ export async function getCustomerCredit(
 
   return { creditLimit, openBalance, available, exceeded, hasLimit };
 }
+
+// ─── Inscrição Estadual (consulta pelo CNPJ) ────────────────────────────────
+
+export interface IeRefreshResult {
+  customer: CustomerDTO;
+  ie: string | null;
+  indicator: '1' | '2' | '9';
+  message: string;
+}
+
+/**
+ * Busca a IE do cliente pelo CNPJ (CNPJ.ws) e grava no cadastro.
+ * Sem IE ativa na UF do cliente → grava como não contribuinte (9).
+ */
+export async function refreshCustomerIe(session: SessionPayload, id: string): Promise<IeRefreshResult> {
+  const existing = await prisma.customer.findUnique({
+    where: { id },
+    select: { id: true, sellerId: true, cnpj: true, state: true },
+  });
+  if (!existing) throw notFound('Cliente');
+  if (!isManagement(session) && existing.sellerId !== session.sellerId) throw notFound('Cliente');
+  if ((existing.cnpj ?? '').replace(/\D/g, '').length !== 14) {
+    throw badRequest('Cliente sem CNPJ: a consulta de Inscrição Estadual só vale para empresa.');
+  }
+
+  let reg;
+  try {
+    reg = await lookupStateRegistration(existing.cnpj!, existing.state);
+  } catch (err) {
+    if (err instanceof CnpjLookupError) {
+      throw err.kind === 'rate_limited' ? rateLimited(err.message) : badRequest(err.message);
+    }
+    throw err;
+  }
+
+  const updated = await prisma.customer.update({
+    where: { id },
+    data: { ie: reg.ie, ieIndicator: reg.indicator },
+    include: CUSTOMER_INCLUDE,
+  });
+
+  const message = reg.ie
+    ? `IE ${reg.ie} (${reg.state}) encontrada e gravada — cliente contribuinte.`
+    : `Nenhuma IE ativa em ${reg.state ?? 'sua UF'} — cliente gravado como não contribuinte.`;
+  return { customer: toCustomerDTO(updated), ie: reg.ie, indicator: reg.indicator, message };
+}
+

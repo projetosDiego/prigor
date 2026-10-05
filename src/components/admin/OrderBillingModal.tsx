@@ -14,6 +14,7 @@ import { isBoletoPaymentMethod } from '@/lib/payment-method';
 
 export interface BillingOrder {
   id: string;
+  customerId: string;
   numero: number;
   total: number;
   dueDate: string | null;
@@ -325,7 +326,22 @@ function InvoiceSection({ order }: { order: BillingOrder }) {
     }
   };
 
+  const refreshIe = async () => {
+    setBusy('ie');
+    try {
+      const res = await fetch(`/api/customers/${order.customerId}/atualizar-ie`, { method: 'POST' });
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao consultar a IE.'));
+      const d = (await res.json()) as { message?: string };
+      toast(d.message ?? 'IE do cliente atualizada.', 'success');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Erro ao consultar a IE.', 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const hasActive = notas.some((n) => n.status === 'processando' || n.status === 'autorizada');
+  const ieProblem = notas.some((n) => /\bIE\b|inscri/i.test(n.rejectionReason ?? '') && (n.status === 'rejeitada' || n.status === 'erro'));
   const btn = 'inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-stone-200 text-[11px] font-bold hover:bg-stone-50 disabled:opacity-50 cursor-pointer';
 
   return (
@@ -336,6 +352,14 @@ function InvoiceSection({ order }: { order: BillingOrder }) {
             <Receipt className="h-3.5 w-3.5" /> Nota fiscal (NF-e)
           </p>
           <p className="text-[11px] text-stone-500">Confere cadastro e dados fiscais antes de enviar.</p>
+          <button
+            onClick={refreshIe}
+            disabled={busy !== null}
+            className={`mt-1 inline-flex items-center gap-1 text-[11px] font-bold underline-offset-2 hover:underline disabled:opacity-50 cursor-pointer ${ieProblem ? 'text-red-700' : 'text-stone-500'}`}
+          >
+            {busy === 'ie' ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+            {ieProblem ? 'Problema de IE: atualizar IE do cliente pelo CNPJ' : 'Atualizar IE do cliente pelo CNPJ'}
+          </button>
         </div>
         {!hasActive && order.status !== 'cancelado' && (
           <button onClick={issue} disabled={busy !== null} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-stone-900 text-white text-xs font-bold disabled:opacity-60 cursor-pointer">
