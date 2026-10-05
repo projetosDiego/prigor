@@ -35,6 +35,7 @@ import {
   sicoobIssueBoleto,
   sicoobWriteOffBoleto,
 } from '../integrations/sicoob/boletos';
+import { logger } from '../http/logger';
 import { logOrderEvent } from './order-history';
 import { dateOnly, num, timestamp } from './serializers';
 
@@ -208,8 +209,9 @@ export async function issueBoleto(session: SessionPayload, orderId: string): Pro
     throw err;
   }
 
+  let issued: Awaited<ReturnType<typeof sicoobIssueBoleto>>;
   try {
-    const { boleto, raw } = await sicoobIssueBoleto({
+    issued = await sicoobIssueBoleto({
       seuNumero,
       orderNumber: order.numero,
       value: Number(order.total).toFixed(2),
@@ -230,20 +232,6 @@ export async function issueBoleto(session: SessionPayload, orderId: string): Pro
       instructions: settings?.boletoInstructions ? [settings.boletoInstructions] : [],
     });
 
-    row = await prisma.boleto.update({
-      where: { id: row.id },
-      data: {
-        status: 'registrado',
-        nossoNumero: boleto.nossoNumero,
-        linhaDigitavel: boleto.linhaDigitavel,
-        codigoBarras: boleto.codigoBarras,
-        pixCopiaECola: boleto.pixCopiaECola,
-        lastError: null,
-        raw: raw as Prisma.InputJsonValue,
-      },
-    });
-    await logOrderEvent(prisma, { orderId: order.id, userId: session.userId, action: 'boleto_emitido', to: seuNumero });
-    return toDTO(row);
   } catch (err) {
     const message =
       err instanceof SicoobNotConfiguredError ? err.message : `Sicoob recusou o boleto: ${describeSicoobError(err)}`;
@@ -258,6 +246,37 @@ export async function issueBoleto(session: SessionPayload, orderId: string): Pro
     await logOrderEvent(prisma, { orderId: order.id, userId: session.userId, action: 'boleto_erro', to: seuNumero });
     throw badRequest(message);
   }
+
+  // O boleto JÁ EXISTE no banco a partir daqui: nunca marcar como erro (o
+  // cliente poderia receber dois boletos). Falha ao gravar → guarda o nossoNumero.
+  const { boleto, raw } = issued;
+  try {
+    row = await prisma.boleto.update({
+      where: { id: row.id },
+      data: {
+        status: 'registrado',
+        nossoNumero: boleto.nossoNumero,
+        linhaDigitavel: boleto.linhaDigitavel,
+        codigoBarras: boleto.codigoBarras,
+        pixCopiaECola: boleto.pixCopiaECola,
+        lastError: null,
+        raw: raw as Prisma.InputJsonValue,
+      },
+    });
+  } catch (err) {
+    logger.error('boleto registrado no Sicoob, mas falhou ao gravar o retorno', {
+      route: 'boletos.issue', orderId: order.id, seuNumero, nossoNumero: boleto.nossoNumero, error: err,
+    });
+    await prisma.boleto
+      .update({
+        where: { id: row.id },
+        data: { lastError: `Registrado no Sicoob (nossoNumero ${boleto.nossoNumero}), mas o retorno não foi gravado. Não gere outro.` },
+      })
+      .catch(() => undefined);
+    throw conflict(`O boleto foi registrado no Sicoob (nº ${boleto.nossoNumero}), mas houve erro ao gravar no PRIGOR. Não gere outro.`);
+  }
+  await logOrderEvent(prisma, { orderId: order.id, userId: session.userId, action: 'boleto_emitido', to: seuNumero });
+  return toDTO(row);
 }
 
 // ─── Atualizar status (consulta) ────────────────────────────────────────────

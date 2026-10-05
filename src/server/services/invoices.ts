@@ -250,8 +250,9 @@ export async function issueInvoice(session: SessionPayload, orderId: string): Pr
   }
 
   const csosn = settings!.defaultCsosn!;
+  let result: FiscalInvoiceResult;
   try {
-    const result = await fiscalProvider().issue({
+    result = await fiscalProvider().issue({
       ref,
       environment: integrationEnv().FISCAL_ENV,
       operationNature: 'Venda de mercadoria',
@@ -294,9 +295,6 @@ export async function issueInvoice(session: SessionPayload, orderId: string): Pr
       payments: [{ code: paymentCodeFor(order.paymentMethod), value: String(order.total) }],
       additionalInfo: `Pedido PRIGOR #${order.numero}. Documento emitido por ME ou EPP optante pelo Simples Nacional.`,
     });
-    row = await applyResult(row, result, session.userId);
-    await logOrderEvent(prisma, { orderId: order.id, userId: session.userId, action: 'nf_enviada', to: ref });
-    return toDTO(row);
   } catch (err) {
     const message = `Provedor recusou a nota: ${describeError(err)}`;
     await prisma.invoice.update({
@@ -309,6 +307,26 @@ export async function issueInvoice(session: SessionPayload, orderId: string): Pr
     });
     throw badRequest(message);
   }
+
+  // Daqui em diante a nota EXISTE no provedor: nunca marcar como erro (geraria
+  // nota órfã e permitiria emitir outra). Se gravar o retorno falhar, guarda o
+  // id do provedor no texto para recuperar e devolve erro de sistema.
+  try {
+    row = await applyResult(row, result, session.userId);
+  } catch (err) {
+    logger.error('NF aceita pelo provedor, mas falhou ao gravar o retorno', {
+      route: 'invoices.issue', orderId: order.id, ref, providerId: result.providerId, error: err,
+    });
+    await prisma.invoice
+      .update({
+        where: { id: row.id },
+        data: { rejectionReason: `Enviada ao provedor (id ${result.providerId}), mas o retorno não foi gravado. Não emita outra; chame o suporte técnico.` },
+      })
+      .catch(() => undefined);
+    throw conflict(`A nota foi enviada (id ${result.providerId}), mas houve erro ao gravar o retorno no PRIGOR. Não emita de novo.`);
+  }
+  await logOrderEvent(prisma, { orderId: order.id, userId: session.userId, action: 'nf_enviada', to: ref });
+  return toDTO(row);
 }
 
 // ─── Status, cancelamento, documentos ───────────────────────────────────────
