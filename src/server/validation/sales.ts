@@ -12,6 +12,7 @@ import {
   optionalIsoDate,
   optionalText,
   optionalUuid,
+  partialWithoutDefaults,
   percent,
   quantity,
   requiredText,
@@ -156,11 +157,14 @@ export const customerInputSchema = z.object({
   isReseller: z.boolean().default(false),
   active: z.boolean().default(true),
   creditLimit: money('Limite de crédito').default('0.00'),
+  /** Só a gerência altera (o serviço descarta para vendedor). */
+  boletoAllowed: z.boolean().default(false),
+  invoiceRequired: z.boolean().default(false),
 });
 
 export type CustomerInput = z.infer<typeof customerInputSchema>;
 
-export const customerUpdateSchema = customerInputSchema.partial().refine(
+export const customerUpdateSchema = partialWithoutDefaults(customerInputSchema).refine(
   (v) => Object.keys(v).length > 0,
   'Nada para atualizar.',
 );

@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { responseErrorMessage } from '@/lib/errors';
 import { useToast } from '@/components/shared/Toast';
+import { isBoletoPaymentMethod } from '@/lib/payment-method';
 
 import type {
   CustomerDTO,
@@ -100,6 +101,8 @@ function describeEvent(ev: OrderEvent): string {
       return 'Baixa de pagamento estornada';
     case 'cancelado':
       return 'Pedido cancelado';
+    case 'boleto_sem_liberacao':
+      return `Boleto lançado para cliente não liberado (${ev.to ?? 'boleto'}) — autorizado pela gerência`;
     default:
       return ev.action;
   }
@@ -1703,6 +1706,13 @@ export default function OrdersPage() {
                       <option key={f.id} value={f.name}>{f.name}</option>
                     ))}
                   </select>
+                  {clienteId &&
+                    isBoletoPaymentMethod(formaPagamento) &&
+                    !clientes.find((c) => c.id === clienteId)?.boletoAllowed && (
+                      <p className="text-[10px] text-amber-700 font-semibold mt-1">
+                        ⚠ Cliente não liberado para boleto. Ao salvar, a exceção fica registrada no histórico do pedido.
+                      </p>
+                    )}
                 </div>
 
                 <div>

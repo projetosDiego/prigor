@@ -4,6 +4,7 @@ import { prisma } from '@/server/db';
 import { badRequest } from '@/server/http/errors';
 import { ok, route, readJson } from '@/server/http/respond';
 import { getSellerByCode } from '@/server/services/sellers';
+import { checkBoletoPaymentMethod } from '@/server/domain/billing';
 import { calculateOrder } from '@/server/domain/orders';
 import { num } from '@/server/services/serializers';
 import { sendNewOrderNotification } from '@/server/services/email';
@@ -158,6 +159,20 @@ export const POST = route('public.orders.create', async (request) => {
       });
       customerId = createdCustomer.id;
     }
+  }
+
+  // 2b. Boleto só para cliente liberado pela gerência (cliente novo nunca é).
+  const boletoCustomer = await prisma.customer.findUnique({
+    where: { id: customerId! },
+    select: { boletoAllowed: true },
+  });
+  const boletoCheck = checkBoletoPaymentMethod({
+    paymentMethod,
+    boletoAllowed: boletoCustomer?.boletoAllowed ?? false,
+    isManagement: false,
+  });
+  if (!boletoCheck.ok) {
+    throw badRequest('Pagamento no boleto disponível apenas para clientes liberados. Escolha outra forma de pagamento.');
   }
 
   // 3. Buscar produtos no banco e validar preços

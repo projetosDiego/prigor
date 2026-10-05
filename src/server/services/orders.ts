@@ -5,6 +5,7 @@
  * de uma única transação. Antes, um erro no meio do caminho podia deixar o
  * estoque baixado sem o lançamento correspondente.
  */
+import { checkBoletoPaymentMethod } from '../domain/billing';
 import { calculateOrder, movesStock, type OrderStatus } from '../domain/orders';
 import { planOrderStockMovements, type StockProduct } from '../domain/stock';
 import { resolveUnitPrice } from '../domain/pricing';
@@ -136,6 +137,7 @@ interface PricingContext {
     active: boolean;
   }>;
   isReseller: boolean;
+  boletoAllowed: boolean;
 }
 
 /** Carrega produtos do pedido junto com a ficha técnica dos itens. */
@@ -146,7 +148,7 @@ async function loadPricingContext(
 ): Promise<PricingContext> {
   const customer = await tx.customer.findUnique({
     where: { id: customerId },
-    select: { id: true, isReseller: true, active: true },
+    select: { id: true, isReseller: true, active: true, boletoAllowed: true },
   });
   if (!customer) throw badRequest('Cliente inválido.');
   if (!customer.active) throw badRequest('Este cliente está arquivado.');
@@ -200,7 +202,30 @@ async function loadPricingContext(
     } as never);
   }
 
-  return { products: products as never, isReseller: customer.isReseller };
+  return {
+    products: products as never,
+    isReseller: customer.isReseller,
+    boletoAllowed: customer.boletoAllowed,
+  };
+}
+
+/**
+ * Forma "Boleto…" só para cliente liberado. Vendedor é bloqueado; gerência
+ * passa, mas o pedido ganha um evento na timeline registrando a exceção.
+ * Retorna true quando houve exceção (para registrar depois de ter o id).
+ */
+function enforceBoletoRule(
+  session: SessionPayload,
+  paymentMethod: string,
+  boletoAllowed: boolean,
+): boolean {
+  const check = checkBoletoPaymentMethod({
+    paymentMethod,
+    boletoAllowed,
+    isManagement: isManagement(session),
+  });
+  if (!check.ok) throw badRequest(check.reason);
+  return check.override;
 }
 
 /** Aplica os movimentos planejados: grava histórico e atualiza o saldo. */
@@ -258,6 +283,7 @@ export async function createOrder(
   const created = await prisma.$transaction(async (tx: Tx) => {
     const productIds = input.items.map((item) => item.productId);
     const context = await loadPricingContext(tx, productIds, input.customerId);
+    const boletoOverride = enforceBoletoRule(session, input.paymentMethod, context.boletoAllowed);
 
     const seller = sellerId
       ? await tx.seller.findUnique({ where: { id: sellerId }, select: { id: true, commissionPct: true, active: true } })
@@ -355,6 +381,15 @@ export async function createOrder(
       to: input.status,
     });
 
+    if (boletoOverride) {
+      await logOrderEvent(tx, {
+        orderId: order.id,
+        userId: session.userId,
+        action: 'boleto_sem_liberacao',
+        to: input.paymentMethod,
+      });
+    }
+
     // `OrElseThrow`: a linha acabou de ser criada dentro desta mesma transacao.
     // Com `findUnique` o retorno era `| null` e o serializador quebrava adiante.
     return tx.order.findUniqueOrThrow({ where: { id: order.id }, include: ORDER_INCLUDE });
@@ -409,6 +444,23 @@ export async function updateOrder(
       ]),
     ];
     const context = await loadPricingContext(tx, productIds, customerId);
+
+    // A regra do boleto só é reavaliada quando muda a forma ou o cliente:
+    // editar outra coisa num pedido antigo não pode ficar travado por ela.
+    const paymentOrCustomerChanged =
+      (input.paymentMethod !== undefined && input.paymentMethod !== current.paymentMethod) ||
+      customerId !== current.customerId;
+    const boletoOverride = paymentOrCustomerChanged
+      ? enforceBoletoRule(session, input.paymentMethod ?? current.paymentMethod, context.boletoAllowed)
+      : false;
+    if (boletoOverride) {
+      await logOrderEvent(tx, {
+        orderId: current.id,
+        userId: session.userId,
+        action: 'boleto_sem_liberacao',
+        to: input.paymentMethod ?? current.paymentMethod,
+      });
+    }
 
     // Estorna o estoque do estado anterior antes de recalcular.
     if (movesStock(current.status as OrderStatus)) {

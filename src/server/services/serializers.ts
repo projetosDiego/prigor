@@ -412,6 +412,8 @@ export interface CustomerDTO {
   isReseller: boolean;
   active: boolean;
   creditLimit: number;
+  boletoAllowed: boolean;
+  invoiceRequired: boolean;
   createdAt: string | null;
   lastOrderDate?: string | null;
   daysSinceLastOrder?: number | null;
@@ -472,6 +474,8 @@ export function toCustomerDTO(row: CustomerRow): CustomerDTO {
     isReseller: row.isReseller,
     active: row.active,
     creditLimit: num(row.creditLimit),
+    boletoAllowed: row.boletoAllowed ?? false,
+    invoiceRequired: row.invoiceRequired ?? false,
     createdAt: timestamp(row.createdAt),
     lastOrderDate,
     daysSinceLastOrder,

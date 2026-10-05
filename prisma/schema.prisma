@@ -126,6 +126,23 @@ enum PaymentMethod {
   transferencia
 }
 
+enum BoletoStatus {
+  pendente_registro
+  registrado
+  pago
+  baixado
+  cancelado
+  erro
+}
+
+enum InvoiceStatus {
+  processando
+  autorizada
+  rejeitada
+  cancelada
+  erro
+}
+
 model PaymentOption {
   id        String   @id @default(uuid())
   name      String   @unique @map("nome")
@@ -283,6 +300,10 @@ model Customer {
   birthDate    DateTime? @map("data_nascimento") @db.Date
   isReseller   Boolean   @default(false) @map("is_revendedor")
   creditLimit  Decimal   @default(0) @map("limite_credito") @db.Decimal(12, 2)
+  /// Liberado pela gerência para pagar no boleto. Vendedor só oferece boleto se true.
+  boletoAllowed   Boolean @default(false) @map("boleto_liberado")
+  /// Lembrete: cliente pede nota fiscal. Só sinaliza; não emite nada.
+  invoiceRequired Boolean @default(false) @map("exige_nf")
   addresses    CustomerAddress[]
   active       Boolean   @default(true) @map("ativo")
 
@@ -552,6 +573,8 @@ model Order {
   items          OrderItem[]
   transactions   FinancialTransaction[]
   stockMovements StockMovement[]
+  boletos        Boleto[]
+  invoices       Invoice[]
 
   @@index([customerId])
   @@index([sellerId])
@@ -594,6 +617,7 @@ model FinancialTransaction {
   orderId String?           @map("pedido_id")
   order   Order?            @relation(fields: [orderId], references: [id], onDelete: SetNull)
   notes   String?           @map("observacoes")
+  boletos Boleto[]
 
   createdAt DateTime @default(now()) @map("criado_em")
   updatedAt DateTime @updatedAt @map("atualizado_em")
@@ -774,4 +798,111 @@ model Advance {
   @@index([sellerId])
   @@index([date])
   @@map("adiantamentos")
+}
+
+
+// ─── Faturamento: boleto (Sicoob) e nota fiscal ──────────────────────────────
+//  Ver docs/INTEGRACAO-BOLETO-NF.md. Emissão é sempre manual (gerência);
+//  nada aqui é disparado por mudança de status do pedido.
+
+model Boleto {
+  id             String       @id @default(uuid())
+  orderId        String       @map("pedido_id")
+  order          Order        @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  transactionId  String?      @map("lancamento_id")
+  transaction    FinancialTransaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  /// Idempotência: PRG-<numero do pedido>-<sequência>. Reemissão = sequência nova.
+  seuNumero      String       @unique @map("seu_numero")
+  nossoNumero    String?      @map("nosso_numero")
+  linhaDigitavel String?      @map("linha_digitavel")
+  codigoBarras   String?      @map("codigo_barras")
+  pixCopiaECola  String?      @map("pix_copia_cola")
+  value          Decimal      @map("valor") @db.Decimal(12, 2)
+  dueDate        DateTime     @map("data_vencimento") @db.Date
+  status         BoletoStatus @default(pendente_registro) @map("status")
+  paidAt         DateTime?    @map("data_pagamento") @db.Date
+  paidValue      Decimal?     @map("valor_pago") @db.Decimal(12, 2)
+  pdfPath        String?      @map("pdf_caminho")
+  lastError      String?      @map("ultimo_erro")
+  raw            Json?        @map("resposta_api")
+  createdById    String?      @map("criado_por_id")
+  createdAt      DateTime     @default(now()) @map("criado_em")
+  updatedAt      DateTime     @updatedAt @map("atualizado_em")
+
+  @@index([orderId])
+  @@index([status, dueDate])
+  @@map("boletos")
+}
+
+model Invoice {
+  id              String        @id @default(uuid())
+  orderId         String        @map("pedido_id")
+  order           Order         @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  /// Referência enviada ao provedor fiscal (idempotência): NF-<numero do pedido>-<sequência>.
+  providerRef     String        @unique @map("referencia")
+  number          Int?          @map("numero")
+  series          Int?          @map("serie")
+  accessKey       String?       @unique @map("chave_acesso")
+  status          InvoiceStatus @default(processando) @map("status")
+  xmlPath         String?       @map("xml_caminho")
+  danfePath       String?       @map("danfe_caminho")
+  rejectionReason String?       @map("motivo_rejeicao")
+  authorizedAt    DateTime?     @map("autorizada_em")
+  canceledAt      DateTime?     @map("cancelada_em")
+  raw             Json?         @map("resposta_api")
+  createdById     String?       @map("criado_por_id")
+  createdAt       DateTime      @default(now()) @map("criado_em")
+  updatedAt       DateTime      @updatedAt @map("atualizado_em")
+
+  @@index([orderId])
+  @@index([status])
+  @@map("notas_fiscais")
+}
+
+/// Webhooks recebidos (Sicoob, provedor fiscal). A chave única evita processar o mesmo evento duas vezes.
+model IntegrationEvent {
+  id          String    @id @default(uuid())
+  provider    String    @map("provedor")
+  externalId  String    @map("id_externo")
+  type        String    @map("tipo")
+  payload     Json      @map("payload")
+  processedAt DateTime? @map("processado_em")
+  error       String?   @map("erro")
+  createdAt   DateTime  @default(now()) @map("criado_em")
+
+  @@unique([provider, externalId])
+  @@index([processedAt])
+  @@map("eventos_integracao")
+}
+
+/// Dados do emitente e padrões de faturamento. Linha única.
+model FiscalSettings {
+  id                  String   @id @default(uuid())
+  cnpj                String?  @map("cnpj")
+  ie                  String?  @map("inscricao_estadual")
+  legalName           String?  @map("razao_social")
+  tradeName           String?  @map("nome_fantasia")
+  crt                 Int      @default(4) @map("crt") // 4 = Simples Nacional – MEI (confirmar com o contador)
+  address             String?  @map("endereco")
+  number              String?  @map("numero")
+  complement          String?  @map("complemento")
+  neighborhood        String?  @map("bairro")
+  city                String?  @map("cidade")
+  cityIbgeCode        String?  @map("codigo_ibge_cidade")
+  state               String?  @map("uf")
+  zipCode             String?  @map("cep")
+  phone               String?  @map("telefone")
+  email               String?  @map("email")
+  nfeSeries           Int      @default(1) @map("serie_nfe")
+  nfeEnvironment      String   @default("homologacao") @map("ambiente_nfe") // 'homologacao' | 'producao'
+  defaultCfopInState  String?  @map("cfop_padrao_estadual")
+  defaultCfopOutState String?  @map("cfop_padrao_interestadual")
+  defaultCsosn        String?  @map("csosn_padrao")
+  invoiceForConsumers Boolean  @default(false) @map("emitir_nf_consumidor")
+  boletoInstructions  String?  @map("instrucoes_boleto")
+  boletoFinePct       Decimal? @map("multa_boleto_pct") @db.Decimal(5, 2)
+  boletoInterestPct   Decimal? @map("juros_mes_boleto_pct") @db.Decimal(5, 2)
+  updatedAt           DateTime @updatedAt @map("atualizado_em")
+
+  @@map("config_fiscal")
 }

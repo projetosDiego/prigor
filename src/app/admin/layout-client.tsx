@@ -20,6 +20,7 @@ import {
   DollarSign,
   TrendingUp,
   CreditCard,
+  Receipt,
   Truck,
   Upload,
   ScanLine,
@@ -332,6 +333,16 @@ export default function AdminLayoutClient({ children, session }: AdminLayoutClie
             >
               <CreditCard className="h-4 w-4 text-amber-400" />
               <span>Formas de Pagamento</span>
+            </Link>
+            <Link 
+              href="/admin/fiscal" 
+              onClick={() => setIsMobileMenuOpen(false)}
+              className={`flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                isActive('/admin/fiscal') ? 'bg-amber-600 text-white shadow-xs' : 'hover:bg-stone-800 hover:text-white text-stone-300'
+              }`}
+            >
+              <Receipt className="h-4 w-4 text-amber-400" />
+              <span>Configuração Fiscal</span>
             </Link>
 
             <Link 

@@ -28,3 +28,8 @@ next-env.d.ts
 *.pem
 *.log
 npm-debug.log*
+
+# Certificado digital (nunca versionar)
+*.pfx
+*.p12
+certificado/

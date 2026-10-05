@@ -161,6 +161,8 @@ export default function AdminCustomersPage() {
   const [formSellerId, setFormSellerId] = useState('');
   const [formIsRevendedor, setFormIsRevendedor] = useState(true);
   const [formCreditLimit, setFormCreditLimit] = useState('0');
+  const [formBoletoAllowed, setFormBoletoAllowed] = useState(false);
+  const [formInvoiceRequired, setFormInvoiceRequired] = useState(false);
   const [editCustomerId, setEditCustomerId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [cnpjLoading, setCnpjLoading] = useState(false);
@@ -475,6 +477,8 @@ export default function AdminCustomersPage() {
     setFormSellerId('');
     setFormIsRevendedor(true);
     setFormCreditLimit('0');
+    setFormBoletoAllowed(false);
+    setFormInvoiceRequired(false);
   };
 
   const openCreateCustomer = () => {
@@ -499,6 +503,8 @@ export default function AdminCustomersPage() {
     setFormSellerId(cust.sellerId ?? '');
     setFormIsRevendedor(cust.isReseller);
     setFormCreditLimit(String(cust.creditLimit ?? 0));
+    setFormBoletoAllowed(!!cust.boletoAllowed);
+    setFormInvoiceRequired(!!cust.invoiceRequired);
     setEditCustomerId(cust.id);
     setIsCreateModalOpen(true);
   };
@@ -529,6 +535,8 @@ export default function AdminCustomersPage() {
       sellerId: formSellerId || undefined,
       isReseller: formIsRevendedor,
       creditLimit: formCreditLimit || '0',
+      boletoAllowed: formBoletoAllowed,
+      invoiceRequired: formInvoiceRequired,
     };
     // Na criação fixa coordenadas padrão e status; na edição não sobrescreve o pin.
     if (!isEdit) {
@@ -794,6 +802,16 @@ export default function AdminCustomersPage() {
                         <td className="p-4">
                           <span className="font-bold text-stone-850 block">{cust.tradeName}</span>
                           {cust.legalName && <span className="text-[10px] text-stone-400 block">{cust.legalName}</span>}
+                          {(cust.boletoAllowed || cust.invoiceRequired) && (
+                            <span className="flex gap-1 mt-1">
+                              {cust.boletoAllowed && (
+                                <span className="text-[9px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-100 px-1.5 py-0.5 rounded">Boleto</span>
+                              )}
+                              {cust.invoiceRequired && (
+                                <span className="text-[9px] font-bold uppercase bg-sky-50 text-sky-700 border border-sky-100 px-1.5 py-0.5 rounded">Pede NF</span>
+                              )}
+                            </span>
+                          )}
                         </td>
                         <td className="p-4 font-mono text-stone-600">
                           {cust.cnpj ? (
@@ -1230,6 +1248,34 @@ export default function AdminCustomersPage() {
                   onChange={(e) => setFormCreditLimit(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50/50 focus:outline-none"
                 />
+              </div>
+
+              {/* Faturamento — decisão da gerência */}
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex items-start gap-2 p-2.5 rounded-lg border border-stone-200 bg-stone-50/50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formBoletoAllowed}
+                    onChange={(e) => setFormBoletoAllowed(e.target.checked)}
+                    className="mt-0.5 accent-amber-600"
+                  />
+                  <span>
+                    <span className="text-[11px] font-bold text-stone-800 block">Boleto liberado</span>
+                    <span className="text-[9px] text-stone-400 block">Vendedor só oferece boleto se marcado.</span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 p-2.5 rounded-lg border border-stone-200 bg-stone-50/50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formInvoiceRequired}
+                    onChange={(e) => setFormInvoiceRequired(e.target.checked)}
+                    className="mt-0.5 accent-amber-600"
+                  />
+                  <span>
+                    <span className="text-[11px] font-bold text-stone-800 block">Pede nota fiscal</span>
+                    <span className="text-[9px] text-stone-400 block">Só um lembrete no pedido.</span>
+                  </span>
+                </label>
               </div>
 
               {/* Endereço & CEP */}

@@ -15,7 +15,9 @@ export type OrderEventAction =
   | 'status'
   | 'pagamento'
   | 'estorno_pagamento'
-  | 'cancelado';
+  | 'cancelado'
+  /** Gerência lançou boleto para cliente que não está liberado para boleto. */
+  | 'boleto_sem_liberacao';
 
 export interface OrderEventDTO {
   id: string;

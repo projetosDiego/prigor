@@ -161,6 +161,24 @@ export const digits = (label: string, { length }: { length?: number[] } = {}) =>
       `${label} inválido.`,
     );
 
+/**
+ * `.partial()` para ATUALIZAÇÃO, sem aplicar os `.default()` do cadastro.
+ *
+ * No zod 4, `schema.partial()` mantém os defaults: um PUT que não manda
+ * `creditLimit` recebia `creditLimit: '0.00'` e zerava o limite do cliente
+ * sem ninguém pedir. Aqui o default é removido — campo ausente continua
+ * ausente e o banco não é tocado.
+ */
+export function partialWithoutDefaults<S extends z.ZodObject>(schema: S): ReturnType<S['partial']> {
+  const shape = Object.fromEntries(
+    Object.entries(schema.shape).map(([key, field]) => [
+      key,
+      field instanceof z.ZodDefault ? field.unwrap() : field,
+    ]),
+  );
+  return z.object(shape).partial() as unknown as ReturnType<S['partial']>;
+}
+
 /** Paginação padronizada em toda a API. */
 export const pagination = z.object({
   page: z.coerce.number().int().min(1).default(1),

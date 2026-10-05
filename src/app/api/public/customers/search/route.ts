@@ -41,6 +41,7 @@ export const GET = route('public.customers.search', async (request) => {
       zipCode: true,
       phone: true,
       mobile: true,
+      boletoAllowed: true,
       seller: {
         select: {
           id: true,

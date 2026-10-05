@@ -126,6 +126,8 @@ function toPersistable(
     'isReseller',
     'active',
     'creditLimit',
+    'boletoAllowed',
+    'invoiceRequired',
   ];
 
   for (const key of keys) {
@@ -141,14 +143,27 @@ function toPersistable(
   return data as Prisma.CustomerUncheckedCreateInput;
 }
 
+/**
+ * Campos que só a gerência decide. Vendedor que mandar esses campos tem o
+ * valor descartado em silêncio (cadastro novo fica com o padrão: não liberado).
+ */
+const MANAGEMENT_ONLY_FIELDS = ['boletoAllowed', 'invoiceRequired'] as const;
+
+function stripManagementOnly(data: Prisma.CustomerUncheckedCreateInput): void {
+  for (const key of MANAGEMENT_ONLY_FIELDS) delete (data as Record<string, unknown>)[key];
+}
+
 export async function createCustomer(
   session: SessionPayload,
   input: CustomerInput,
 ): Promise<CustomerDTO> {
+  const data = toPersistable(input);
+  if (!isManagement(session)) stripManagementOnly(data);
+
   try {
     const created = await prisma.customer.create({
       data: {
-        ...toPersistable(input),
+        ...data,
         // Vendedor sempre cadastra na própria carteira; gestores podem atribuir diretamente ao vendedor
         sellerId: isManagement(session) ? (input.sellerId ?? null) : session.sellerId,
       },
@@ -178,6 +193,7 @@ export async function updateCustomer(
   const dataToUpdate = toPersistable(input);
   if (!isManagement(session)) {
     delete dataToUpdate.sellerId;
+    stripManagementOnly(dataToUpdate);
   }
 
   try {

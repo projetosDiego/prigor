@@ -9,7 +9,7 @@ import {
   optionalText,
   optionalUuid,
 } from '@/server/validation/common';
-import { customerInputSchema, orderListQuerySchema } from '@/server/validation/sales';
+import { customerInputSchema, customerUpdateSchema, orderListQuerySchema } from '@/server/validation/sales';
 
 describe('campos opcionais aceitam ausência', () => {
   it('optionalText', () => {
@@ -45,5 +45,16 @@ describe('schemas reais com entrada mínima', () => {
     expect(parsed.tradeName).toBe('Padaria X');
     expect(parsed.phone).toBeNull();
     expect(parsed.isReseller).toBe(false);
+    expect(parsed.boletoAllowed).toBe(false);
+    expect(parsed.invoiceRequired).toBe(false);
+  });
+  it('customerUpdate NÃO aplica defaults: campo ausente não é zerado', () => {
+    const parsed = customerUpdateSchema.parse({ tradeName: 'Padaria X' });
+    expect(parsed).toEqual({ tradeName: 'Padaria X' });
+    expect('creditLimit' in parsed).toBe(false);
+    expect('boletoAllowed' in parsed).toBe(false);
+  });
+  it('customerUpdate aceita liberar boleto', () => {
+    expect(customerUpdateSchema.parse({ boletoAllowed: true })).toEqual({ boletoAllowed: true });
   });
 });

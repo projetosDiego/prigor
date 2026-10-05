@@ -26,6 +26,8 @@ import {
   UserCheck,
 } from 'lucide-react';
 
+import { isBoletoPaymentMethod } from '@/lib/payment-method';
+
 interface ProductItem {
   id: string;
   name: string;
@@ -51,6 +53,8 @@ interface CustomerResult {
   state: string | null;
   zipCode: string | null;
   sellerId: string | null;
+  /** Liberado pela gerência para pagar no boleto. */
+  boletoAllowed?: boolean;
   seller?: {
     id: string;
     name: string;
@@ -118,6 +122,11 @@ export default function PedidoClient() {
   const [deliveryDate, setDeliveryDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [paymentMethod, setPaymentMethod] = useState('Pix');
   const [notes, setNotes] = useState('');
+
+  // Boleto só aparece para cliente já cadastrado e liberado pela gerência.
+  const boletoAvailable = clientMode === 'busca' && !!selectedClient?.boletoAllowed;
+  const effectivePaymentMethod =
+    !boletoAvailable && isBoletoPaymentMethod(paymentMethod) ? 'Pix' : paymentMethod;
 
   // Envio e resultado
   const [submitting, setSubmitting] = useState(false);
@@ -411,7 +420,7 @@ export default function PedidoClient() {
           deliveryAddress: deliveryAddressPayload,
           sellerCode: directFactory ? undefined : sellerCode.trim() || undefined,
           deliveryDate: deliveryDate || undefined,
-          paymentMethod,
+          paymentMethod: effectivePaymentMethod,
           notes: notes.trim() || undefined,
           items: activeItems.map((i) => ({
             productId: i.productId,
@@ -1342,13 +1351,17 @@ export default function PedidoClient() {
                   Forma de Pagamento Pretendida
                 </label>
                 <select
-                  value={paymentMethod}
+                  value={effectivePaymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value)}
                   className="block w-full rounded-xl border border-stone-300 bg-stone-50 py-2.5 px-3 text-sm font-semibold text-stone-900 focus:border-amber-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
                 >
                   <option value="Pix">PIX</option>
-                  <option value="Boleto 7 dias">Boleto Bancário (7 dias)</option>
-                  <option value="Boleto 14 dias">Boleto Bancário (14 dias)</option>
+                  {boletoAvailable && (
+                    <>
+                      <option value="Boleto 7 dias">Boleto Bancário (7 dias)</option>
+                      <option value="Boleto 14 dias">Boleto Bancário (14 dias)</option>
+                    </>
+                  )}
                   <option value="Cartão de Crédito">Cartão de Crédito</option>
                   <option value="Cartão de Débito">Cartão de Débito</option>
                   <option value="Dinheiro">Dinheiro na entrega</option>

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { responseErrorMessage } from '@/lib/errors';
 import { useToast } from '@/components/shared/Toast';
+import { isBoletoPaymentMethod } from '@/lib/payment-method';
 import type {
   CustomerDTO,
   OrderDTO,
@@ -126,6 +127,13 @@ export default function SellerOrdersPage() {
   const [neSaving, setNeSaving] = useState(false);
   const [formaPagamento, setFormaPagamento] = useState('Pix');
   const [formasPagamento, setFormasPagamento] = useState<{ id: string; name: string; netDays: number | null }[]>([]);
+
+  // Boleto só para cliente liberado pela gerência (o servidor também barra).
+  const boletoLiberado = !!clientes.find((c) => c.id === clienteId)?.boletoAllowed;
+  const formasDisponiveis = formasPagamento.filter((f) => boletoLiberado || !isBoletoPaymentMethod(f.name));
+  // Se o cliente trocar para um não liberado, a forma "boleto" escolhida antes cai para Pix.
+  const formaPagamentoEfetiva =
+    !boletoLiberado && isBoletoPaymentMethod(formaPagamento) ? 'Pix' : formaPagamento;
   const [dataPedido, setDataPedido] = useState(new Date().toISOString().split('T')[0]);
   const [desconto, setDesconto] = useState('0');
   const [frete, setFrete] = useState('0');
@@ -327,12 +335,12 @@ export default function SellerOrdersPage() {
     const payload = {
       customerId: clienteId,
       status: 'confirmado', // Pedido já é lançado confirmado do celular para baixa automática de estoque!
-      paymentMethod: formaPagamento,
+      paymentMethod: formaPagamentoEfetiva,
       orderDate: dataPedido,
       deliveryDate: dataPedido, // Assume entrega para o mesmo dia em campo
       deliveryAddressId: enderecoEntregaId || null,
       dueDate: (() => {
-        const opt = formasPagamento.find((f) => f.name === formaPagamento);
+        const opt = formasPagamento.find((f) => f.name === formaPagamentoEfetiva);
         if (!opt || opt.netDays == null) return null;
         const [y, m, dd] = dataPedido.slice(0, 10).split('-').map(Number);
         const base = new Date(Date.UTC(y, m - 1, dd));
@@ -951,17 +959,20 @@ export default function SellerOrdersPage() {
                   <div>
                     <label className="text-[9px] text-stone-400 font-bold uppercase block mb-1 font-bold">Forma de Pagamento</label>
                     <select
-                      value={formaPagamento}
+                      value={formaPagamentoEfetiva}
                       onChange={(e) => setFormaPagamento(e.target.value)}
                       className="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50/50 focus:outline-none"
                     >
-                      {formaPagamento && !formasPagamento.some((f) => f.name === formaPagamento) && (
-                        <option value={formaPagamento}>{formaPagamento}</option>
+                      {formaPagamentoEfetiva && !formasDisponiveis.some((f) => f.name === formaPagamentoEfetiva) && (
+                        <option value={formaPagamentoEfetiva}>{formaPagamentoEfetiva}</option>
                       )}
-                      {formasPagamento.map((f) => (
+                      {formasDisponiveis.map((f) => (
                         <option key={f.id} value={f.name}>{f.name}</option>
                       ))}
                     </select>
+                    {clienteId && !boletoLiberado && formasPagamento.some((f) => isBoletoPaymentMethod(f.name)) && (
+                      <p className="text-[9px] text-stone-400 mt-1">Boleto indisponível: cliente não liberado pela gerência.</p>
+                    )}
                   </div>
 
                   <div>
