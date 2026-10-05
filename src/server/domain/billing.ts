@@ -130,3 +130,37 @@ export function boletoIssueBlocker(input: {
   if (active) return 'Este pedido já tem um boleto em aberto. Dê baixa nele antes de gerar outro.';
   return null;
 }
+
+// ─── Pagador do boleto ──────────────────────────────────────────────────────
+
+export interface BoletoPayerData {
+  tradeName: string;
+  legalName: string | null;
+  cnpj: string | null;
+  cpf: string | null;
+  address: string | null;
+  number: string | null;
+  neighborhood: string | null;
+  city: string | null;
+  state: string | null;
+  zipCode: string | null;
+}
+
+/** O que falta no cadastro do cliente para registrar o boleto. Vazio = pode emitir. */
+export function boletoPayerProblems(c: BoletoPayerData): string[] {
+  const problems: string[] = [];
+  const digits = (v: string | null) => (v ?? '').replace(/\D/g, '');
+  if (digits(c.cnpj).length !== 14 && digits(c.cpf).length !== 11) problems.push('CNPJ ou CPF do cliente');
+  if (!c.address?.trim()) problems.push('endereço do cliente');
+  if (!c.neighborhood?.trim()) problems.push('bairro do cliente');
+  if (!c.city?.trim()) problems.push('cidade do cliente');
+  if ((c.state ?? '').trim().length !== 2) problems.push('UF do cliente');
+  if (digits(c.zipCode).length !== 8) problems.push('CEP do cliente');
+  return problems;
+}
+
+/** Documento do pagador: CNPJ tem preferência sobre CPF. */
+export function payerDocument(c: Pick<BoletoPayerData, 'cnpj' | 'cpf'>): string {
+  const cnpj = (c.cnpj ?? '').replace(/\D/g, '');
+  return cnpj.length === 14 ? cnpj : (c.cpf ?? '').replace(/\D/g, '');
+}

@@ -22,8 +22,10 @@ import {
   Search,
   UserPlus,
   Phone,
-  AlertCircle
+  AlertCircle,
+  Landmark
 } from 'lucide-react';
+import OrderBillingModal from '@/components/admin/OrderBillingModal';
 import { responseErrorMessage } from '@/lib/errors';
 import { useToast } from '@/components/shared/Toast';
 import { isBoletoPaymentMethod } from '@/lib/payment-method';
@@ -101,6 +103,14 @@ function describeEvent(ev: OrderEvent): string {
       return 'Baixa de pagamento estornada';
     case 'cancelado':
       return 'Pedido cancelado';
+    case 'boleto_emitido':
+      return `Boleto gerado no Sicoob (${ev.to ?? ''})`;
+    case 'boleto_erro':
+      return `Falha ao gerar boleto (${ev.to ?? ''})`;
+    case 'boleto_pago':
+      return `Boleto pago (${ev.to ?? ''}) — baixa no financeiro`;
+    case 'boleto_baixado':
+      return `Boleto baixado/cancelado no banco (${ev.to ?? ''})`;
     case 'boleto_sem_liberacao':
       return `Boleto lançado para cliente não liberado (${ev.to ?? 'boleto'}) — autorizado pela gerência`;
     default:
@@ -160,6 +170,7 @@ export default function OrdersPage() {
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [selectedPedido, setSelectedPedido] = useState<OrderDTO | null>(null);
   const [historyOrder, setHistoryOrder] = useState<OrderDTO | null>(null);
+  const [billingOrder, setBillingOrder] = useState<OrderDTO | null>(null);
   const [historyEvents, setHistoryEvents] = useState<OrderEvent[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
@@ -1387,6 +1398,13 @@ export default function OrdersPage() {
                         >
                           <History className="h-4 w-4" />
                         </button>
+                        <button
+                          onClick={() => setBillingOrder(ped)}
+                          className="p-1.5 border border-stone-200 rounded-lg hover:bg-amber-50 text-amber-700 transition-all cursor-pointer"
+                          title="Faturamento (boleto)"
+                        >
+                          <Landmark className="h-4 w-4" />
+                        </button>
                         <button 
                           onClick={() => handleOpenEditModal(ped)}
                           className="p-1.5 border border-stone-200 rounded-lg hover:bg-stone-50 text-stone-500 transition-all cursor-pointer"
@@ -2174,6 +2192,21 @@ export default function OrdersPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {billingOrder && (
+        <OrderBillingModal
+          order={{
+            id: billingOrder.id,
+            numero: billingOrder.numero,
+            total: billingOrder.total,
+            dueDate: billingOrder.dueDate,
+            paymentMethod: billingOrder.paymentMethod,
+            customerName: billingOrder.customerName,
+            status: billingOrder.status,
+          }}
+          onClose={() => setBillingOrder(null)}
+        />
       )}
 
       {quickOpen && (

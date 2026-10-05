@@ -287,3 +287,16 @@ Cada fase fecha com `npm run verify` verde e roteiro de teste em `docs/TESTE-LOC
 - Status: **pendente de aprovação no Sicoobnet**. Depois de aprovar: `npm run sicoob:testar` (só pede token, não altera nada).
 - Certificado A1 em formato antigo (RC2-40): `npm run cert:setup` gera cópia `-moderno.pfx` (AES-256) e o `certificado-publico.pem`.
 - Pendências com o gerente: número do cliente no convênio de cobrança (`SICOOB_NUMERO_CLIENTE`) e modalidade.
+
+### Fase 2 — Caminho do boleto (05/10/2026, aguardando teste real)
+- Pedidos (admin) › ícone de banco (Faturamento): **Gerar boleto**, linha digitável e Pix copia e cola
+  (copiar), **PDF** (segunda via sob demanda, não guardado), **Atualizar status** (se pago, baixa o
+  lançamento a receber do pedido) e **Dar baixa** (cancela no banco). Tentativa com erro pode ser descartada.
+- Serviço `services/boletos.ts`; API: `GET/POST /api/orders/[id]/boletos`, `POST /api/boletos/[id]/atualizar`,
+  `POST /api/boletos/[id]/baixar`, `GET /api/boletos/[id]/pdf`. Emitir/atualizar/baixar: só gerência.
+- Mapeamento Sicoob puro e testado em `integrations/sicoob/boletos.ts` (payload, emissão, situação).
+  Itens marcados **CONFERIR** (códigos de emissão/distribuição, Pix no boleto, caminho da baixa,
+  campos do histórico de pagamento) são validados no primeiro boleto real.
+- Ligar: `SICOOB_ENV="production"`, `SICOOB_NUMERO_CLIENTE`, `SICOOB_MODALIDADE` (gerente) e `BILLING_ENABLED="true"`.
+- Roteiro do 1º teste real: cliente com cadastro completo → pedido de valor baixo com vencimento futuro →
+  Gerar boleto → conferir PDF/linha digitável → Dar baixa → conferir no Sicoobnet.
