@@ -348,12 +348,18 @@ function drawItem(c: Ctx, top: number, it: DanfeItem): number {
 
 export interface DanfeOptions {
   cancelled?: boolean;
+  /** Nome de marca quando o XML não traz nome fantasia (ex.: "Doces Prigor"). */
+  brandName?: string | null;
+  /** Telefone quando o XML não traz. */
+  phone?: string | null;
   /** Rodapé discreto (ex.: "Emitido pelo PRIGOR"). */
   footer?: string;
 }
 
 export async function renderDanfe(xml: string, opts: DanfeOptions = {}): Promise<Buffer> {
   const data = parseNfeXml(xml);
+  if (!data.emit.tradeName && opts.brandName) data.emit.tradeName = opts.brandName;
+  if (!data.emit.phone && opts.phone) data.emit.phone = opts.phone;
   const pdf = await PDFDocument.create();
   pdf.setTitle(`DANFE NF-e ${data.number} - ${safe(data.emit.tradeName || data.emit.name)}`);
   pdf.setProducer('PRIGOR');

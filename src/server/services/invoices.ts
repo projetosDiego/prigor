@@ -463,7 +463,10 @@ export async function invoiceDanfe(
   if (!opts.provider) {
     try {
       const xml = (await provider.xml(inv.providerId)).toString('utf8');
+      const settings = await prisma.fiscalSettings.findFirst({ select: { tradeName: true, phone: true } });
       const pdf = await renderDanfe(xml, {
+        brandName: settings?.tradeName || 'Doces Prigor',
+        phone: settings?.phone,
         cancelled: inv.status === 'cancelada',
         footer: `Pedido PRIGOR nº ${inv.order.numero} · Doces Prigor · docesprigor.com.br`,
       });
