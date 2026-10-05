@@ -314,3 +314,11 @@ Cada fase fecha com `npm run verify` verde e roteiro de teste em `docs/TESTE-LOC
 - Migration `20261006120000_nota_fiscal_id_provedor` (coluna `notas_fiscais.id_provedor`).
 - Adapter: `integrations/fiscal/notaas.ts` (payload e leitura de status testados). Webhook da Notaas
   (`nfe.issued/error/cancelled`, assinatura HMAC-SHA256) entra na fase 3.
+
+### ✅ Primeira NF-e autorizada em homologação (06/10/2026)
+- Pedido 1115 → NF-e nº 1 série 1, autorizada pela SEFAZ (ambiente de teste).
+- Ajustes descobertos no caminho: MEI (CRT 4) + CSOSN 102 exige CFOP 5102/6102 (NT 2024.001);
+  destinatário PJ precisa de `indicadorIE` (rejeição 232) → IE agora consultada pelo CNPJ (CNPJ.ws).
+- Falta validar em homologação: DANFE, XML, cancelamento; pedido com desconto/frete.
+- Para produção: confirmar NCM/CFOP/CSOSN com o contador, "Ativar Produção" no painel da Notaas,
+  `FISCAL_ENV=producao` e `BILLING_ENABLED=true`.
