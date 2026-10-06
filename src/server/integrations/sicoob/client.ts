@@ -151,7 +151,7 @@ export async function sicoobCobranca<T = unknown>(
 }
 
 /** Dados fixos do beneficiário usados em toda chamada de boleto. */
-export function sicoobAccount(): { numeroCliente: number; codigoModalidade: number; numeroContaCorrente: number } {
+export function sicoobAccount(): { numeroCliente: number; codigoModalidade: number; numeroContaCorrente: number; pix: boolean } {
   const e = integrationEnv();
   if (!e.SICOOB_NUMERO_CLIENTE || !e.SICOOB_CONTA_CORRENTE) {
     throw new SicoobNotConfiguredError(['número do cliente/conta corrente do convênio']);
@@ -160,5 +160,6 @@ export function sicoobAccount(): { numeroCliente: number; codigoModalidade: numb
     numeroCliente: Number(e.SICOOB_NUMERO_CLIENTE.replace(/\D/g, '')),
     codigoModalidade: e.SICOOB_MODALIDADE,
     numeroContaCorrente: Number(e.SICOOB_CONTA_CORRENTE.replace(/\D/g, '')),
+    pix: e.SICOOB_BOLETO_PIX,
   };
 }

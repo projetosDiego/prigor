@@ -36,7 +36,7 @@ describe('buildBoletoPayload', () => {
       dataEmissao: '2026-10-06',
       dataVencimento: '2026-10-13',
       codigoEspecieDocumento: 'DM',
-      codigoCadastrarPIX: 1,
+      codigoCadastrarPIX: 0,
       tipoMulta: 0,
       tipoJurosMora: 3,
     });
@@ -50,6 +50,11 @@ describe('buildBoletoPayload', () => {
       uf: 'RJ',
       email: 'compras@padaria.com',
     });
+  });
+
+  it('boleto híbrido (Pix) só quando o convênio tem Pix habilitado', () => {
+    expect((buildBoletoPayload(base, account) as Payload).codigoCadastrarPIX).toBe(0);
+    expect((buildBoletoPayload(base, { ...account, pix: true }) as Payload).codigoCadastrarPIX).toBe(1);
   });
 
   it('multa e juros entram a partir do dia seguinte ao vencimento', () => {

@@ -41,6 +41,8 @@ export interface BoletoAccount {
   numeroCliente: number;
   codigoModalidade: number;
   numeroContaCorrente: number;
+  /** Boleto híbrido com QR Code Pix (exige Pix habilitado no convênio). */
+  pix?: boolean;
 }
 
 const onlyDigits = (v: string) => v.replace(/\D/g, '');
@@ -93,7 +95,9 @@ export function buildBoletoPayload(input: BoletoIssueInput, account: BoletoAccou
     },
     ...(instructions.length ? { mensagensInstrucao: instructions } : {}),
     gerarPdf: false, // PDF é buscado sob demanda (segunda via)
-    codigoCadastrarPIX: 1, // boleto híbrido (QR Code Pix) — CONFERIR se o convênio permite
+    // 1 = boleto híbrido (QR Code Pix); 0 = só boleto. Sem Pix habilitado o Sicoob
+    // recusa com "Beneficiário não habilitado para utilizar o Pix".
+    codigoCadastrarPIX: account.pix ? 1 : 0,
   };
 }
 

@@ -31,6 +31,8 @@ const schema = z.object({
   SICOOB_NUMERO_CLIENTE: z.string().trim().default(''),
   SICOOB_CONTA_CORRENTE: z.string().trim().default(''),
   SICOOB_MODALIDADE: z.coerce.number().int().positive().default(1),
+  /** Boleto híbrido (QR Code Pix). Só ligar se o Sicoob habilitar Pix no convênio. */
+  SICOOB_BOLETO_PIX: bool,
 
   // ─── Provedor fiscal (NF-e) ───────────────────────────────────────────
   FISCAL_PROVIDER: z.enum(['', 'notaas', 'focus', 'nuvemfiscal', 'plugnotas']).default(''),
