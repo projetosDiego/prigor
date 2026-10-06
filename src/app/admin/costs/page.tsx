@@ -71,6 +71,7 @@ interface EmployeeMonthlyRow {
   transportToPay: number;
   transportCreditApplied: number;
   transportCreditNext: number;
+  absenceDiscount: number;
   advances: number;
   total: number;
   netTotal: number;
@@ -84,6 +85,7 @@ interface SellerMonthlyRow {
   directCommission: number;
   supervisorCommission: number;
   totalCommission: number;
+  allowance: number;
   advances: number;
   netCommission: number;
 }
@@ -102,6 +104,7 @@ interface MonthlyCosts {
     employeeNet: number;
     sellerSales: number;
     sellerCommission: number;
+    sellerAllowance: number;
     sellerAdvances: number;
     sellerNet: number;
     total: number;
@@ -480,11 +483,12 @@ export default function CostsPage() {
 
             <div className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
               <div className="flex items-center gap-2 text-stone-400 text-[10px] font-black uppercase tracking-wider">
-                <Award className="h-4 w-4 text-amber-600" /> Comissões Vendedores
+                <Award className="h-4 w-4 text-amber-600" /> Vendedores (Comissão + Ajuda)
               </div>
               <p className="mt-1 text-2xl font-black text-stone-900">{brl(costs?.totals.sellerNet ?? 0)}</p>
               <div className="mt-1 flex items-center justify-between text-[11px] text-stone-500">
-                <span>Total: {brl(costs?.totals.sellerCommission ?? 0)}</span>
+                <span>Comissão: {brl(costs?.totals.sellerCommission ?? 0)}</span>
+                <span className="text-emerald-700 font-bold">Ajuda: +{brl(costs?.totals.sellerAllowance ?? 0)}</span>
                 <span className="text-amber-700 font-bold">Vales: -{brl(costs?.totals.sellerAdvances ?? 0)}</span>
               </div>
             </div>
@@ -555,10 +559,32 @@ export default function CostsPage() {
                         <td className="py-3 px-4 text-center text-stone-500">{r.expectedDays}</td>
                         <td className="py-3 px-4 text-center">
                           {r.absences > 0 ? (
-                            <span className="text-red-600 font-bold">{r.absences}</span>
+                            <>
+                              <span className="text-red-600 font-bold">{r.absences}</span>
+                              {r.absenceDiscount > 0 && (
+                                <span className="block text-[9px] text-red-600 font-bold">
+                                  -{brl(r.absenceDiscount)} na diária
+                                </span>
+                              )}
+                              {r.transportCreditNext > 0 && (
+                                <span className="block text-[9px] text-amber-700 font-bold">
+                                  -{brl(r.transportCreditNext)} passagem mês seg.
+                                </span>
+                              )}
+                            </>
                           ) : (
                             <span className="text-stone-400">0</span>
                           )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const emp = employees.find((x) => x.id === r.employeeId);
+                              if (emp) void openAbsences(emp);
+                            }}
+                            className="mt-1 block mx-auto text-[10px] font-bold text-amber-700 hover:text-amber-900 underline cursor-pointer"
+                          >
+                            Lançar falta
+                          </button>
                         </td>
                         <td className="py-3 px-4 text-center text-stone-700">{r.workedDays}</td>
                         <td className="py-3 px-4 text-right">{brl(r.pay)}</td>
@@ -588,9 +614,47 @@ export default function CostsPage() {
               </table>
             </div>
             <p className="text-[11px] text-stone-400">
-              * Passagem é paga adiantada com base nos dias previstos. Faltas geram crédito de passagem abatido no mês seguinte.
+              * Falta: a diária do dia é descontada no próprio mês e a passagem daquele dia (paga adiantada) é abatida no mês seguinte.
             </p>
           </div>
+
+          {/* SEÇÃO FIXA: Custos fixos mensais (ajuda de custo dos vendedores) */}
+          {(costs?.sellers ?? []).some((s) => s.allowance > 0) && (
+            <div className="space-y-2 pt-2">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-black text-stone-850 uppercase tracking-wider flex items-center gap-2">
+                  <Wallet className="h-4 w-4 text-emerald-700" />
+                  Custos Fixos Mensais — Ajuda de Custo
+                </h3>
+                <span className="text-xs text-stone-500 font-semibold">
+                  Total fixo do mês: <strong className="text-stone-900">{brl(costs?.totals.sellerAllowance ?? 0)}</strong>
+                </span>
+              </div>
+              <div className="rounded-2xl bg-white border border-stone-200 shadow-sm overflow-x-auto">
+                <table className="w-full text-left text-xs whitespace-nowrap">
+                  <thead>
+                    <tr className="border-b border-stone-200 bg-stone-50 text-stone-400 font-bold uppercase tracking-wider">
+                      <th className="py-3 px-4">Vendedor</th>
+                      <th className="py-3 px-4 text-right">Ajuda de Custo</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100 font-semibold text-stone-700">
+                    {costs!.sellers
+                      .filter((s) => s.allowance > 0)
+                      .map((s) => (
+                        <tr key={s.sellerId} className="hover:bg-stone-50/50">
+                          <td className="py-2.5 px-4 font-bold text-stone-850">{s.name}</td>
+                          <td className="py-2.5 px-4 text-right text-emerald-700 font-bold">{brl(s.allowance)}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-[11px] text-stone-400">
+                * Lançada automaticamente todo mês a partir do cadastro do vendedor (campo &quot;Ajuda de Custo Mensal&quot;) e somada ao líquido dele no fechamento.
+              </p>
+            </div>
+          )}
 
           {/* SEÇÃO 2: Vendedores & Comissões do Mês */}
           <div className="space-y-2 pt-2">
@@ -614,6 +678,7 @@ export default function CostsPage() {
                     <th className="py-3 px-4 text-right">Comissão Direta</th>
                     <th className="py-3 px-4 text-right">Supervisão</th>
                     <th className="py-3 px-4 text-right text-stone-500">Comissão Total</th>
+                    <th className="py-3 px-4 text-right text-emerald-700">Ajuda de Custo (+)</th>
                     <th className="py-3 px-4 text-right text-red-600">Adiantamentos (-)</th>
                     <th className="py-3 px-4 text-right text-amber-900 font-black">Líquido a Pagar</th>
                   </tr>
@@ -621,7 +686,7 @@ export default function CostsPage() {
                 <tbody className="divide-y divide-stone-100 font-semibold text-stone-700">
                   {(costs?.sellers ?? []).length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="py-8 text-center text-stone-400">
+                      <td colSpan={9} className="py-8 text-center text-stone-400">
                         Nenhum vendedor com movimentação ou ativo neste mês.
                       </td>
                     </tr>
@@ -642,6 +707,13 @@ export default function CostsPage() {
                           )}
                         </td>
                         <td className="py-3 px-4 text-right text-stone-500">{brl(s.totalCommission)}</td>
+                        <td className="py-3 px-4 text-right">
+                          {s.allowance > 0 ? (
+                            <span className="font-bold text-emerald-700">+{brl(s.allowance)}</span>
+                          ) : (
+                            <span className="text-stone-300">R$ 0,00</span>
+                          )}
+                        </td>
                         <td className="py-3 px-4 text-right">
                           {s.advances > 0 ? (
                             <span className="font-bold text-red-600">-{brl(s.advances)}</span>

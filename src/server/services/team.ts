@@ -179,6 +179,8 @@ export interface EmployeeMonthlyCost {
   transportToPay: number;
   transportCreditApplied: number;
   transportCreditNext: number;
+  /** Desconto da diária pelas faltas do mês (só diarista). */
+  absenceDiscount: number;
   advances: number;
   total: number;
   netTotal: number;
@@ -192,6 +194,8 @@ export interface SellerMonthlyCost {
   directCommission: number;
   supervisorCommission: number;
   totalCommission: number;
+  /** Ajuda de custo mensal fixa (custo fixo, somada ao líquido). */
+  allowance: number;
   advances: number;
   netCommission: number;
 }
@@ -210,6 +214,7 @@ export interface MonthlyCostsDTO {
     employeeNet: number;
     sellerSales: number;
     sellerCommission: number;
+    sellerAllowance: number;
     sellerAdvances: number;
     sellerNet: number;
     total: number;
@@ -249,6 +254,7 @@ export async function getMonthlyCosts(year: number, month: number): Promise<Mont
         commissionPct: true,
         supervisorId: true,
         supervisorCommissionPct: true,
+        allowance: true,
         subordinates: {
           where: { active: true },
           select: { id: true, supervisorCommissionPct: true },
@@ -312,6 +318,8 @@ export async function getMonthlyCosts(year: number, month: number): Promise<Mont
       transportToPay,
       transportCreditApplied,
       transportCreditNext,
+      absenceDiscount:
+        dto.payType === 'diarista' ? Math.round(absCount * dto.dailyRate * 100) / 100 : 0,
       advances: Math.round(empAdvances * 100) / 100,
       total,
       netTotal,
@@ -359,7 +367,10 @@ export async function getMonthlyCosts(year: number, month: number): Promise<Mont
       .filter((a) => a.sellerId === s.id)
       .reduce((sum, a) => sum + a.amount, 0);
 
-    const netCommission = Math.max(Math.round((totalCommission - selAdvances) * 100) / 100, 0);
+    const allowance = Math.round(num(s.allowance) * 100) / 100;
+    // Ajuda de custo é fixa: soma ao líquido depois de abatidos os vales da comissão.
+    const netCommission =
+      Math.round((Math.max(totalCommission - selAdvances, 0) + allowance) * 100) / 100;
 
     return {
       sellerId: s.id,
@@ -369,6 +380,7 @@ export async function getMonthlyCosts(year: number, month: number): Promise<Mont
       directCommission,
       supervisorCommission,
       totalCommission,
+      allowance,
       advances: Math.round(selAdvances * 100) / 100,
       netCommission,
     };
@@ -383,9 +395,10 @@ export async function getMonthlyCosts(year: number, month: number): Promise<Mont
   const sellerSales = sellerRows.reduce((sum, s) => sum + s.salesTotal, 0);
   const sellerCommission = sellerRows.reduce((sum, s) => sum + s.totalCommission, 0);
   const sellerAdvances = sellerRows.reduce((sum, s) => sum + s.advances, 0);
+  const sellerAllowance = sellerRows.reduce((sum, s) => sum + s.allowance, 0);
   const sellerNet = sellerRows.reduce((sum, s) => sum + s.netCommission, 0);
 
-  const grandTotal = Math.round((employeeGross + sellerCommission) * 100) / 100;
+  const grandTotal = Math.round((employeeGross + sellerCommission + sellerAllowance) * 100) / 100;
   const advancesTotal = Math.round((employeeAdvances + sellerAdvances) * 100) / 100;
   const netTotal = Math.round((employeeNet + sellerNet) * 100) / 100;
 
@@ -403,6 +416,7 @@ export async function getMonthlyCosts(year: number, month: number): Promise<Mont
       employeeNet: Math.round(employeeNet * 100) / 100,
       sellerSales: Math.round(sellerSales * 100) / 100,
       sellerCommission: Math.round(sellerCommission * 100) / 100,
+      sellerAllowance: Math.round(sellerAllowance * 100) / 100,
       sellerAdvances: Math.round(sellerAdvances * 100) / 100,
       sellerNet: Math.round(sellerNet * 100) / 100,
       total: grandTotal,

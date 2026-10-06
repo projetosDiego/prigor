@@ -170,6 +170,8 @@ export interface SellerReportRow {
   supervisorCommission: number;
   totalCommission: number;
   advancesTotal: number;
+  /** Ajuda de custo fixa do período (valor mensal × meses do período). */
+  allowance: number;
   netCommission: number;
   goal: number;
   projection: number;
@@ -213,6 +215,7 @@ export async function sellerReport(
       supervisorId: true,
       supervisor: { select: { id: true, name: true } },
       supervisorCommissionPct: true,
+      allowance: true,
       subordinates: {
         where: { active: true },
         select: { id: true, name: true, supervisorCommissionPct: true },
@@ -311,6 +314,12 @@ export async function sellerReport(
     });
   }
 
+  // Ajuda de custo é mensal: período que cruza meses paga um valor por mês tocado.
+  const monthsInRange = Math.max(
+    1,
+    (to.getUTCFullYear() - from.getUTCFullYear()) * 12 + (to.getUTCMonth() - from.getUTCMonth()) + 1,
+  );
+
   const msDay = 86_400_000;
   const startDay = Math.floor(from.getTime() / msDay);
   const endDay = Math.floor(to.getTime() / msDay);
@@ -347,7 +356,8 @@ export async function sellerReport(
 
       const totalCommission = commission + supervisorCommission;
       const advancesTotal = advancesBySeller.get(sv.id) ?? 0;
-      const netCommission = Math.max(0, totalCommission - advancesTotal);
+      const allowance = num(sv.allowance) * monthsInRange;
+      const netCommission = Math.max(0, totalCommission - advancesTotal) + allowance;
 
       return {
         sellerId: sv.id,
@@ -358,6 +368,7 @@ export async function sellerReport(
         supervisorCommission,
         totalCommission,
         advancesTotal,
+        allowance,
         netCommission,
         goal,
         projection,

@@ -189,6 +189,8 @@ export const sellerInputSchema = z.object({
   commissionPct: percent('Comissão').default('0.00'),
   supervisorId: optionalUuid('Supervisor'),
   supervisorCommissionPct: percent('Comissão do Supervisor').default('0.00'),
+  /** Ajuda de custo mensal fixa (R$). Entra nos custos fixos e no fechamento do vendedor. */
+  allowance: money('Ajuda de custo').default('0.00'),
   goal: z.coerce.number().int().min(0).default(0),
   goalRevenue: money('Meta de faturamento').default('0.00'),
   notes: optionalText(2000),

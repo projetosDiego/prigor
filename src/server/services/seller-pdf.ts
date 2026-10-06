@@ -10,6 +10,7 @@ import path from 'node:path';
 
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import type { SellerReportRow } from './reports';
+import type { SupervisorPaymentReport } from './supervisor-report';
 import { DEFAULT_COMPANY, type CompanyInfo } from './order-pdf';
 
 const A4: [number, number] = [595.28, 841.89];
@@ -158,40 +159,54 @@ export async function renderSellerReportPdf(
     color: rgb(1, 1, 1),
   });
 
-  const colW = (RIGHT - MARGIN) / 4;
+  const colW = (RIGHT - MARGIN) / 5;
+  const colX = (i: number) => MARGIN + colW * i + 8;
 
   // Col 1: Total Realizado
-  page.drawText('TOTAL VENDIDO', { x: MARGIN + 10, y: w.y - 14, size: 7.5, font: bold, color: MUTED });
-  page.drawText(brl(seller.realized), { x: MARGIN + 10, y: w.y - 30, size: 12, font: bold, color: INK });
-  page.drawText(`${seller.orders} pedido(s) faturado(s)`, { x: MARGIN + 10, y: w.y - 44, size: 7.5, font: regular, color: MUTED });
+  page.drawText('TOTAL VENDIDO', { x: colX(0), y: w.y - 14, size: 7.5, font: bold, color: MUTED });
+  page.drawText(brl(seller.realized), { x: colX(0), y: w.y - 30, size: 11, font: bold, color: INK });
+  page.drawText(`${seller.orders} pedido(s) faturado(s)`, { x: colX(0), y: w.y - 44, size: 7, font: regular, color: MUTED });
 
   // Col 2: Comissão Direta
-  page.drawText('COMISSÃO DIRETA', { x: MARGIN + colW + 10, y: w.y - 14, size: 7.5, font: bold, color: MUTED });
-  page.drawText(brl(seller.commission), { x: MARGIN + colW + 10, y: w.y - 30, size: 12, font: bold, color: INK });
+  page.drawText('COMISSÃO DIRETA', { x: colX(1), y: w.y - 14, size: 7.5, font: bold, color: MUTED });
+  page.drawText(brl(seller.commission), { x: colX(1), y: w.y - 30, size: 11, font: bold, color: INK });
   if (seller.supervisorCommission > 0) {
-    page.drawText(`+ ${brl(seller.supervisorCommission)} de supervisão`, { x: MARGIN + colW + 10, y: w.y - 44, size: 7.5, font: bold, color: BRAND_AMBER });
+    page.drawText(`+ ${brl(seller.supervisorCommission)} supervisão`, { x: colX(1), y: w.y - 44, size: 7, font: bold, color: BRAND_AMBER });
   } else {
-    page.drawText('Sobre vendas da própria carteira', { x: MARGIN + colW + 10, y: w.y - 44, size: 7.5, font: regular, color: MUTED });
+    page.drawText('Carteira própria', { x: colX(1), y: w.y - 44, size: 7, font: regular, color: MUTED });
   }
 
-  // Col 3: Adiantamentos / Vales
-  page.drawText('ADIANTAMENTOS / VALES', { x: MARGIN + (colW * 2) + 10, y: w.y - 14, size: 7.5, font: bold, color: MUTED });
-  page.drawText(`- ${brl(seller.advancesTotal)}`, { x: MARGIN + (colW * 2) + 10, y: w.y - 30, size: 12, font: bold, color: seller.advancesTotal > 0 ? rgb(0.8, 0.1, 0.1) : MUTED });
-  page.drawText(seller.advancesTotal > 0 ? 'Desconto abatido na comissão' : 'Nenhum adiantamento no período', { x: MARGIN + (colW * 2) + 10, y: w.y - 44, size: 7.5, font: regular, color: MUTED });
+  // Col 3: Ajuda de Custo
+  page.drawText('AJUDA DE CUSTO', { x: colX(2), y: w.y - 14, size: 7.5, font: bold, color: MUTED });
+  page.drawText(`+ ${brl(seller.allowance)}`, { x: colX(2), y: w.y - 30, size: 11, font: bold, color: seller.allowance > 0 ? SUCCESS_GREEN : MUTED });
+  page.drawText(seller.allowance > 0 ? 'Valor fixo mensal' : 'Não recebe', { x: colX(2), y: w.y - 44, size: 7, font: regular, color: MUTED });
 
-  // Col 4: Líquido a Pagar
+  // Col 4: Adiantamentos / Vales
+  page.drawText('ADIANTAMENTOS', { x: colX(3), y: w.y - 14, size: 7.5, font: bold, color: MUTED });
+  page.drawText(`- ${brl(seller.advancesTotal)}`, { x: colX(3), y: w.y - 30, size: 11, font: bold, color: seller.advancesTotal > 0 ? rgb(0.8, 0.1, 0.1) : MUTED });
+  page.drawText(seller.advancesTotal > 0 ? 'Abatido da comissão' : 'Sem adiantamentos', { x: colX(3), y: w.y - 44, size: 7, font: regular, color: MUTED });
+
+  // Col 5: Líquido a Pagar
   page.drawRectangle({
-    x: MARGIN + (colW * 3),
+    x: MARGIN + colW * 4,
     y: w.y - boxH,
     width: colW,
     height: boxH,
     color: rgb(0.92, 0.97, 0.93),
   });
-  page.drawText('LÍQUIDO A RECEBER', { x: MARGIN + (colW * 3) + 10, y: w.y - 14, size: 8, font: bold, color: SUCCESS_GREEN });
-  page.drawText(brl(seller.netCommission), { x: MARGIN + (colW * 3) + 10, y: w.y - 34, size: 14, font: bold, color: SUCCESS_GREEN });
-  page.drawText('Valor final aprovado', { x: MARGIN + (colW * 3) + 10, y: w.y - 48, size: 7.5, font: bold, color: MUTED });
+  page.drawText('LÍQUIDO A RECEBER', { x: colX(4), y: w.y - 14, size: 7.5, font: bold, color: SUCCESS_GREEN });
+  page.drawText(brl(seller.netCommission), { x: colX(4), y: w.y - 34, size: 13, font: bold, color: SUCCESS_GREEN });
+  page.drawText('Valor final aprovado', { x: colX(4), y: w.y - 48, size: 7, font: bold, color: MUTED });
 
-  w.y -= boxH + 20;
+  page.drawText('Líquido = comissão (direta + supervisão) - adiantamentos + ajuda de custo.', {
+    x: MARGIN,
+    y: w.y - boxH - 11,
+    size: 7,
+    font: regular,
+    color: MUTED,
+  });
+
+  w.y -= boxH + 28;
 
   // ── SEÇÃO DE CLIENTES E PEDIDOS ──────────────────────────────────────────
   page.drawText(`CLIENTES ATENDIDOS & PEDIDOS REALIZADOS (${seller.customers.length} clientes)`, {
@@ -306,13 +321,14 @@ export async function renderSellersSummaryPdf(
 
   // bordas direitas de cada coluna numérica
   const cols: Array<{ label: string; edge: number }> = [
-    { label: 'PEDIDOS', edge: 275 },
-    { label: 'REALIZADO', edge: 360 },
-    { label: 'COM. DIRETA', edge: 440 },
-    { label: 'SUPERVISÃO', edge: 510 },
-    { label: 'ADIANT.', edge: 585 },
-    { label: 'LÍQUIDO A PAGAR', edge: 670 },
-    { label: 'META', edge: 745 },
+    { label: 'PEDIDOS', edge: 245 },
+    { label: 'REALIZADO', edge: 320 },
+    { label: 'COM. DIRETA', edge: 395 },
+    { label: 'SUPERVISÃO', edge: 465 },
+    { label: 'AJ. CUSTO', edge: 535 },
+    { label: 'ADIANT.', edge: 605 },
+    { label: 'LÍQUIDO A PAGAR', edge: 685 },
+    { label: 'META', edge: 750 },
     { label: '% META', edge: R - 6 },
   ];
 
@@ -358,6 +374,7 @@ export async function renderSellersSummaryPdf(
     brl(r.realized),
     brl(r.commission),
     brl(r.supervisorCommission),
+    brl(r.allowance),
     r.advancesTotal > 0 ? `- ${brl(r.advancesTotal)}` : brl(0),
     brl(r.netCommission),
     brl(r.goal),
@@ -367,11 +384,11 @@ export async function renderSellersSummaryPdf(
   for (const r of rows) {
     if (y - 18 < MARGIN + 40) newPage();
     const label = r.subordinatesCount > 0 ? `${r.sellerName} (supervisor)` : r.sellerName;
-    page.drawText(fit(safe(label), bold, 8.5, 190), { x: MARGIN + 6, y: y - 9, size: 8.5, font: bold, color: INK });
+    page.drawText(fit(safe(label), bold, 8.5, 165), { x: MARGIN + 6, y: y - 9, size: 8.5, font: bold, color: INK });
     const vals = rowValues(r);
     cols.forEach((c, i) => {
-      const isNet = i === 5;
-      const isAdv = i === 4 && r.advancesTotal > 0;
+      const isNet = i === 6;
+      const isAdv = i === 5 && r.advancesTotal > 0;
       right(page, vals[i], c.edge, y - 9, isNet ? bold : regular, 8, isNet ? SUCCESS_GREEN : isAdv ? rgb(0.8, 0.1, 0.1) : INK);
     });
     page.drawLine({ start: { x: MARGIN, y: y - 14 }, end: { x: R, y: y - 14 }, thickness: 0.4, color: RULE });
@@ -386,11 +403,12 @@ export async function renderSellersSummaryPdf(
       realized: a.realized + r.realized,
       commission: a.commission + r.commission,
       supervisorCommission: a.supervisorCommission + r.supervisorCommission,
+      allowance: a.allowance + r.allowance,
       advancesTotal: a.advancesTotal + r.advancesTotal,
       netCommission: a.netCommission + r.netCommission,
       goal: a.goal + r.goal,
     }),
-    { orders: 0, realized: 0, commission: 0, supervisorCommission: 0, advancesTotal: 0, netCommission: 0, goal: 0 },
+    { orders: 0, realized: 0, commission: 0, supervisorCommission: 0, allowance: 0, advancesTotal: 0, netCommission: 0, goal: 0 },
   );
   page.drawRectangle({ x: MARGIN, y: y - 16, width: R - MARGIN, height: 20, color: rgb(0.92, 0.97, 0.93) });
   page.drawText('TOTAL GERAL', { x: MARGIN + 6, y: y - 10, size: 8.5, font: bold, color: INK });
@@ -399,18 +417,199 @@ export async function renderSellersSummaryPdf(
     brl(tot.realized),
     brl(tot.commission),
     brl(tot.supervisorCommission),
+    brl(tot.allowance),
     tot.advancesTotal > 0 ? `- ${brl(tot.advancesTotal)}` : brl(0),
     brl(tot.netCommission),
     brl(tot.goal),
     pct(tot.goal > 0 ? (tot.realized / tot.goal) * 100 : 0),
   ];
-  cols.forEach((c, i) => right(page, totVals[i], c.edge, y - 10, bold, 8.5, i === 5 ? SUCCESS_GREEN : INK));
+  cols.forEach((c, i) => right(page, totVals[i], c.edge, y - 10, bold, 8.5, i === 6 ? SUCCESS_GREEN : INK));
 
   // Rodapé com numeração
   const pages = pdf.getPages();
   pages.forEach((p, i) => {
     center(p, `${safe(company.name)} · Página ${i + 1} de ${pages.length}`, W / 2, 20, regular, 7.5, MUTED);
   });
+
+  return pdf.save();
+}
+
+
+// ── PAGAMENTO DO SUPERVISOR ─────────────────────────────────────────────────
+const MESES_PDF = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+];
+
+function signedPct(value: number | null): string {
+  if (value === null) return '—';
+  const text = Math.abs(value).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  return `${value >= 0 ? '+' : '-'}${text}%`;
+}
+
+export async function renderSupervisorPaymentPdf(
+  report: SupervisorPaymentReport,
+  ref: { year: number; month: number },
+  company: CompanyInfo = DEFAULT_COMPANY,
+): Promise<Uint8Array> {
+  const pdf = await PDFDocument.create();
+  const regular = await pdf.embedFont(StandardFonts.Helvetica);
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+
+  let page = pdf.addPage(A4);
+  let y = A4[1] - MARGIN;
+  const refLabel = `${MESES_PDF[ref.month - 1]} de ${ref.year}`;
+  const name = safe(report.supervisorName);
+
+  pdf.setTitle(`Pagamento de Supervisor — ${report.supervisorName} — ${refLabel}`);
+  pdf.setProducer(company.name);
+  pdf.setCreationDate(new Date());
+
+  const ensure = (space: number) => {
+    if (y - space < MARGIN + 30) {
+      page = pdf.addPage(A4);
+      y = A4[1] - MARGIN;
+      page.drawText(`Pagamento de Supervisor: ${name} (continuação)`, { x: MARGIN, y, size: 9, font: bold, color: MUTED });
+      y -= LINE + 10;
+    }
+  };
+
+  // Cabeçalho
+  const headerTop = y;
+  try {
+    const logoBytes = fs.readFileSync(path.join(process.cwd(), 'logo.png'));
+    const logo = await pdf.embedPng(logoBytes);
+    const logoW = 85;
+    const logoH = (logo.height / logo.width) * logoW;
+    page.drawImage(logo, { x: MARGIN, y: headerTop - logoH + 8, width: logoW, height: logoH });
+  } catch {
+    // segue sem imagem
+  }
+  right(page, 'PAGAMENTO DE SUPERVISOR', RIGHT, headerTop, bold, 12, BRAND_AMBER);
+  right(page, `Referência: ${refLabel}`, RIGHT, headerTop - LINE - 2, bold, 9, INK);
+  right(page, safe(company.name), RIGHT, headerTop - LINE * 2 - 4, regular, 8, MUTED);
+  right(page, `CNPJ: ${company.cnpj} · Tel: ${company.phone}`, RIGHT, headerTop - LINE * 3 - 4, regular, 8, MUTED);
+  y = headerTop - 55;
+  page.drawLine({ start: { x: MARGIN, y }, end: { x: RIGHT, y }, thickness: 1, color: BRAND_AMBER });
+  y -= 16;
+
+  // Identificação
+  page.drawRectangle({ x: MARGIN, y: y - 32, width: RIGHT - MARGIN, height: 38, color: BAR });
+  page.drawText('SUPERVISOR:', { x: MARGIN + 10, y: y - 8, size: 8, font: bold, color: MUTED });
+  page.drawText(name.toUpperCase(), { x: MARGIN + 10, y: y - 23, size: 12, font: bold, color: INK });
+  right(page, `${report.subordinates.length} vendedor(es) supervisionado(s)`, RIGHT - 10, y - 12, bold, 8.5, BRAND_AMBER);
+  y -= 46;
+
+  // Resumo do pagamento
+  const boxH = 68;
+  const p = report.payment;
+  page.drawRectangle({ x: MARGIN, y: y - boxH, width: RIGHT - MARGIN, height: boxH, borderColor: RULE, borderWidth: 1, color: rgb(1, 1, 1) });
+  const colW = (RIGHT - MARGIN) / 5;
+  const colX = (i: number) => MARGIN + colW * i + 8;
+
+  page.drawText('COMISSÃO SUPERVISÃO', { x: colX(0), y: y - 14, size: 7, font: bold, color: MUTED });
+  page.drawText(brl(p.supervisionCommission), { x: colX(0), y: y - 30, size: 11, font: bold, color: BRAND_AMBER });
+  page.drawText('Sobre vendas da equipe', { x: colX(0), y: y - 44, size: 7, font: regular, color: MUTED });
+
+  page.drawText('COMISSÃO PRÓPRIA', { x: colX(1), y: y - 14, size: 7, font: bold, color: MUTED });
+  page.drawText(brl(p.ownCommission), { x: colX(1), y: y - 30, size: 11, font: bold, color: INK });
+  page.drawText('Vendas da carteira', { x: colX(1), y: y - 44, size: 7, font: regular, color: MUTED });
+
+  page.drawText('AJUDA DE CUSTO', { x: colX(2), y: y - 14, size: 7, font: bold, color: MUTED });
+  page.drawText(`+ ${brl(p.allowance)}`, { x: colX(2), y: y - 30, size: 11, font: bold, color: p.allowance > 0 ? SUCCESS_GREEN : MUTED });
+  page.drawText(p.allowance > 0 ? 'Valor fixo mensal' : 'Não recebe', { x: colX(2), y: y - 44, size: 7, font: regular, color: MUTED });
+
+  page.drawText('ADIANTAMENTOS', { x: colX(3), y: y - 14, size: 7, font: bold, color: MUTED });
+  page.drawText(`- ${brl(p.advances)}`, { x: colX(3), y: y - 30, size: 11, font: bold, color: p.advances > 0 ? rgb(0.8, 0.1, 0.1) : MUTED });
+  page.drawText(p.advances > 0 ? 'Abatido da comissão' : 'Sem adiantamentos', { x: colX(3), y: y - 44, size: 7, font: regular, color: MUTED });
+
+  page.drawRectangle({ x: MARGIN + colW * 4, y: y - boxH, width: colW, height: boxH, color: rgb(0.92, 0.97, 0.93) });
+  page.drawText('LÍQUIDO A RECEBER', { x: colX(4), y: y - 14, size: 7.5, font: bold, color: SUCCESS_GREEN });
+  page.drawText(brl(p.net), { x: colX(4), y: y - 34, size: 13, font: bold, color: SUCCESS_GREEN });
+  page.drawText('Valor final a pagar', { x: colX(4), y: y - 48, size: 7, font: bold, color: MUTED });
+
+  page.drawText('Líquido = comissões (supervisão + própria) - adiantamentos + ajuda de custo.', { x: MARGIN, y: y - boxH - 11, size: 7, font: regular, color: MUTED });
+  y -= boxH + 30;
+
+  // Equipe no mês
+  page.drawText(`EQUIPE NO MÊS — ${refLabel.toUpperCase()}`, { x: MARGIN, y, size: 9.5, font: bold, color: INK });
+  y -= 14;
+  const teamHeader = () => {
+    page.drawRectangle({ x: MARGIN, y: y - 14, width: RIGHT - MARGIN, height: 18, color: BAR });
+    page.drawText('VENDEDOR', { x: MARGIN + 6, y: y - 9, size: 8, font: bold, color: MUTED });
+    right(page, 'CLIENTES', 290, y - 9, bold, 7.5, MUTED);
+    right(page, 'PEDIDOS', 345, y - 9, bold, 7.5, MUTED);
+    right(page, 'VENDIDO', 430, y - 9, bold, 7.5, MUTED);
+    right(page, '% SUP.', 480, y - 9, bold, 7.5, MUTED);
+    right(page, 'COMISSÃO', RIGHT - 6, y - 9, bold, 7.5, MUTED);
+    y -= 20;
+  };
+  teamHeader();
+
+  if (report.subordinates.length === 0) {
+    page.drawText('Nenhum vendedor vinculado a este supervisor.', { x: MARGIN + 6, y: y - 9, size: 8, font: regular, color: MUTED });
+    y -= 16;
+  }
+  for (const sub of report.subordinates) {
+    ensure(18);
+    page.drawText(fit(safe(sub.sellerName), bold, 8.5, 190), { x: MARGIN + 6, y: y - 9, size: 8.5, font: bold, color: INK });
+    right(page, String(sub.customers), 290, y - 9, regular, 8.5, INK);
+    right(page, String(sub.orders), 345, y - 9, regular, 8.5, INK);
+    right(page, brl(sub.sales), 430, y - 9, regular, 8.5, INK);
+    right(page, pct(sub.supervisorPct), 480, y - 9, regular, 8.5, MUTED);
+    right(page, brl(sub.supervisorCommission), RIGHT - 6, y - 9, bold, 8.5, SUCCESS_GREEN);
+    page.drawLine({ start: { x: MARGIN, y: y - 14 }, end: { x: RIGHT, y: y - 14 }, thickness: 0.4, color: RULE });
+    y -= 17;
+  }
+  ensure(22);
+  page.drawRectangle({ x: MARGIN, y: y - 16, width: RIGHT - MARGIN, height: 20, color: rgb(0.92, 0.97, 0.93) });
+  page.drawText('TOTAL DA EQUIPE', { x: MARGIN + 6, y: y - 10, size: 8.5, font: bold, color: INK });
+  right(page, String(report.team.customers), 290, y - 10, bold, 8.5, INK);
+  right(page, String(report.team.orders), 345, y - 10, bold, 8.5, INK);
+  right(page, brl(report.team.sales), 430, y - 10, bold, 8.5, INK);
+  right(page, brl(report.team.commission), RIGHT - 6, y - 10, bold, 8.5, SUCCESS_GREEN);
+  y -= 24;
+  page.drawText('Clientes do total = clientes distintos da equipe (um cliente atendido por 2 vendedores conta uma vez).', { x: MARGIN, y: y - 4, size: 7, font: regular, color: MUTED });
+  y -= 26;
+
+  // Evolução
+  ensure(30 + report.history.length * 17 + 30);
+  page.drawText('EVOLUÇÃO DA EQUIPE — ÚLTIMOS MESES', { x: MARGIN, y, size: 9.5, font: bold, color: INK });
+  y -= 14;
+  page.drawRectangle({ x: MARGIN, y: y - 14, width: RIGHT - MARGIN, height: 18, color: BAR });
+  page.drawText('MÊS', { x: MARGIN + 6, y: y - 9, size: 8, font: bold, color: MUTED });
+  right(page, 'VENDAS DA EQUIPE', 220, y - 9, bold, 7.5, MUTED);
+  right(page, 'VARIAÇÃO', 300, y - 9, bold, 7.5, MUTED);
+  right(page, 'PEDIDOS', 360, y - 9, bold, 7.5, MUTED);
+  right(page, 'CLIENTES', 420, y - 9, bold, 7.5, MUTED);
+  right(page, 'COMISSÃO SUP.', RIGHT - 6, y - 9, bold, 7.5, MUTED);
+  y -= 20;
+  for (const h of report.history) {
+    const color = h.trend === 'up' || h.trend === 'new' ? SUCCESS_GREEN : h.trend === 'down' ? rgb(0.8, 0.1, 0.1) : MUTED;
+    page.drawText(h.label, { x: MARGIN + 6, y: y - 9, size: 8.5, font: bold, color: INK });
+    right(page, brl(h.sales), 220, y - 9, regular, 8.5, INK);
+    right(page, h.trend === 'new' ? 'retomou' : signedPct(h.changePct), 300, y - 9, bold, 8.5, color);
+    right(page, String(h.orders), 360, y - 9, regular, 8.5, INK);
+    right(page, String(h.customers), 420, y - 9, regular, 8.5, INK);
+    right(page, brl(h.commission), RIGHT - 6, y - 9, regular, 8.5, INK);
+    page.drawLine({ start: { x: MARGIN, y: y - 14 }, end: { x: RIGHT, y: y - 14 }, thickness: 0.4, color: RULE });
+    y -= 17;
+  }
+  y -= 6;
+  const vColor = report.verdict.trend === 'down' ? rgb(0.8, 0.1, 0.1) : report.verdict.trend === 'flat' ? MUTED : SUCCESS_GREEN;
+  page.drawText(`Resultado: ${safe(report.verdict.text)}`, { x: MARGIN, y, size: 9, font: bold, color: vColor });
+  y -= 16;
+
+  // Assinaturas
+  ensure(70);
+  y -= 30;
+  const signW = 190;
+  page.drawLine({ start: { x: MARGIN + 20, y }, end: { x: MARGIN + 20 + signW, y }, thickness: 0.8, color: MUTED });
+  center(page, safe(company.name), MARGIN + 20 + signW / 2, y - 12, bold, 8, INK);
+  center(page, 'Gerência Comercial / Financeiro', MARGIN + 20 + signW / 2, y - 22, regular, 7.5, MUTED);
+  page.drawLine({ start: { x: RIGHT - 20 - signW, y }, end: { x: RIGHT - 20, y }, thickness: 0.8, color: MUTED });
+  center(page, name, RIGHT - 20 - signW / 2, y - 12, bold, 8, INK);
+  center(page, 'De acordo / Recebido', RIGHT - 20 - signW / 2, y - 22, regular, 7.5, MUTED);
 
   return pdf.save();
 }

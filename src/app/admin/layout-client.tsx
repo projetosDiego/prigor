@@ -255,7 +255,7 @@ export default function AdminLayoutClient({ children, session }: AdminLayoutClie
               }`}
             >
               <CalendarDays className="h-4 w-4 text-amber-400" />
-              <span>Vendas Diárias</span>
+              <span>Relatório de Vendas</span>
             </Link>
             <Link 
               href="/admin/reports/customers" 
@@ -276,6 +276,16 @@ export default function AdminLayoutClient({ children, session }: AdminLayoutClie
             >
               <TrendingUp className="h-4 w-4 text-amber-400" />
               <span>Relatório por Vendedor</span>
+            </Link>
+            <Link 
+              href="/admin/reports/supervisors" 
+              onClick={() => setIsMobileMenuOpen(false)}
+              className={`flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                isActive('/admin/reports/supervisors') ? 'bg-amber-600 text-white shadow-xs' : 'hover:bg-stone-800 hover:text-white text-stone-300'
+              }`}
+            >
+              <UserSquare2 className="h-4 w-4 text-amber-400" />
+              <span>Relatório do Supervisor</span>
             </Link>
             <Link 
               href="/admin/reports/inactive-customers" 

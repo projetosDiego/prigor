@@ -44,6 +44,7 @@ interface Row {
   supervisorCommission: number;
   totalCommission: number;
   advancesTotal: number;
+  allowance: number;
   netCommission: number;
   goal: number;
   projection: number;
@@ -102,6 +103,8 @@ export default function SellerReportPage() {
   const totRealized = rows.reduce((s, r) => s + r.realized, 0);
   const totCommission = rows.reduce((s, r) => s + (r.totalCommission ?? r.commission ?? 0), 0);
   const totAdvances = rows.reduce((s, r) => s + (r.advancesTotal ?? 0), 0);
+  const totAllowance = rows.reduce((s, r) => s + (r.allowance ?? 0), 0);
+  const totSupervisor = rows.reduce((s, r) => s + (r.supervisorCommission ?? 0), 0);
   const totNetCommission = rows.reduce((s, r) => s + (r.netCommission ?? 0), 0);
   const totGoal = rows.reduce((s, r) => s + r.goal, 0);
   const totProjection = rows.reduce((s, r) => s + r.projection, 0);
@@ -257,7 +260,7 @@ export default function SellerReportPage() {
         <div className="bg-white p-4 rounded-xl border border-emerald-200 bg-emerald-50/50 shadow-xs">
           <span className="text-[10px] uppercase font-black text-emerald-800 tracking-wider">Líquido a Pagar</span>
           <p className="text-xl font-black text-emerald-850 mt-1">{brl(totNetCommission)}</p>
-          <p className="text-[11px] text-emerald-750 font-bold mt-0.5">Após desconto de vales</p>
+          <p className="text-[11px] text-emerald-750 font-bold mt-0.5">Comissão - vales + ajuda de custo</p>
         </div>
       </div>
 
@@ -286,6 +289,7 @@ export default function SellerReportPage() {
                   <th className="py-3 px-4 text-right">Realizado</th>
                   <th className="py-3 px-4 text-right text-emerald-700">Comissão Direta</th>
                   <th className="py-3 px-4 text-right text-amber-800">Supervisão</th>
+                  <th className="py-3 px-4 text-right text-emerald-700">Ajuda de Custo</th>
                   <th className="py-3 px-4 text-right text-red-600">Adiantamentos</th>
                   <th className="py-3 px-4 text-right text-emerald-900 font-black">Líquido a Pagar</th>
                   <th className="py-3 px-4 text-right">Meta</th>
@@ -295,7 +299,7 @@ export default function SellerReportPage() {
               </thead>
               <tbody className="divide-y divide-stone-100 font-semibold text-stone-700">
                 {rows.length === 0 ? (
-                  <tr><td colSpan={10} className="py-8 text-center text-stone-400">Nenhum vendedor ativo.</td></tr>
+                  <tr><td colSpan={11} className="py-8 text-center text-stone-400">Nenhum vendedor ativo.</td></tr>
                 ) : rows.map((r) => {
                   const isExpanded = expandedSellerId === r.sellerId;
                   const isGeneratingPdf = downloadingId === r.sellerId;
@@ -329,6 +333,9 @@ export default function SellerReportPage() {
                         <td className="py-3 px-4 text-right font-bold text-emerald-700">{brl(r.commission ?? 0)}</td>
                         <td className="py-3 px-4 text-right font-bold text-amber-850">
                           {r.supervisorCommission > 0 ? brl(r.supervisorCommission) : '—'}
+                        </td>
+                        <td className="py-3 px-4 text-right font-bold text-emerald-700">
+                          {r.allowance > 0 ? `+ ${brl(r.allowance)}` : '—'}
                         </td>
                         <td className="py-3 px-4 text-right font-bold text-red-600">
                           {r.advancesTotal > 0 ? `- ${brl(r.advancesTotal)}` : '0,00'}
@@ -467,13 +474,16 @@ export default function SellerReportPage() {
               {rows.length > 0 && (
                 <tfoot>
                   <tr className="border-t-2 border-stone-200 bg-stone-50 font-black text-stone-900">
-                    <td className="py-3 px-6">TOTAL</td>
-                    <td className="py-3 px-6 text-center">{totOrders}</td>
-                    <td className="py-3 px-6 text-right">{brl(totRealized)}</td>
-                    <td className="py-3 px-6 text-right text-emerald-700">{brl(totCommission)}</td>
-                    <td className="py-3 px-6 text-right">{totGoal > 0 ? brl(totGoal) : '—'}</td>
-                    <td className="py-3 px-6 text-center">{totGoal > 0 ? `${totPct.toFixed(0)}%` : '—'}</td>
-                    <td className="py-3 px-6 text-right text-amber-800">{brl(totProjection)}</td>
+                    <td className="py-3 px-5">TOTAL</td>
+                    <td className="py-3 px-3 text-center">{totOrders}</td>
+                    <td className="py-3 px-4 text-right">{brl(totRealized)}</td>
+                    <td className="py-3 px-4 text-right text-emerald-700">{brl(totCommission - totSupervisor)}</td>
+                    <td className="py-3 px-4 text-right text-amber-800">{totSupervisor > 0 ? brl(totSupervisor) : '—'}</td>
+                    <td className="py-3 px-4 text-right text-emerald-700">{totAllowance > 0 ? `+ ${brl(totAllowance)}` : '—'}</td>
+                    <td className="py-3 px-4 text-right text-red-600">{totAdvances > 0 ? `- ${brl(totAdvances)}` : '0,00'}</td>
+                    <td className="py-3 px-4 text-right text-emerald-900">{brl(totNetCommission)}</td>
+                    <td className="py-3 px-4 text-right">{totGoal > 0 ? brl(totGoal) : '—'}</td>
+                    <td className="py-3 px-3 text-center">{totGoal > 0 ? `${totPct.toFixed(0)}%` : '—'}</td>
                     <td className="py-3 px-4 no-print"></td>
                   </tr>
                 </tfoot>

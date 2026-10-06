@@ -25,6 +25,8 @@ export interface SellerDTO {
   supervisorId: string | null;
   supervisorName: string | null;
   supervisorCommissionPct: number;
+  /** Ajuda de custo mensal fixa (R$). */
+  allowance: number;
   goal: number;
   goalRevenue: number;
   active: boolean;
@@ -60,6 +62,7 @@ interface SellerRow {
   commissionPct: unknown;
   supervisorId?: string | null;
   supervisorCommissionPct?: unknown;
+  allowance?: unknown;
   goal: number;
   goalRevenue: unknown;
   active: boolean;
@@ -81,6 +84,7 @@ function toDTO(row: SellerRow): SellerDTO {
     supervisorId: row.supervisorId ?? null,
     supervisorName: row.supervisor?.name ?? null,
     supervisorCommissionPct: num(row.supervisorCommissionPct),
+    allowance: num(row.allowance),
     goal: row.goal,
     goalRevenue: num(row.goalRevenue),
     active: row.active,
@@ -143,6 +147,7 @@ export async function createSeller(
           commissionPct: input.commissionPct,
           supervisorId: input.supervisorId ?? null,
           supervisorCommissionPct: input.supervisorCommissionPct ?? 0,
+          allowance: input.allowance ?? 0,
           goal: input.goal,
           goalRevenue: input.goalRevenue,
           notes: input.notes,
@@ -183,7 +188,7 @@ export async function updateSeller(
       }
 
       const sellerData: Record<string, unknown> = {};
-      for (const key of ['name', 'phone', 'email', 'commissionPct', 'supervisorId', 'supervisorCommissionPct', 'goal', 'goalRevenue', 'notes', 'active'] as const) {
+      for (const key of ['name', 'phone', 'email', 'commissionPct', 'supervisorId', 'supervisorCommissionPct', 'allowance', 'goal', 'goalRevenue', 'notes', 'active'] as const) {
         const value = (input as Record<string, unknown>)[key];
         if (value !== undefined) sellerData[key] = value;
       }

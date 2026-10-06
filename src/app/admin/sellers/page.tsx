@@ -38,7 +38,8 @@ import {
   Target, 
   Calendar,
   ToggleLeft,
-  ToggleRight
+  ToggleRight,
+  Wallet
 } from 'lucide-react';
 
 import { errorMessage, apiErrorMessage } from '@/lib/errors';
@@ -59,6 +60,7 @@ interface SellerPayload {
   commissionPct: string;
   supervisorId?: string | null;
   supervisorCommissionPct?: string;
+  allowance: string;
   goalRevenue: string;
   active: boolean;
   startDate: string;
@@ -83,6 +85,7 @@ export default function AdminSellersPage() {
   const [supervisorId, setSupervisorId] = useState('');
   const [supervisorCommissionPct, setSupervisorCommissionPct] = useState('0');
   const [goalRevenue, setGoalRevenue] = useState('0');
+  const [allowance, setAllowance] = useState('');
   const [active, setActive] = useState(true);
   const [startDate, setStartDate] = useState('');
   const [formLoading, setFormLoading] = useState(false);
@@ -124,6 +127,7 @@ export default function AdminSellersPage() {
         commissionPct,
         supervisorId: supervisorId ? supervisorId : null,
         supervisorCommissionPct: supervisorCommissionPct || '0',
+        allowance: parseMoneyBRL(allowance),
         goalRevenue: parseMoneyBRL(goalRevenue),
         active,
         startDate,
@@ -157,6 +161,7 @@ export default function AdminSellersPage() {
       setSupervisorId('');
       setSupervisorCommissionPct('0');
       setGoalRevenue('');
+      setAllowance('');
       setShowForm(false);
 
       await loadSellers();
@@ -258,6 +263,7 @@ export default function AdminSellersPage() {
                       setSupervisorId(seller.supervisorId || '');
                       setSupervisorCommissionPct(String(seller.supervisorCommissionPct ?? 0));
                       setGoalRevenue(moneyMaskFromNumber(Number(seller.goalRevenue ?? 0))); 
+                      setAllowance(moneyMaskFromNumber(Number(seller.allowance ?? 0)));
                       setActive(seller.active); 
                       setStartDate(seller.startDate?.split('T')[0] ?? '');
                       setShowForm(true); 
@@ -289,6 +295,12 @@ export default function AdminSellersPage() {
                   <p className="flex items-center gap-2 text-stone-700">
                     <UserSquare2 className="h-4 w-4 text-amber-700 shrink-0" />
                     <span>Supervisor: <strong className="text-stone-900">{seller.supervisorName}</strong> ({seller.supervisorCommissionPct}%)</span>
+                  </p>
+                )}
+                {seller.allowance > 0 && (
+                  <p className="flex items-center gap-2 text-stone-700">
+                    <Wallet className="h-4 w-4 text-emerald-700 shrink-0" />
+                    <span>Ajuda de custo: <strong className="text-stone-900">{seller.allowance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>/mês</span>
                   </p>
                 )}
                 <p className="flex items-center gap-2">
@@ -464,6 +476,24 @@ export default function AdminSellersPage() {
                     className="block w-full rounded-lg border border-stone-300 bg-stone-50 py-2.5 pl-9 pr-3 text-stone-900 focus:bg-white"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block mb-1">Ajuda de Custo Mensal (R$)</label>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 text-xs font-bold">R$</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="0,00 (deixe vazio se não recebe)"
+                    value={allowance}
+                    onChange={(e) => setAllowance(maskMoneyBRL(e.target.value))}
+                    className="block w-full rounded-lg border border-stone-300 bg-stone-50 py-2.5 pl-9 pr-3 text-stone-900 focus:bg-white"
+                  />
+                </div>
+                <p className="mt-1 text-[10px] text-stone-400 font-medium">
+                  Lançada automaticamente todo mês nos custos fixos e no fechamento do vendedor.
+                </p>
               </div>
 
               <div>
