@@ -23,7 +23,8 @@ import {
   UserPlus,
   Phone,
   AlertCircle,
-  Landmark
+  Landmark,
+  FileDown
 } from 'lucide-react';
 import OrderBillingModal from '@/components/admin/OrderBillingModal';
 import { responseErrorMessage } from '@/lib/errors';
@@ -246,6 +247,16 @@ export default function OrdersPage() {
   const [editPhoneModal, setEditPhoneModal] = useState(false);
   const [phoneInputVal, setPhoneInputVal] = useState('');
   const [savingCustomerPhone, setSavingCustomerPhone] = useState(false);
+
+  // Recarrega só os pedidos, sem o "carregando" da tela inteira.
+  const refreshOrders = useCallback(async () => {
+    try {
+      const res = await fetch('/api/orders?pageSize=200');
+      if (res.ok) setPedidos(((await res.json()) as Paginated<OrderDTO>).data);
+    } catch {
+      /* silencioso: a lista atual continua válida */
+    }
+  }, []);
 
   const fetchBaseData = useCallback(async () => {
     try {
@@ -1347,6 +1358,34 @@ export default function OrdersPage() {
                           </span>
                         </div>
                       )}
+                      {(ped.documents?.boleto || ped.documents?.invoice) && (
+                        <div className="mt-1.5 flex flex-wrap justify-center gap-1" onClick={(e) => e.stopPropagation()}>
+                          {ped.documents.boleto && (
+                            <a
+                              href={`/api/boletos/${ped.documents.boleto.id}/pdf`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 transition-all"
+                              title="Abrir o PDF do boleto para baixar, imprimir ou enviar"
+                            >
+                              <FileDown className="h-3 w-3" />
+                              Boleto
+                            </a>
+                          )}
+                          {ped.documents.invoice && (
+                            <a
+                              href={`/api/notas/${ped.documents.invoice.id}/danfe`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-all"
+                              title="Abrir a nota fiscal (DANFE) para baixar, imprimir ou enviar"
+                            >
+                              <FileDown className="h-3 w-3" />
+                              {ped.documents.invoice.number ? `NF ${ped.documents.invoice.number}` : 'NF'}
+                            </a>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td className="py-4 px-6 text-center" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-center gap-1.5">
@@ -2214,7 +2253,11 @@ export default function OrdersPage() {
             customerName: billingOrder.customerName,
             status: billingOrder.status,
           }}
-          onClose={() => setBillingOrder(null)}
+          onClose={() => {
+            setBillingOrder(null);
+            // Atualiza a lista para os botões de baixar boleto/NF aparecerem.
+            void refreshOrders();
+          }}
         />
       )}
 

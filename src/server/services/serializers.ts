@@ -183,6 +183,14 @@ export interface OrderItemDTO {
   subtotal: number;
 }
 
+/** Documentos prontos para baixar direto da lista de pedidos (só gestão). */
+export interface OrderDocumentsDTO {
+  /** Último boleto com PDF disponível (registrado ou pago). */
+  boleto: { id: string; status: 'registrado' | 'pago' } | null;
+  /** Última nota autorizada. */
+  invoice: { id: string; number: number | null } | null;
+}
+
 export interface OrderDTO {
   id: string;
   numero: number;
@@ -214,6 +222,7 @@ export interface OrderDTO {
   createdAt: string | null;
   updatedAt: string | null;
   items: OrderItemDTO[];
+  documents?: OrderDocumentsDTO;
   /** Endereço do cliente, para a tela de logística não precisar de N+1. */
   deliveryAddress?: {
     address: string | null;

@@ -13,7 +13,7 @@ import { prisma } from '../db';
 import { badRequest, conflict, notFound } from '../http/errors';
 import { isManagement, sellerScope, type SessionPayload } from '../auth/guard';
 import { syncOrderFinancials } from './financial-sync';
-import { paginated, toOrderDTO, type OrderDTO, type OrderRow, type Paginated } from './serializers';
+import { paginated, toOrderDTO, type OrderDocumentsDTO, type OrderDTO, type OrderRow, type Paginated } from './serializers';
 import type { OrderCreateInput, OrderUpdateInput } from '../validation/sales';
 import type { Tx } from '../tx';
 import { logOrderEvent } from './order-history';
@@ -109,12 +109,48 @@ export async function listOrders(
     prisma.order.count({ where }),
   ]);
 
-  return paginated(
-    rows.map((row: OrderRow) => toOrderDTO(row, { withAddress: true })),
-    total,
-    params.page,
-    params.pageSize,
-  );
+  const data = rows.map((row: OrderRow) => toOrderDTO(row, { withAddress: true }));
+  if (isManagement(session) && data.length) {
+    const docs = await orderDocuments(data.map((o) => o.id));
+    for (const order of data) order.documents = docs.get(order.id) ?? { boleto: null, invoice: null };
+  }
+
+  return paginated(data, total, params.page, params.pageSize);
+}
+
+/**
+ * Boleto e nota prontos para download, por pedido — duas consultas para a
+ * página inteira (sem N+1). Pega o mais recente de cada.
+ */
+async function orderDocuments(orderIds: string[]): Promise<Map<string, OrderDocumentsDTO>> {
+  const [boletos, invoices] = await Promise.all([
+    prisma.boleto.findMany({
+      where: { orderId: { in: orderIds }, status: { in: ['registrado', 'pago'] }, nossoNumero: { not: null } },
+      select: { id: true, orderId: true, status: true },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.invoice.findMany({
+      where: { orderId: { in: orderIds }, status: 'autorizada', providerId: { not: null } },
+      select: { id: true, orderId: true, number: true },
+      orderBy: { createdAt: 'desc' },
+    }),
+  ]);
+
+  const map = new Map<string, OrderDocumentsDTO>();
+  const entry = (id: string) => {
+    let e = map.get(id);
+    if (!e) map.set(id, (e = { boleto: null, invoice: null }));
+    return e;
+  };
+  for (const b of boletos) {
+    const e = entry(b.orderId);
+    if (!e.boleto) e.boleto = { id: b.id, status: b.status as 'registrado' | 'pago' };
+  }
+  for (const inv of invoices) {
+    const e = entry(inv.orderId);
+    if (!e.invoice) e.invoice = { id: inv.id, number: inv.number };
+  }
+  return map;
 }
 
 export async function getOrder(session: SessionPayload, id: string): Promise<OrderDTO> {
