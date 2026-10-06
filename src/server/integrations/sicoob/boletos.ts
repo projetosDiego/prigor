@@ -68,8 +68,8 @@ export function buildBoletoPayload(input: BoletoIssueInput, account: BoletoAccou
     dataEmissao: input.issueDate,
     seuNumero: input.seuNumero,
     identificacaoBoletoEmpresa: `PEDIDO-${input.orderNumber}`,
-    identificacaoEmissaoBoleto: 2, // CONFERIR: 2 = cliente (nós) emite o boleto
-    identificacaoDistribuicaoBoleto: 2, // CONFERIR: 2 = cliente (nós) envia ao pagador
+    identificacaoEmissaoBoleto: 2, // 2 = cliente emite ("Cedente" no Sicoobnet, confirmado)
+    identificacaoDistribuicaoBoleto: 2, // 2 = cliente distribui ("Cedente" no Sicoobnet, confirmado)
     valor: Number(input.value),
     dataVencimento: input.dueDate,
     numeroParcela: 1,
