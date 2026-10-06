@@ -56,15 +56,23 @@ export class SicoobApiError extends Error {
 }
 
 let tokenCache: { value: string; expiresAt: number } | null = null;
-let pfxCache: { path: string; buffer: Buffer } | null = null;
+let pfxCache: { key: string; buffer: Buffer } | null = null;
 
+/**
+ * Certificado A1: em base64 (SICOOB_CERT_BASE64, usado no servidor) ou
+ * arquivo .pfx (SICOOB_CERT_PATH, usado no computador local).
+ */
 function certificate(): { pfx: Buffer; passphrase: string } {
   const e = integrationEnv();
-  if (!e.SICOOB_CERT_PATH || !e.SICOOB_CERT_PASSWORD) {
+  const source = e.SICOOB_CERT_BASE64 ? 'base64' : e.SICOOB_CERT_PATH;
+  if (!source || !e.SICOOB_CERT_PASSWORD) {
     throw new SicoobNotConfiguredError(['certificado digital A1 (rode: npm run cert:setup)']);
   }
-  if (!pfxCache || pfxCache.path !== e.SICOOB_CERT_PATH) {
-    pfxCache = { path: e.SICOOB_CERT_PATH, buffer: fs.readFileSync(e.SICOOB_CERT_PATH) };
+  const key = source === 'base64' ? `b64:${e.SICOOB_CERT_BASE64.length}` : `file:${source}`;
+  if (!pfxCache || pfxCache.key !== key) {
+    const buffer =
+      source === 'base64' ? Buffer.from(e.SICOOB_CERT_BASE64, 'base64') : fs.readFileSync(e.SICOOB_CERT_PATH);
+    pfxCache = { key, buffer };
   }
   return { pfx: pfxCache.buffer, passphrase: e.SICOOB_CERT_PASSWORD };
 }

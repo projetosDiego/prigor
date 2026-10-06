@@ -23,6 +23,8 @@ const schema = z.object({
   SICOOB_ENV: z.enum(['sandbox', 'production']).default('sandbox'),
   SICOOB_CLIENT_ID: z.string().trim().default(''),
   SICOOB_CERT_PATH: z.string().trim().default(''),
+  /** Alternativa ao arquivo (servidor/Docker): o .pfx inteiro em base64. */
+  SICOOB_CERT_BASE64: z.string().default('').transform((v) => v.replace(/\s+/g, '')),
   SICOOB_CERT_PASSWORD: z.string().default(''),
   /** Token fixo fornecido no menu "Sandbox" do portal (só no ambiente de testes). */
   SICOOB_SANDBOX_TOKEN: z.string().trim().default(''),
@@ -94,7 +96,8 @@ function fileExists(path: string): boolean {
 export function integrationStatus(): IntegrationStatus {
   const e = integrationEnv();
 
-  const certificate = fileExists(e.SICOOB_CERT_PATH) && e.SICOOB_CERT_PASSWORD.length > 0;
+  const certificate =
+    (e.SICOOB_CERT_BASE64.length > 0 || fileExists(e.SICOOB_CERT_PATH)) && e.SICOOB_CERT_PASSWORD.length > 0;
   const account = Boolean(e.SICOOB_NUMERO_CLIENTE && e.SICOOB_CONTA_CORRENTE);
   const sicoobMissing: string[] = [];
   if (!e.SICOOB_CLIENT_ID) sicoobMissing.push('Client ID do aplicativo Sicoob');

@@ -84,6 +84,9 @@ services:
       SICOOB_NUMERO_CLIENTE: ${SICOOB_NUMERO_CLIENTE:-}
       SICOOB_CONTA_CORRENTE: ${SICOOB_CONTA_CORRENTE:-}
       SICOOB_MODALIDADE: ${SICOOB_MODALIDADE:-1}
+      # Certificado A1 em base64 + senha (gerado por: npm run sicoob:comando-vps)
+      SICOOB_CERT_BASE64: ${SICOOB_CERT_BASE64:-}
+      SICOOB_CERT_PASSWORD: ${SICOOB_CERT_PASSWORD:-}
 
       # Node em container: sem teto explícito o V8 dimensiona a heap pela
       # RAM do host, não pelo limite do container.
