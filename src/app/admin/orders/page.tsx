@@ -793,6 +793,14 @@ export default function OrdersPage() {
     }
   };
 
+  // Link secreto do pedido: o cliente baixa boleto, nota e espelho sem login.
+  const docsLine = (ped: OrderDTO): string => {
+    const d = ped.documents;
+    if (!d?.link || (!d.boleto && !d.invoice)) return '';
+    const what = d.boleto && d.invoice ? 'Boleto e nota fiscal' : d.boleto ? 'Boleto' : 'Nota fiscal';
+    return `\n\n📄 *${what}:* ${d.link}`;
+  };
+
   const handleWhatsApp = (ped: OrderDTO) => {
     const customer = clientes.find((c) => c.id === ped.customerId);
     const phone = customer?.phone || customer?.mobile || '';
@@ -804,6 +812,7 @@ export default function OrdersPage() {
       (linhas ? `${linhas}\n` : '') +
       `\n*Total:* ${ped.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` +
       (ped.deliveryDate ? `\n*Previsão de Entrega:* ${formatarData(ped.deliveryDate)}` : '') +
+      docsLine(ped) +
       `\n\n_Doces Prigor agradece a preferência!_`;
 
     const url = cleanPhone
@@ -2252,6 +2261,7 @@ export default function OrdersPage() {
             paymentMethod: billingOrder.paymentMethod,
             customerName: billingOrder.customerName,
             status: billingOrder.status,
+            docsLink: billingOrder.documents?.link ?? null,
           }}
           onClose={() => {
             setBillingOrder(null);

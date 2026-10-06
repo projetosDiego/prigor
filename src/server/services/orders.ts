@@ -17,6 +17,7 @@ import { paginated, toOrderDTO, type OrderDocumentsDTO, type OrderDTO, type Orde
 import type { OrderCreateInput, OrderUpdateInput } from '../validation/sales';
 import type { Tx } from '../tx';
 import { logOrderEvent } from './order-history';
+import { orderDocsUrl } from './order-docs';
 
 const ORDER_INCLUDE = {
   customer: {
@@ -112,7 +113,10 @@ export async function listOrders(
   const data = rows.map((row: OrderRow) => toOrderDTO(row, { withAddress: true }));
   if (isManagement(session) && data.length) {
     const docs = await orderDocuments(data.map((o) => o.id));
-    for (const order of data) order.documents = docs.get(order.id) ?? { boleto: null, invoice: null };
+    for (const order of data) {
+      const d = docs.get(order.id);
+      order.documents = { boleto: d?.boleto ?? null, invoice: d?.invoice ?? null, link: orderDocsUrl(order.id) };
+    }
   }
 
   return paginated(data, total, params.page, params.pageSize);
@@ -122,7 +126,7 @@ export async function listOrders(
  * Boleto e nota prontos para download, por pedido — duas consultas para a
  * página inteira (sem N+1). Pega o mais recente de cada.
  */
-async function orderDocuments(orderIds: string[]): Promise<Map<string, OrderDocumentsDTO>> {
+async function orderDocuments(orderIds: string[]): Promise<Map<string, Omit<OrderDocumentsDTO, 'link'>>> {
   const [boletos, invoices] = await Promise.all([
     prisma.boleto.findMany({
       where: { orderId: { in: orderIds }, status: { in: ['registrado', 'pago'] }, nossoNumero: { not: null } },
@@ -136,7 +140,7 @@ async function orderDocuments(orderIds: string[]): Promise<Map<string, OrderDocu
     }),
   ]);
 
-  const map = new Map<string, OrderDocumentsDTO>();
+  const map = new Map<string, Omit<OrderDocumentsDTO, 'link'>>();
   const entry = (id: string) => {
     let e = map.get(id);
     if (!e) map.set(id, (e = { boleto: null, invoice: null }));

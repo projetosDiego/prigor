@@ -189,6 +189,8 @@ export interface OrderDocumentsDTO {
   boleto: { id: string; status: 'registrado' | 'pago' } | null;
   /** Última nota autorizada. */
   invoice: { id: string; number: number | null } | null;
+  /** Link secreto do pedido para o cliente baixar boleto/NF/espelho (sem login). */
+  link: string;
 }
 
 export interface OrderDTO {

@@ -38,6 +38,7 @@ import {
 import { lookupStateRegistration } from '../integrations/cnpjws';
 import { renderDanfe } from './danfe-pdf';
 import { logOrderEvent } from './order-history';
+import { canAccessOrderDoc, type DocAccess } from './doc-access';
 import { timestamp } from './serializers';
 
 export type InvoiceStatus = 'processando' | 'autorizada' | 'rejeitada' | 'cancelada' | 'erro' | 'descartada';
@@ -149,13 +150,13 @@ async function applyResult(
   return updated;
 }
 
-async function loadInvoiceForAccess(session: SessionPayload, id: string) {
+async function loadInvoiceForAccess(session: DocAccess, id: string) {
   const inv = await prisma.invoice.findUnique({
     where: { id },
-    include: { order: { select: { sellerId: true, numero: true } } },
+    include: { order: { select: { id: true, sellerId: true, numero: true } } },
   });
   if (!inv) throw notFound('Nota fiscal');
-  if (!isManagement(session) && inv.order.sellerId !== session.sellerId) throw notFound('Nota fiscal');
+  if (!canAccessOrderDoc(session, inv.order)) throw notFound('Nota fiscal');
   return inv;
 }
 
@@ -432,7 +433,7 @@ export async function discardInvoice(session: SessionPayload, id: string): Promi
 }
 
 export async function invoiceDocument(
-  session: SessionPayload,
+  session: DocAccess,
   id: string,
   kind: 'danfe' | 'xml',
 ): Promise<{ data: Buffer; filename: string; contentType: string }> {
@@ -457,7 +458,7 @@ export async function invoiceDocument(
  * pedido ou se o gerador próprio falhar — a nota nunca fica sem DANFE.
  */
 export async function invoiceDanfe(
-  session: SessionPayload,
+  session: DocAccess,
   id: string,
   opts: { provider?: boolean } = {},
 ): Promise<{ data: Buffer; filename: string }> {

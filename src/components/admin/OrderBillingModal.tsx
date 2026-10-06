@@ -21,6 +21,8 @@ export interface BillingOrder {
   paymentMethod: string;
   customerName: string | null;
   status: string;
+  /** Link secreto para o cliente baixar boleto/NF (só gestão recebe). */
+  docsLink?: string | null;
 }
 
 interface Boleto {
@@ -152,6 +154,27 @@ export default function OrderBillingModal({ order, onClose }: { order: BillingOr
         </div>
 
         <div className="p-6 overflow-y-auto space-y-4">
+          {order.docsLink && (
+            <div className="flex items-center justify-between gap-3 rounded-xl bg-sky-50 border border-sky-100 px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-xs font-black text-sky-800">Link do cliente</p>
+                <p className="text-[11px] text-sky-700">Boleto, nota e espelho, sem login. Também vai no botão de WhatsApp.</p>
+              </div>
+              <button
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(order.docsLink!);
+                    toast('Link copiado. É só colar na conversa com o cliente.', 'success');
+                  } catch {
+                    toast(order.docsLink!, 'info');
+                  }
+                }}
+                className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-sky-600 text-white text-xs font-bold cursor-pointer"
+              >
+                <Copy className="h-4 w-4" /> Copiar link
+              </button>
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-black text-amber-700 uppercase tracking-widest">Boleto</p>

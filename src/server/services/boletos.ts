@@ -37,6 +37,7 @@ import {
 } from '../integrations/sicoob/boletos';
 import { logger } from '../http/logger';
 import { logOrderEvent } from './order-history';
+import { canAccessOrderDoc, type DocAccess } from './doc-access';
 import { dateOnly, num, timestamp } from './serializers';
 
 export interface BoletoDTO {
@@ -112,13 +113,13 @@ async function loadOrderForAccess(session: SessionPayload, orderId: string) {
   return order;
 }
 
-async function loadBoletoForAccess(session: SessionPayload, boletoId: string) {
+async function loadBoletoForAccess(session: DocAccess, boletoId: string) {
   const boleto = await prisma.boleto.findUnique({
     where: { id: boletoId },
-    include: { order: { select: { sellerId: true, numero: true } } },
+    include: { order: { select: { id: true, sellerId: true, numero: true } } },
   });
   if (!boleto) throw notFound('Boleto');
-  if (!isManagement(session) && boleto.order.sellerId !== session.sellerId) throw notFound('Boleto');
+  if (!canAccessOrderDoc(session, boleto.order)) throw notFound('Boleto');
   return boleto;
 }
 
@@ -363,7 +364,7 @@ export async function writeOffBoleto(session: SessionPayload, boletoId: string):
 
 // ─── PDF ────────────────────────────────────────────────────────────────────
 
-export async function boletoPdf(session: SessionPayload, boletoId: string): Promise<{ pdf: Buffer; filename: string }> {
+export async function boletoPdf(session: DocAccess, boletoId: string): Promise<{ pdf: Buffer; filename: string }> {
   const boleto = await loadBoletoForAccess(session, boletoId);
   if (!boleto.nossoNumero || !['registrado', 'pago'].includes(boleto.status)) {
     throw conflict('Este boleto não tem PDF disponível.');
