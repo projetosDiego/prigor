@@ -2,7 +2,7 @@
  * Nota fiscal (NF-e) do pedido — caminho MANUAL, acionado pela gerência.
  *
  * Emissão:
- *  1. confere provedor configurado (em produção, também BILLING_ENABLED);
+ *  1. confere provedor configurado (FISCAL_ENV decide homologação × produção);
  *  2. regras: pedido válido, sem outra NF ativa, cliente PF só se permitido,
  *     sem desconto/frete (ainda não validado), dados fiscais completos;
  *  3. grava a nota como `processando` ANTES de chamar o provedor (referência
@@ -84,9 +84,6 @@ const ACTIVE: InvoiceStatus[] = ['processando', 'autorizada'];
 function assertFiscalReady(): void {
   const s = integrationStatus();
   if (!s.fiscal.ready) throw conflict(`Nota fiscal não configurada: falta ${s.fiscal.missing.join(', ')}.`);
-  if (s.fiscal.environment === 'producao' && !s.billingEnabled) {
-    throw conflict('Emissão em produção desligada. Ative BILLING_ENABLED no .env.');
-  }
 }
 
 function describeError(err: unknown): string {

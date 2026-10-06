@@ -9,13 +9,11 @@
  * O documento fiscal é o XML; o DANFE é só a representação dele. Se este
  * gerador falhar, a rota cai no DANFE do provedor.
  */
-import fs from 'node:fs';
-import path from 'node:path';
-
 import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib';
 
 import { code128C } from '../../lib/barcode128';
 import { parseNfeXml, type DanfeData, type DanfeItem } from '../domain/nfe-xml';
+import { logoBytes } from './logo';
 
 const A4: [number, number] = [595.28, 841.89];
 const M = 18; // margem
@@ -367,7 +365,8 @@ export async function renderDanfe(xml: string, opts: DanfeOptions = {}): Promise
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
   let logo: PDFImage | null = null;
   try {
-    logo = await pdf.embedPng(fs.readFileSync(path.join(process.cwd(), 'logo.png')));
+    const bytes = logoBytes();
+    logo = bytes ? await pdf.embedPng(bytes) : null;
   } catch {
     logo = null;
   }

@@ -6,12 +6,11 @@
  * empresa, blocos de cobrança/entrega, tabela de itens, totais, condições de
  * pagamento, observações e linhas de assinatura.
  */
-import fs from 'node:fs';
-import path from 'node:path';
 
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type PDFImage } from 'pdf-lib';
 
 import { formatBRL } from '../domain/money';
+import { logoBytes as readLogo } from './logo';
 import type { OrderDTO } from './serializers';
 
 const A4: [number, number] = [595.28, 841.89];
@@ -168,7 +167,7 @@ export async function renderOrderPdf(
   // ── Cabeçalho: logo + dados da empresa ─────────────────────────────────────
   const headerTop = w.y;
   try {
-    const logoBytes = fs.readFileSync(path.join(process.cwd(), 'logo.png'));
+    const logoBytes = (readLogo() ?? Buffer.alloc(0));
     const logo = await pdf.embedPng(logoBytes);
     const logoW = 78;
     const logoH = (logo.height / logo.width) * logoW;
@@ -487,7 +486,7 @@ export async function renderChecklistPdf(
   // Logo da empresa se houver
   let logoImg: PDFImage | null = null;
   try {
-    const logoBytes = fs.readFileSync(path.join(process.cwd(), 'logo.png'));
+    const logoBytes = (readLogo() ?? Buffer.alloc(0));
     logoImg = await pdf.embedPng(logoBytes);
   } catch {
     logoImg = null;

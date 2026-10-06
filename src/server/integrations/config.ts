@@ -36,7 +36,7 @@ const schema = z.object({
   FISCAL_ENV: z.enum(['homologacao', 'producao']).default('homologacao'),
   FISCAL_WEBHOOK_SECRET: z.string().trim().default(''),
 
-  /** Liga os botões de emissão. Desligado = tudo pronto, mas nada é enviado. */
+  /** Liga a emissão de BOLETOS. Desligado = nada vai ao Sicoob. (NF é controlada por FISCAL_ENV.) */
   BILLING_ENABLED: bool,
 });
 

@@ -72,6 +72,19 @@ services:
       COMPANY_PHONE: ${COMPANY_PHONE:-}
       COMPANY_EMAIL: ${COMPANY_EMAIL:-}
 
+      # Faturamento (ver docs/INTEGRACAO-BOLETO-NF.md). Configure com:
+      #   ./scripts/configurar-nf.sh
+      FISCAL_PROVIDER: ${FISCAL_PROVIDER:-}
+      FISCAL_API_TOKEN: ${FISCAL_API_TOKEN:-}
+      FISCAL_ENV: ${FISCAL_ENV:-homologacao}
+      FISCAL_WEBHOOK_SECRET: ${FISCAL_WEBHOOK_SECRET:-}
+      BILLING_ENABLED: ${BILLING_ENABLED:-false}
+      SICOOB_ENV: ${SICOOB_ENV:-sandbox}
+      SICOOB_CLIENT_ID: ${SICOOB_CLIENT_ID:-}
+      SICOOB_NUMERO_CLIENTE: ${SICOOB_NUMERO_CLIENTE:-}
+      SICOOB_CONTA_CORRENTE: ${SICOOB_CONTA_CORRENTE:-}
+      SICOOB_MODALIDADE: ${SICOOB_MODALIDADE:-1}
+
       # Node em container: sem teto explícito o V8 dimensiona a heap pela
       # RAM do host, não pelo limite do container.
       NODE_OPTIONS: --max-old-space-size=512
