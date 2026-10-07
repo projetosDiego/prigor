@@ -1,6 +1,7 @@
 /** DANFE (PDF) ou XML da nota pelo link do cliente (sem login). */
 import { NextResponse } from 'next/server';
 
+import { contentDisposition } from '@/lib/filenames';
 import { notFound } from '@/server/http/errors';
 import { route } from '@/server/http/respond';
 import { publicDocAccess } from '@/server/services/order-docs';
@@ -19,7 +20,7 @@ export const GET = route<Context>('public.documentos.nf', async (request, { para
   return new NextResponse(doc.data as unknown as BodyInit, {
     headers: {
       'content-type': doc.contentType,
-      'content-disposition': `${kind === 'xml' ? 'attachment' : 'inline'}; filename="${doc.filename}"`,
+      'content-disposition': contentDisposition(kind === 'xml' ? 'attachment' : 'inline', doc.filename),
       'cache-control': 'private, no-store',
       'x-robots-tag': 'noindex',
     },

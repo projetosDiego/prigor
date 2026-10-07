@@ -37,6 +37,7 @@ import {
 } from '../integrations/fiscal';
 import { lookupStateRegistration } from '../integrations/cnpjws';
 import { renderDanfe } from './danfe-pdf';
+import { docFilename } from '@/lib/filenames';
 import { logOrderEvent } from './order-history';
 import { canAccessOrderDoc, type DocAccess } from './doc-access';
 import { timestamp } from './serializers';
@@ -153,7 +154,7 @@ async function applyResult(
 async function loadInvoiceForAccess(session: DocAccess, id: string) {
   const inv = await prisma.invoice.findUnique({
     where: { id },
-    include: { order: { select: { id: true, sellerId: true, numero: true } } },
+    include: { order: { select: { id: true, sellerId: true, numero: true, customer: { select: { tradeName: true } } } } },
   });
   if (!inv) throw notFound('Nota fiscal');
   if (!canAccessOrderDoc(session, inv.order)) throw notFound('Nota fiscal');
@@ -444,10 +445,10 @@ export async function invoiceDocument(
   try {
     const provider = fiscalProvider();
     const data = kind === 'danfe' ? await provider.danfe(inv.providerId) : await provider.xml(inv.providerId);
-    const base = `nfe-${inv.number ?? inv.providerRef}-pedido-${inv.order.numero}`;
+    const cliente = inv.order.customer?.tradeName;
     return kind === 'danfe'
-      ? { data, filename: `${base}.pdf`, contentType: 'application/pdf' }
-      : { data, filename: `${base}.xml`, contentType: 'application/xml' };
+      ? { data, filename: docFilename('NF-e', cliente, inv.order.numero, 'pdf'), contentType: 'application/pdf' }
+      : { data, filename: docFilename('XML NF-e', cliente, inv.order.numero, 'xml'), contentType: 'application/xml' };
   } catch (err) {
     throw badRequest(`Não consegui baixar o documento: ${describeError(err)}`);
   }
@@ -466,7 +467,7 @@ export async function invoiceDanfe(
   if (!inv.providerId || !['autorizada', 'cancelada'].includes(inv.status)) {
     throw conflict('DANFE disponível só para nota autorizada ou cancelada.');
   }
-  const filename = `danfe-nfe-${inv.number ?? inv.providerRef}-pedido-${inv.order.numero}.pdf`;
+  const filename = docFilename('NF-e', inv.order.customer?.tradeName, inv.order.numero, 'pdf');
   const provider = fiscalProvider();
   if (!opts.provider) {
     try {

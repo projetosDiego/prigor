@@ -36,6 +36,7 @@ import {
   sicoobWriteOffBoleto,
 } from '../integrations/sicoob/boletos';
 import { logger } from '../http/logger';
+import { docFilename } from '@/lib/filenames';
 import { logOrderEvent } from './order-history';
 import { canAccessOrderDoc, type DocAccess } from './doc-access';
 import { dateOnly, num, timestamp } from './serializers';
@@ -116,7 +117,7 @@ async function loadOrderForAccess(session: SessionPayload, orderId: string) {
 async function loadBoletoForAccess(session: DocAccess, boletoId: string) {
   const boleto = await prisma.boleto.findUnique({
     where: { id: boletoId },
-    include: { order: { select: { id: true, sellerId: true, numero: true } } },
+    include: { order: { select: { id: true, sellerId: true, numero: true, customer: { select: { tradeName: true } } } } },
   });
   if (!boleto) throw notFound('Boleto');
   if (!canAccessOrderDoc(session, boleto.order)) throw notFound('Boleto');
@@ -370,7 +371,7 @@ export async function boletoPdf(session: DocAccess, boletoId: string): Promise<{
     throw conflict('Este boleto não tem PDF disponível.');
   }
   try {
-    return { pdf: await sicoobBoletoPdf(boleto.nossoNumero), filename: `boleto-pedido-${boleto.order.numero}.pdf` };
+    return { pdf: await sicoobBoletoPdf(boleto.nossoNumero), filename: docFilename('Boleto', boleto.order.customer?.tradeName, boleto.order.numero, 'pdf') };
   } catch (err) {
     throw badRequest(`Não consegui baixar o PDF do boleto: ${describeSicoobError(err)}`);
   }

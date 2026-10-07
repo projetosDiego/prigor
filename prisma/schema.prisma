@@ -494,6 +494,7 @@ model Product {
   usedInRecipes  RecipeIngredient[] @relation("Ingredient")
   orderItems     OrderItem[]
   stockMovements StockMovement[]
+  pricingSheets  PricingSheet[]
 
   @@index([type, active])
   @@index([barCode])
@@ -911,4 +912,113 @@ model FiscalSettings {
   updatedAt           DateTime @updatedAt @map("atualizado_em")
 
   @@map("config_fiscal")
+}
+
+// ─── Precificação (método PreçoFácil) ────────────────────────────────────────
+/// Parâmetros gerais. Linha única.
+model PricingSettings {
+  id               String   @id @default(uuid())
+  energyKwhPrice   Decimal  @default(1) @map("kwh_preco") @db.Decimal(12, 4)
+  gasCylinderPrice Decimal  @default(110) @map("botijao_preco") @db.Decimal(12, 2)
+  gasCylinderKg    Decimal  @default(13) @map("botijao_kg") @db.Decimal(8, 2)
+  workDaysPerMonth Int      @default(24) @map("dias_uteis_mes")
+  hoursPerDay      Decimal  @default(8) @map("horas_dia") @db.Decimal(5, 2)
+  ifoodFeePct      Decimal  @default(0) @map("taxa_ifood_pct") @db.Decimal(5, 2)
+  cardFeePct       Decimal  @default(0) @map("taxa_cartao_pct") @db.Decimal(5, 2)
+  taxPct           Decimal  @default(0) @map("imposto_pct") @db.Decimal(5, 2)
+  targetMarginPct  Decimal  @default(40) @map("margem_alvo_pct") @db.Decimal(5, 2)
+  /// Quantos meses fechados entram na média de faturamento (rateio do custo fixo).
+  revenueMonths    Int      @default(3) @map("meses_media_receita")
+  /// Se preenchido, substitui a média calculada dos pedidos.
+  revenueOverride  Decimal? @map("receita_manual") @db.Decimal(14, 2)
+  updatedAt        DateTime @updatedAt @map("atualizado_em")
+
+  @@map("precificacao_config")
+}
+
+model PricingFixedCost {
+  id            String   @id @default(uuid())
+  name          String   @map("nome")
+  monthlyAmount Decimal  @default(0) @map("valor_mensal") @db.Decimal(12, 2)
+  active        Boolean  @default(true) @map("ativo")
+  position      Int      @default(0) @map("ordem")
+  createdAt     DateTime @default(now()) @map("criado_em")
+
+  @@map("precificacao_custos_fixos")
+}
+
+/// Equipamento (elétrico/gás) ou mão de obra: custo por minuto.
+model PricingResource {
+  id            String   @id @default(uuid())
+  name          String   @unique @map("nome")
+  kind          String   @map("tipo") // 'eletrico' | 'gas' | 'mao_de_obra'
+  watts         Decimal  @default(0) @map("potencia_w") @db.Decimal(12, 2)
+  gasKgPerHour  Decimal  @default(0) @map("gas_kg_hora") @db.Decimal(10, 4)
+  monthlySalary Decimal  @default(0) @map("salario_mensal") @db.Decimal(12, 2)
+  chargesPct    Decimal  @default(0) @map("encargos_pct") @db.Decimal(6, 2)
+  active        Boolean  @default(true) @map("ativo")
+  updatedAt     DateTime @updatedAt @map("atualizado_em")
+
+  lines PricingSheetLine[]
+
+  @@map("precificacao_recursos")
+}
+
+model PricingIngredient {
+  id             String    @id @default(uuid())
+  name           String    @unique @map("nome")
+  category       String    @default("materia_prima") @map("categoria") // materia_prima | embalagem | base_recheio | outros
+  unit           String    @default("gramas") @map("unidade")
+  purchaseQty    Decimal   @default(1) @map("qtd_compra") @db.Decimal(14, 4)
+  purchasePrice  Decimal   @default(0) @map("preco_compra") @db.Decimal(14, 4)
+  lossPct        Decimal   @default(0) @map("perda_pct") @db.Decimal(5, 2)
+  priceUpdatedAt DateTime? @map("preco_atualizado_em") @db.Date
+  active         Boolean   @default(true) @map("ativo")
+  updatedAt      DateTime  @updatedAt @map("atualizado_em")
+
+  lines PricingSheetLine[]
+
+  @@map("precificacao_insumos")
+}
+
+/// Ficha técnica: produto final, massa ou recheio (sub-ficha usada em outras).
+model PricingSheet {
+  id           String   @id @default(uuid())
+  kind         String   @map("tipo") // 'produto' | 'massa' | 'recheio'
+  name         String   @map("nome")
+  yieldQty     Decimal  @default(1) @map("rendimento") @db.Decimal(14, 4)
+  yieldUnit    String   @default("unidades") @map("unidade_rendimento")
+  lossPct      Decimal  @default(0) @map("perda_pct") @db.Decimal(5, 2)
+  markupPct    Decimal  @default(100) @map("markup_pct") @db.Decimal(8, 2)
+  totalWeightG Decimal  @default(0) @map("peso_total_g") @db.Decimal(14, 3)
+  notes        String?  @map("observacoes")
+  productId    String?  @map("produto_id")
+  product      Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  active       Boolean  @default(true) @map("ativo")
+  createdAt    DateTime @default(now()) @map("criado_em")
+  updatedAt    DateTime @updatedAt @map("atualizado_em")
+
+  lines     PricingSheetLine[] @relation("SheetLines")
+  usedIn    PricingSheetLine[] @relation("SheetAsSub")
+
+  @@unique([kind, name])
+  @@index([productId])
+  @@map("precificacao_fichas")
+}
+
+model PricingSheetLine {
+  id           String             @id @default(uuid())
+  sheetId      String             @map("ficha_id")
+  sheet        PricingSheet       @relation("SheetLines", fields: [sheetId], references: [id], onDelete: Cascade)
+  position     Int                @default(0) @map("ordem")
+  ingredientId String?            @map("insumo_id")
+  ingredient   PricingIngredient? @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+  resourceId   String?            @map("recurso_id")
+  resource     PricingResource?   @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+  subSheetId   String?            @map("sub_ficha_id")
+  subSheet     PricingSheet?      @relation("SheetAsSub", fields: [subSheetId], references: [id], onDelete: Restrict)
+  quantity     Decimal            @default(0) @map("quantidade") @db.Decimal(14, 4)
+
+  @@index([sheetId])
+  @@map("precificacao_fichas_itens")
 }

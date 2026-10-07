@@ -9,6 +9,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Ban, Copy, FileCode, FileText, Landmark, Loader2, Plus, Receipt, RefreshCw, X } from 'lucide-react';
 
 import { useToast } from '@/components/shared/Toast';
+import { saveResponseAsFile } from '@/lib/download';
 import { responseErrorMessage } from '@/lib/errors';
 import { isBoletoPaymentMethod } from '@/lib/payment-method';
 
@@ -118,9 +119,7 @@ export default function OrderBillingModal({ order, onClose }: { order: BillingOr
     try {
       const res = await fetch(`/api/boletos/${b.id}/pdf`);
       if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao abrir o PDF.'));
-      const url = URL.createObjectURL(await res.blob());
-      window.open(url, '_blank');
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      await saveResponseAsFile(res, `Boleto Pedido ${order.numero}.pdf`);
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Erro ao abrir o PDF.', 'error');
     } finally {
@@ -345,15 +344,7 @@ function InvoiceSection({ order }: { order: BillingOrder }) {
     try {
       const res = await fetch(`/api/notas/${n.id}/${kind}`);
       if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao baixar o documento.'));
-      const url = URL.createObjectURL(await res.blob());
-      if (kind === 'danfe') window.open(url, '_blank');
-      else {
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `nfe-${n.number ?? n.ref}.xml`;
-        a.click();
-      }
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      await saveResponseAsFile(res, `NF-e Pedido ${order.numero}.${kind === 'danfe' ? 'pdf' : 'xml'}`);
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Erro ao baixar o documento.', 'error');
     } finally {

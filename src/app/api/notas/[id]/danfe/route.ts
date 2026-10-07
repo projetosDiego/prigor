@@ -5,6 +5,7 @@
  */
 import { NextResponse } from 'next/server';
 
+import { contentDisposition } from '@/lib/filenames';
 import { requireUser } from '@/server/auth/guard';
 import { route } from '@/server/http/respond';
 import { invoiceDanfe } from '@/server/services/invoices';
@@ -19,7 +20,7 @@ export const GET = route<Context>('notas.danfe', async (request, { params }) => 
   return new NextResponse(doc.data as unknown as BodyInit, {
     headers: {
       'content-type': 'application/pdf',
-      'content-disposition': `inline; filename="${doc.filename}"`,
+      'content-disposition': contentDisposition('inline', doc.filename),
       'cache-control': 'private, no-store',
     },
   });

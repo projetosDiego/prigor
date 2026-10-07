@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { contentDisposition, docFilename } from '@/lib/filenames';
 import { requireUser } from '@/server/auth/guard';
 import { route } from '@/server/http/respond';
 import { getOrder } from '@/server/services/orders';
@@ -18,7 +19,7 @@ export const GET = route<Context>('pedidos.pdf', async (_request, { params }) =>
     status: 200,
     headers: {
       'content-type': 'application/pdf',
-      'content-disposition': `inline; filename="pedido-${order.numero}.pdf"`,
+      'content-disposition': contentDisposition('inline', docFilename('Pedido', order.customerName, order.numero, 'pdf')),
       'cache-control': 'no-store',
     },
   });

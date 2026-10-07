@@ -1,6 +1,7 @@
 /** PDF do boleto pelo link do cliente (sem login). */
 import { NextResponse } from 'next/server';
 
+import { contentDisposition } from '@/lib/filenames';
 import { route } from '@/server/http/respond';
 import { publicDocAccess } from '@/server/services/order-docs';
 import { boletoPdf } from '@/server/services/boletos';
@@ -13,7 +14,7 @@ export const GET = route<Context>('public.documentos.boleto', async (request, { 
   return new NextResponse(pdf as unknown as BodyInit, {
     headers: {
       'content-type': 'application/pdf',
-      'content-disposition': `inline; filename="${filename}"`,
+      'content-disposition': contentDisposition('inline', filename),
       'cache-control': 'private, no-store',
       'x-robots-tag': 'noindex',
     },

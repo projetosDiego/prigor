@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { contentDisposition, docFilename } from '@/lib/filenames';
 import { prisma } from '@/server/db';
 import { forbidden, notFound } from '@/server/http/errors';
 import { route } from '@/server/http/respond';
@@ -56,7 +57,7 @@ export const GET = route<Context>('public.orders.pdf', async (_request, { params
     status: 200,
     headers: {
       'content-type': 'application/pdf',
-      'content-disposition': `inline; filename="pedido-${orderRow.numero}.pdf"`,
+      'content-disposition': contentDisposition('inline', docFilename('Pedido', orderRow.customer?.tradeName, orderRow.numero, 'pdf')),
       'cache-control': 'no-store',
     },
   });

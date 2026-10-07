@@ -103,8 +103,10 @@ export async function renderSellerReportPdf(
   try {
     const logoBytes = fs.readFileSync(path.join(process.cwd(), 'logo.png'));
     const logo = await pdf.embedPng(logoBytes);
-    const logoW = 85;
-    const logoH = (logo.height / logo.width) * logoW;
+    // A logo é quase quadrada: limita a altura para não invadir a linha do cabeçalho.
+    const ratio = logo.height / logo.width;
+    const logoH = Math.min(56, ratio * 85);
+    const logoW = logoH / ratio;
     page.drawImage(logo, { x: MARGIN, y: headerTop - logoH + 8, width: logoW, height: logoH });
   } catch {
     // segue sem imagem
@@ -346,8 +348,10 @@ export async function renderSellersSummaryPdf(
   try {
     const logoBytes = fs.readFileSync(path.join(process.cwd(), 'logo.png'));
     const logo = await pdf.embedPng(logoBytes);
-    const logoW = 85;
-    const logoH = (logo.height / logo.width) * logoW;
+    // A logo é quase quadrada: limita a altura para não invadir a linha do cabeçalho.
+    const ratio = logo.height / logo.width;
+    const logoH = Math.min(56, ratio * 85);
+    const logoW = logoH / ratio;
     page.drawImage(logo, { x: MARGIN, y: y - logoH + 8, width: logoW, height: logoH });
   } catch {
     // segue sem imagem
@@ -479,8 +483,10 @@ export async function renderSupervisorPaymentPdf(
   try {
     const logoBytes = fs.readFileSync(path.join(process.cwd(), 'logo.png'));
     const logo = await pdf.embedPng(logoBytes);
-    const logoW = 85;
-    const logoH = (logo.height / logo.width) * logoW;
+    // A logo é quase quadrada: limita a altura para não invadir a linha do cabeçalho.
+    const ratio = logo.height / logo.width;
+    const logoH = Math.min(56, ratio * 85);
+    const logoW = logoH / ratio;
     page.drawImage(logo, { x: MARGIN, y: headerTop - logoH + 8, width: logoW, height: logoH });
   } catch {
     // segue sem imagem

@@ -27,6 +27,7 @@ import {
   FileDown
 } from 'lucide-react';
 import OrderBillingModal from '@/components/admin/OrderBillingModal';
+import { saveResponseAsFile } from '@/lib/download';
 import { responseErrorMessage } from '@/lib/errors';
 import { useToast } from '@/components/shared/Toast';
 import { isBoletoPaymentMethod } from '@/lib/payment-method';
@@ -155,6 +156,12 @@ function formatarData(iso: string | null | undefined): string {
   return ano && mes && dia ? `${dia}/${mes}/${ano}` : '—';
 }
 
+/** Data de hoje no fuso do aparelho (AAAA-MM-DD). `toISOString` usa UTC e erra o dia à noite. */
+function hojeLocal(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export default function OrdersPage() {
   const { toast, confirm } = useToast();
   const [pedidos, setPedidos] = useState<OrderDTO[]>([]);
@@ -169,6 +176,8 @@ export default function OrdersPage() {
   // Filtros
   const [statusFilter, setStatusFilter] = useState('');
   const [sellerFilter, setSellerFilter] = useState('');
+  const [codigoVendedor, setCodigoVendedor] = useState('');
+  const [pedidosVendedor, setPedidosVendedor] = useState<OrderDTO[]>([]);
   const [deliveryDateFilter, setDeliveryDateFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -194,7 +203,7 @@ export default function OrdersPage() {
   const [highlightedSellerIndex, setHighlightedSellerIndex] = useState(0);
   const [status, setStatus] = useState<StatusPedido>('novo');
   const [formaPagamento, setFormaPagamento] = useState('pix');
-  const [dataPedido, setDataPedido] = useState(new Date().toISOString().split('T')[0]);
+  const [dataPedido, setDataPedido] = useState(hojeLocal());
   const [dataEntrega, setDataEntrega] = useState('');
   const [dataFaturamento, setDataFaturamento] = useState('');
   const [dataVencimento, setDataVencimento] = useState('');
@@ -358,6 +367,22 @@ export default function OrdersPage() {
     setDataVencimento(addDaysISO(base, opt.netDays));
   }, [formaPagamento, dataEntrega, dataPedido, formasPagamento]);
 
+  const clienteSel = clientes.find((c) => c.id === clienteId);
+  const enderecoPrincipal = clienteSel
+    ? [
+        [clienteSel.address, clienteSel.number].filter(Boolean).join(', '),
+        clienteSel.complement,
+        clienteSel.neighborhood,
+        [clienteSel.city, clienteSel.state].filter(Boolean).join('/'),
+      ]
+        .filter(Boolean)
+        .join(' - ')
+    : '';
+  const enderecoExtra = enderecosCliente.find((a) => a.id === enderecoEntregaId);
+  const enderecoEntregaTexto = enderecoExtra
+    ? [enderecoExtra.label, [enderecoExtra.address, enderecoExtra.neighborhood, enderecoExtra.city].filter(Boolean).join(' - ')].filter(Boolean).join(': ')
+    : enderecoPrincipal;
+
   const handleOpenCreateModal = () => {
     setModalMode('create');
     setSelectedPedido(null);
@@ -371,8 +396,9 @@ export default function OrdersPage() {
     setHighlightedSellerIndex(0);
     setStatus('novo');
     setFormaPagamento(formasPagamento[0]?.name ?? 'Pix');
-    setDataPedido(new Date().toISOString().split('T')[0]);
-    setDataEntrega('');
+    // Pedido novo já nasce com emissão e previsão de entrega para hoje; dá para trocar.
+    setDataPedido(hojeLocal());
+    setDataEntrega(hojeLocal());
     setDataFaturamento('');
     setDataVencimento('');
     setObservacoes('');
@@ -667,7 +693,14 @@ export default function OrdersPage() {
   };
 
   const enviarPedido = async (statusForcado?: StatusPedido) => {
-    if (!clienteId || itensTemp.length === 0) return;
+    if (!clienteId) {
+      toast('Escolha o cliente para concluir o pedido.', 'error');
+      return;
+    }
+    if (itensTemp.length === 0) {
+      toast('Insira ao menos um item no pedido.', 'error');
+      return;
+    }
 
     const statusFinal = statusForcado ?? status;
 
@@ -719,6 +752,30 @@ export default function OrdersPage() {
     e.preventDefault();
     await enviarPedido();
   };
+
+  // Atalho: Ctrl+Enter (ou ⌘+Enter) conclui o pedido de qualquer campo do formulário.
+  useEffect(() => {
+    if (!isModalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        void enviarPedido('confirmado');
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
+  // Vindo do botão "Novo pedido" do menu/celular: /admin/orders?novo=1 abre o formulário.
+  const novoAbertoRef = useRef(false);
+  useEffect(() => {
+    if (loading || novoAbertoRef.current) return;
+    if (new URLSearchParams(window.location.search).get('novo') === '1') {
+      novoAbertoRef.current = true;
+      handleOpenCreateModal();
+      window.history.replaceState(null, '', '/admin/orders');
+    }
+  });
 
   const handleQuickStatus = async (id: string, novoStatus: StatusPedido, rotulo: string) => {
     try {
@@ -895,10 +952,7 @@ export default function OrdersPage() {
     try {
       const res = await fetch(`/api/orders/${id}/pdf`);
       if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao gerar PDF do pedido.'));
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      await saveResponseAsFile(res, 'Pedido.pdf');
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Erro ao gerar PDF do pedido.', 'error');
     }
@@ -913,8 +967,46 @@ export default function OrdersPage() {
     setDeliveryDateFilter(tomorrow);
   };
 
+  // Código do vendedor: acha o vendedor (código exato ou prefixo único) e mostra os últimos pedidos dele.
+  const vendedorPorCodigo = useMemo(() => {
+    const q = codigoVendedor.trim().toLowerCase();
+    if (!q) return null;
+    const comCodigo = vendedores.filter((v) => v.code);
+    return (
+      comCodigo.find((v) => v.code!.toLowerCase() === q) ??
+      (comCodigo.filter((v) => v.code!.toLowerCase().startsWith(q)).length === 1
+        ? comCodigo.find((v) => v.code!.toLowerCase().startsWith(q))
+        : null) ??
+      null
+    );
+  }, [codigoVendedor, vendedores]);
+
+  useEffect(() => {
+    if (!vendedorPorCodigo) {
+      setPedidosVendedor([]);
+      return;
+    }
+    let cancel = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/orders?sellerId=${vendedorPorCodigo.id}&pageSize=50`);
+        if (!res.ok) return;
+        const d = (await res.json()) as Paginated<OrderDTO>;
+        if (!cancel) setPedidosVendedor(d.data);
+      } catch {
+        /* sem rede: mantém a lista anterior */
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, [vendedorPorCodigo]);
+
+  const buscaPorCodigo = codigoVendedor.trim() !== '';
+  const baseLista = buscaPorCodigo ? pedidosVendedor : pedidos;
+
   // Filtros aplicados localmente
-  const filteredPedidos = pedidos.filter(p => {
+  const filteredPedidos = baseLista.filter(p => {
     const matchesStatus = !statusFilter || p.status === statusFilter;
     const matchesSeller = !sellerFilter || (sellerFilter === 'none' ? !p.sellerId : p.sellerId === sellerFilter);
     const date = p.orderDate?.slice(0, 10) ?? '';
@@ -934,6 +1026,10 @@ export default function OrdersPage() {
 
     return matchesStatus && matchesSeller && matchesFrom && matchesTo && matchesDelivery && matchesTexto;
   });
+  // Busca por código: os mais recentes primeiro.
+  if (buscaPorCodigo) {
+    filteredPedidos.sort((a, b) => (b.orderDate ?? '').localeCompare(a.orderDate ?? '') || b.numero - a.numero);
+  }
 
   const toggleSelectOrder = (id: string) => {
     setSelectedOrderIds((prev) =>
@@ -1084,6 +1180,23 @@ export default function OrdersPage() {
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Buscar por código do vendedor */}
+          <div className="sm:col-span-1 lg:col-span-2">
+            <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">Cód. do vendedor</label>
+            <input
+              type="text"
+              value={codigoVendedor}
+              onChange={(e) => setCodigoVendedor(e.target.value.toUpperCase())}
+              placeholder="Ex.: V01"
+              className="w-full rounded-lg border border-stone-200 text-xs px-3 py-2 bg-stone-50/50 focus:outline-none focus:bg-white focus:border-amber-400 font-medium"
+            />
+            {buscaPorCodigo && (
+              <p className={`mt-1 text-[10px] font-bold ${vendedorPorCodigo ? 'text-emerald-700' : 'text-red-600'}`}>
+                {vendedorPorCodigo ? `Últimos pedidos de ${vendedorPorCodigo.name}` : 'Código não encontrado'}
+              </p>
+            )}
           </div>
 
           {/* Filtrar por Status */}
@@ -1803,11 +1916,16 @@ export default function OrdersPage() {
                     onChange={(e) => setEnderecoEntregaId(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs bg-stone-50/50 focus:ring-1 focus:ring-amber-500"
                   >
-                    <option value="">Mesmo do faturamento (principal)</option>
+                    <option value="">{enderecoPrincipal ? `Principal: ${enderecoPrincipal}` : 'Mesmo do faturamento (principal)'}</option>
                     {enderecosCliente.map((a) => (
                       <option key={a.id} value={a.id}>{a.label ? `${a.label} — ` : ''}{a.address ?? ''}{a.neighborhood ? `, ${a.neighborhood}` : ''}</option>
                     ))}
                   </select>
+                  {clienteId && (
+                    <p className="mt-1.5 rounded-lg bg-stone-50 border border-stone-200 px-2.5 py-1.5 text-[11px] font-semibold text-stone-600">
+                      📍 Entrega em: {enderecoEntregaTexto || 'cliente sem endereço cadastrado'}
+                    </p>
+                  )}
                   {novoEndAberto && (
                     <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50/40 p-3 space-y-2">
                       <input type="text" placeholder="Apelido (ex.: Filial Centro)" value={neLabel} onChange={(e) => setNeLabel(e.target.value)} className="w-full px-2.5 py-1.5 rounded-lg border border-stone-200 text-xs bg-white focus:outline-none" />
@@ -2180,6 +2298,7 @@ export default function OrdersPage() {
                   className="rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 px-3 py-2 text-emerald-800 font-bold text-xs cursor-pointer transition-all flex items-center gap-1.5"
                 >
                   <CheckCircle2 className="h-4 w-4" /> Concluir
+                  <kbd className="hidden sm:inline rounded border border-emerald-300 bg-white/70 px-1 text-[9px] font-bold text-emerald-700">Ctrl+Enter</kbd>
                 </button>
                 <button
                   type="button"

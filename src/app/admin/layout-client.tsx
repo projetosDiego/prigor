@@ -25,6 +25,8 @@ import {
   Upload,
   ScanLine,
   Wallet,
+  Calculator,
+  Plus,
   CalendarDays,
   UserX,
   PieChart,
@@ -241,6 +243,16 @@ export default function AdminLayoutClient({ children, session }: AdminLayoutClie
               <Wallet className="h-4 w-4 text-amber-400" />
               <span>Custos & Equipe</span>
             </Link>
+            <Link 
+              href="/admin/pricing" 
+              onClick={() => setIsMobileMenuOpen(false)}
+              className={`flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                isActive('/admin/pricing') ? 'bg-amber-600 text-white shadow-xs' : 'hover:bg-stone-800 hover:text-white text-stone-300'
+              }`}
+            >
+              <Calculator className="h-4 w-4 text-amber-400" />
+              <span>Precificação</span>
+            </Link>
           </div>
 
           {/* Módulo Relatórios */}
@@ -443,6 +455,18 @@ export default function AdminLayoutClient({ children, session }: AdminLayoutClie
 
         {/* Conteúdo com padding adaptativo (3.5 no celular, 8 no desktop) */}
         <main className="p-3.5 sm:p-6 md:p-8 flex-1 print:p-0 print:m-0 print:overflow-visible">{children}</main>
+
+        {/* Atalho fixo para lançar pedido novo (principalmente no celular) */}
+        {pathname !== '/admin/orders' && (
+          <Link
+            href="/admin/orders?novo=1"
+            aria-label="Novo pedido"
+            className="print:hidden fixed bottom-5 right-4 sm:right-6 z-40 flex items-center gap-2 rounded-full bg-amber-700 hover:bg-amber-800 active:scale-95 text-white font-black text-sm pl-4 pr-5 py-3.5 shadow-lg shadow-amber-900/30 transition-all"
+          >
+            <Plus className="h-5 w-5" />
+            Novo pedido
+          </Link>
+        )}
       </div>
     </div>
   );
