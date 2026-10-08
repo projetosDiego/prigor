@@ -316,6 +316,10 @@ model Customer {
   activities     Activity[]
   orders         Order[]
 
+  /// CNPJ que fatura este cliente por padrão (NF e boleto); pode trocar no pedido.
+  defaultIssuerId String? @map("empresa_padrao_id")
+  defaultIssuer   Issuer? @relation("IssuerDefaultCustomers", fields: [defaultIssuerId], references: [id], onDelete: SetNull)
+
   @@index([sellerId])
   @@index([active])
   @@index([status])
@@ -579,6 +583,10 @@ model Order {
   boletos        Boleto[]
   invoices       Invoice[]
 
+  /// CNPJ que faturou o pedido (definido na 1ª emissão de NF/boleto).
+  issuerId String? @map("empresa_id")
+  issuer   Issuer? @relation(fields: [issuerId], references: [id], onDelete: Restrict)
+
   @@index([customerId])
   @@index([sellerId])
   @@index([status])
@@ -832,6 +840,9 @@ model Boleto {
   createdAt      DateTime     @default(now()) @map("criado_em")
   updatedAt      DateTime     @updatedAt @map("atualizado_em")
 
+  issuerId String? @map("empresa_id")
+  issuer   Issuer? @relation(fields: [issuerId], references: [id], onDelete: Restrict)
+
   @@index([orderId])
   @@index([status, dueDate])
   @@map("boletos")
@@ -858,6 +869,9 @@ model Invoice {
   createdById     String?       @map("criado_por_id")
   createdAt       DateTime      @default(now()) @map("criado_em")
   updatedAt       DateTime      @updatedAt @map("atualizado_em")
+
+  issuerId String? @map("empresa_id")
+  issuer   Issuer? @relation(fields: [issuerId], references: [id], onDelete: Restrict)
 
   @@index([orderId])
   @@index([status])
@@ -912,6 +926,42 @@ model FiscalSettings {
   updatedAt           DateTime @updatedAt @map("atualizado_em")
 
   @@map("config_fiscal")
+}
+
+/// Empresa (CNPJ) que emite nota e boleto. A principal usa a configuração sem
+/// prefixo; as outras, variáveis EMPRESA_<prefixo>_... (ver integrations/config.ts).
+model Issuer {
+  id           String   @id @default(uuid())
+  /// Apelido curto exibido no sistema ("Igor", "Priscilla").
+  name         String   @map("nome")
+  legalName    String   @map("razao_social")
+  tradeName    String?  @map("nome_fantasia")
+  cnpj         String   @unique @map("cnpj")
+  ie           String?  @map("inscricao_estadual")
+  address      String?  @map("endereco")
+  number       String?  @map("numero")
+  complement   String?  @map("complemento")
+  neighborhood String?  @map("bairro")
+  city         String?  @map("cidade")
+  cityIbgeCode String?  @map("codigo_ibge_cidade")
+  state        String?  @map("uf")
+  zipCode      String?  @map("cep")
+  phone        String?  @map("telefone")
+  email        String?  @map("email")
+  configPrefix String   @unique @default("") @map("prefixo_config")
+  isDefault    Boolean  @default(false) @map("padrao")
+  active       Boolean  @default(true) @map("ativa")
+  /// Teto de faturamento anual (MEI) para o alerta do relatório.
+  annualLimit  Decimal  @default(81000) @map("limite_anual") @db.Decimal(12, 2)
+  createdAt    DateTime @default(now()) @map("criado_em")
+  updatedAt    DateTime @updatedAt @map("atualizado_em")
+
+  customers Customer[] @relation("IssuerDefaultCustomers")
+  orders    Order[]
+  boletos   Boleto[]
+  invoices  Invoice[]
+
+  @@map("empresas_emissoras")
 }
 
 // ─── Precificação (método PreçoFácil) ────────────────────────────────────────

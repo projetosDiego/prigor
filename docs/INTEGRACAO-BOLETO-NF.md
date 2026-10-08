@@ -334,3 +334,18 @@ Cada fase fecha com `npm run verify` verde e roteiro de teste em `docs/TESTE-LOC
 - Correção: o campo de informações complementares da Notaas é `infCpl` (antes era enviado com nome errado).
 - Liberados na NF: desconto (por item + rateio do desconto do pedido) e frete (`valorFrete`, modFrete 0).
   Boleto com vencimento gera grupo de cobrança (fatura PED-<nº> + duplicata 001). "Outros custos" segue bloqueado.
+
+## Vários CNPJs (empresas emissoras) — 08/10/2026
+
+- Tabela `empresas_emissoras`: dados do emitente por CNPJ (razão social, IE, endereço, limite anual), `padrao`, `ativa` e `prefixo_config`.
+  A migração cria a **principal** a partir de `config_fiscal` e vincula a ela os boletos/NF já emitidos.
+- Credenciais **não** ficam no banco. Principal: variáveis de sempre (`SICOOB_*`, `FISCAL_*`).
+  Demais: `EMPRESA_<PREFIXO>_<VARIÁVEL>` (ex.: `EMPRESA_PRISCILLA_SICOOB_CLIENT_ID`). Credencial nunca herda da principal;
+  só ajustes gerais (`SICOOB_ENV`, `FISCAL_PROVIDER`, `FISCAL_ENV`, `BILLING_ENABLED`, `SICOOB_MODALIDADE`, `SICOOB_BOLETO_PIX`).
+  `docker-compose.prod.yml` passa o `.env` inteiro (`env_file`) para o container aceitar esses nomes.
+- Gerar o comando da VPS para uma empresa: `npm run empresa:comando-vps` (pergunta senha/chave em modo oculto; arquivo em `../certificado/`).
+- Pedido: CNPJ escolhido no faturamento (padrão: o do cliente → empresa padrão). Com NF ou boleto **ativo**, fica travado.
+- Cliente: campo "Faturar por (CNPJ padrão)".
+- Relatório: Relatórios → **Faturamento por CNPJ** (NF autorizadas/canceladas, boletos emitidos/pagos/em aberto/vencidos,
+  faturado no ano × limite com alerta 80%/95%, projeção, planilha CSV para o contador).
+  "Faturado no ano" = pedidos não cancelados atribuídos ao CNPJ; pedidos sem nota/boleto aparecem à parte (sem CNPJ).

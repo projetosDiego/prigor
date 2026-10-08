@@ -34,6 +34,12 @@ services:
     container_name: prigor-app
     restart: unless-stopped
 
+    # Empresas adicionais (outros CNPJs) usam variáveis EMPRESA_<PREFIXO>_...,
+    # com nomes que dependem do cadastro; por isso o .env inteiro entra no
+    # container. O bloco `environment` abaixo continua tendo prioridade.
+    env_file:
+      - .env
+
     expose:
       - '3000'
 

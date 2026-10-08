@@ -163,6 +163,8 @@ export const customerInputSchema = z.object({
   ieIndicator: z.union([z.enum(['1', '2', '9']), z.null()]).optional(),
   boletoAllowed: z.boolean().default(false),
   invoiceRequired: z.boolean().default(false),
+  /** CNPJ que fatura este cliente por padrão (só gerência). */
+  defaultIssuerId: z.union([z.string().uuid('Empresa inválida.'), z.null()]).optional(),
 });
 
 export type CustomerInput = z.infer<typeof customerInputSchema>;

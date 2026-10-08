@@ -46,23 +46,65 @@ const schema = z.object({
 
 export type IntegrationEnv = z.infer<typeof schema>;
 
-let cached: IntegrationEnv | null = null;
+/**
+ * Várias empresas (CNPJs) emitindo pelo mesmo sistema.
+ *
+ * A empresa principal usa as variáveis de sempre (SICOOB_CLIENT_ID, …).
+ * As demais usam o mesmo nome com prefixo: EMPRESA_<PREFIXO>_SICOOB_CLIENT_ID.
+ * Credenciais (certificado, senha, client id, conta, token do provedor) NUNCA
+ * caem para as da principal; só ajustes gerais (ambientes, provedor, liga/desliga)
+ * são compartilhados quando a empresa não define os seus.
+ */
+const SHARED_KEYS = new Set<string>([
+  'SICOOB_ENV',
+  'SICOOB_MODALIDADE',
+  'SICOOB_BOLETO_PIX',
+  'FISCAL_PROVIDER',
+  'FISCAL_ENV',
+  'FISCAL_WEBHOOK_SECRET',
+  'BILLING_ENABLED',
+]);
 
-export function integrationEnv(): IntegrationEnv {
-  if (!cached) {
-    const parsed = schema.safeParse(process.env);
+/** Prefixo normalizado ('' = empresa principal). */
+export function normalizeScope(scope?: string | null): string {
+  return (scope ?? '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+export function scopedVarName(scope: string, key: string): string {
+  const s = normalizeScope(scope);
+  return s ? `EMPRESA_${s}_${key}` : key;
+}
+
+function sourceFor(scope: string): Record<string, string | undefined> {
+  if (!scope) return process.env;
+  const out: Record<string, string | undefined> = {};
+  for (const key of Object.keys(schema.shape)) {
+    const own = process.env[scopedVarName(scope, key)];
+    out[key] = own !== undefined && own !== '' ? own : SHARED_KEYS.has(key) ? process.env[key] : undefined;
+  }
+  return out;
+}
+
+const cache = new Map<string, IntegrationEnv>();
+
+export function integrationEnv(scope?: string | null): IntegrationEnv {
+  const key = normalizeScope(scope);
+  let env = cache.get(key);
+  if (!env) {
+    const parsed = schema.safeParse(sourceFor(key));
     if (!parsed.success) {
       const problems = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
-      throw new Error(`Configuração de integração inválida: ${problems}`);
+      throw new Error(`Configuração de integração inválida${key ? ` (empresa ${key})` : ''}: ${problems}`);
     }
-    cached = parsed.data;
+    env = parsed.data;
+    cache.set(key, env);
   }
-  return cached;
+  return env;
 }
 
 /** Só para testes: força reler o ambiente. */
 export function resetIntegrationEnvCache(): void {
-  cached = null;
+  cache.clear();
 }
 
 export interface IntegrationStatus {
@@ -95,8 +137,8 @@ function fileExists(path: string): boolean {
 }
 
 /** O que está configurado — sem expor valor nenhum. */
-export function integrationStatus(): IntegrationStatus {
-  const e = integrationEnv();
+export function integrationStatus(scope?: string | null): IntegrationStatus {
+  const e = integrationEnv(scope);
 
   const certificate =
     (e.SICOOB_CERT_BASE64.length > 0 || fileExists(e.SICOOB_CERT_PATH)) && e.SICOOB_CERT_PASSWORD.length > 0;

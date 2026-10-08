@@ -201,6 +201,8 @@ export interface OrderDTO {
   customerCnpj: string | null;
   customerLegalName: string | null;
   deliveryAddressId: string | null;
+  /** Empresa (CNPJ) que faturou o pedido; null = ainda não faturado. */
+  issuerId: string | null;
   sellerId: string | null;
   sellerName: string | null;
   status: OrderStatus;
@@ -258,6 +260,7 @@ export interface OrderRow {
   customerId: string;
   sellerId: string | null;
   deliveryAddressId: string | null;
+  issuerId?: string | null;
   status: OrderStatus;
   paymentMethod: string;
   orderDate: Date | string;
@@ -326,6 +329,7 @@ export function toOrderDTO(row: OrderRow, options: { withAddress?: boolean } = {
     customerCnpj: row.customer?.cnpj ?? null,
     customerLegalName: row.customer?.legalName ?? null,
     deliveryAddressId: row.deliveryAddressId ?? null,
+    issuerId: row.issuerId ?? null,
     sellerId: row.sellerId,
     sellerName: row.seller?.name ?? null,
     status: row.status,
@@ -425,6 +429,8 @@ export interface CustomerDTO {
   creditLimit: number;
   boletoAllowed: boolean;
   invoiceRequired: boolean;
+  /** CNPJ que fatura este cliente por padrão. */
+  defaultIssuerId: string | null;
   ie: string | null;
   ieIndicator: string | null;
   createdAt: string | null;
@@ -489,6 +495,7 @@ export function toCustomerDTO(row: CustomerRow): CustomerDTO {
     creditLimit: num(row.creditLimit),
     boletoAllowed: row.boletoAllowed ?? false,
     invoiceRequired: row.invoiceRequired ?? false,
+    defaultIssuerId: row.defaultIssuerId ?? null,
     ie: row.ie ?? null,
     ieIndicator: row.ieIndicator ?? null,
     createdAt: timestamp(row.createdAt),

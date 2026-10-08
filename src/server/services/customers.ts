@@ -129,6 +129,7 @@ function toPersistable(
     'creditLimit',
     'boletoAllowed',
     'invoiceRequired',
+    'defaultIssuerId',
     'ie',
     'ieIndicator',
   ];
@@ -151,7 +152,7 @@ function toPersistable(
  * Campos que só a gerência decide. Vendedor que mandar esses campos tem o
  * valor descartado em silêncio (cadastro novo fica com o padrão: não liberado).
  */
-const MANAGEMENT_ONLY_FIELDS = ['boletoAllowed', 'invoiceRequired'] as const;
+const MANAGEMENT_ONLY_FIELDS = ['boletoAllowed', 'invoiceRequired', 'defaultIssuerId'] as const;
 
 function stripManagementOnly(data: Prisma.CustomerUncheckedCreateInput): void {
   for (const key of MANAGEMENT_ONLY_FIELDS) delete (data as Record<string, unknown>)[key];

@@ -175,13 +175,16 @@ export function parseSituation(body: unknown): BoletoSituation {
 
 // ─── Chamadas à API ─────────────────────────────────────────────────────────
 
-export async function sicoobIssueBoleto(input: BoletoIssueInput): Promise<{ boleto: IssuedBoleto; raw: unknown }> {
-  const res = await sicoobCobranca('POST', '/boletos', buildBoletoPayload(input, sicoobAccount()));
+export async function sicoobIssueBoleto(
+  input: BoletoIssueInput,
+  scope?: string | null,
+): Promise<{ boleto: IssuedBoleto; raw: unknown }> {
+  const res = await sicoobCobranca('POST', '/boletos', buildBoletoPayload(input, sicoobAccount(scope)), scope);
   return { boleto: parseIssueResponse(res.body), raw: res.body };
 }
 
-function accountQuery(nossoNumero: string): string {
-  const a = sicoobAccount();
+function accountQuery(nossoNumero: string, scope?: string | null): string {
+  const a = sicoobAccount(scope);
   return new URLSearchParams({
     numeroCliente: String(a.numeroCliente),
     codigoModalidade: String(a.codigoModalidade),
@@ -189,24 +192,34 @@ function accountQuery(nossoNumero: string): string {
   }).toString();
 }
 
-export async function sicoobGetBoleto(nossoNumero: string): Promise<{ situation: BoletoSituation; raw: unknown }> {
-  const res = await sicoobCobranca('GET', `/boletos?${accountQuery(nossoNumero)}`);
+export async function sicoobGetBoleto(
+  nossoNumero: string,
+  scope?: string | null,
+): Promise<{ situation: BoletoSituation; raw: unknown }> {
+  const res = await sicoobCobranca('GET', `/boletos?${accountQuery(nossoNumero, scope)}`, undefined, scope);
   return { situation: parseSituation(res.body), raw: res.body };
 }
 
 /** Baixa (cancela a cobrança no banco). CONFERIR caminho no primeiro uso real. */
-export async function sicoobWriteOffBoleto(nossoNumero: string): Promise<unknown> {
-  const a = sicoobAccount();
-  const res = await sicoobCobranca('POST', `/boletos/${encodeURIComponent(nossoNumero)}/baixar`, {
-    numeroCliente: a.numeroCliente,
-    codigoModalidade: a.codigoModalidade,
-  });
+export async function sicoobWriteOffBoleto(nossoNumero: string, scope?: string | null): Promise<unknown> {
+  const a = sicoobAccount(scope);
+  const res = await sicoobCobranca(
+    'POST',
+    `/boletos/${encodeURIComponent(nossoNumero)}/baixar`,
+    { numeroCliente: a.numeroCliente, codigoModalidade: a.codigoModalidade },
+    scope,
+  );
   return res.body;
 }
 
 /** PDF (segunda via) em base64 → Buffer. */
-export async function sicoobBoletoPdf(nossoNumero: string): Promise<Buffer> {
-  const res = await sicoobCobranca('GET', `/boletos/segunda-via?${accountQuery(nossoNumero)}&gerarPdf=true`);
+export async function sicoobBoletoPdf(nossoNumero: string, scope?: string | null): Promise<Buffer> {
+  const res = await sicoobCobranca(
+    'GET',
+    `/boletos/segunda-via?${accountQuery(nossoNumero, scope)}&gerarPdf=true`,
+    undefined,
+    scope,
+  );
   const pdf = str(resultado(res.body).pdfBoleto);
   if (!pdf) throw new Error('O Sicoob não devolveu o PDF do boleto.');
   return Buffer.from(pdf, 'base64');

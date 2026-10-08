@@ -12,6 +12,8 @@ const issueSchema = z
     /** Mensagem desta nota; ausente = mensagem padrão da Configuração Fiscal. */
     message: z.union([z.string().trim().max(500, 'Mensagem com no máximo 500 caracteres.'), z.null()]).optional(),
     notes: z.union([z.string().trim().max(1000, 'Observação com no máximo 1000 caracteres.'), z.null()]).optional(),
+    /** Empresa (CNPJ) que emite; ausente = a do pedido/cliente/padrão. */
+    issuerId: z.union([z.string().uuid('Empresa inválida.'), z.null()]).optional(),
   })
   .default({});
 

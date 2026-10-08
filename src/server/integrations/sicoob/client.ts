@@ -13,7 +13,7 @@
  */
 import fs from 'node:fs';
 
-import { integrationEnv } from '../config';
+import { integrationEnv, normalizeScope } from '../config';
 import { httpRequest, IntegrationHttpError, type HttpResponse } from '../http';
 
 const URLS = {
@@ -55,30 +55,30 @@ export class SicoobApiError extends Error {
   }
 }
 
-let tokenCache: { value: string; expiresAt: number } | null = null;
-let pfxCache: { key: string; buffer: Buffer } | null = null;
+// Caches por empresa (prefixo da configuração; '' = principal).
+const tokenCache = new Map<string, { value: string; expiresAt: number }>();
+const pfxCache = new Map<string, { key: string; buffer: Buffer }>();
 
 /**
  * Certificado A1: em base64 (SICOOB_CERT_BASE64, usado no servidor) ou
  * arquivo .pfx (SICOOB_CERT_PATH, usado no computador local).
  */
-function certificate(): { pfx: Buffer; passphrase: string } {
-  const e = integrationEnv();
+function certificate(scope = ''): { pfx: Buffer; passphrase: string } {
+  const e = integrationEnv(scope);
   const source = e.SICOOB_CERT_BASE64 ? 'base64' : e.SICOOB_CERT_PATH;
   if (!source || !e.SICOOB_CERT_PASSWORD) {
     throw new SicoobNotConfiguredError(['certificado digital A1 (rode: npm run cert:setup)']);
   }
   const key = source === 'base64' ? `b64:${e.SICOOB_CERT_BASE64.length}` : `file:${source}`;
-  if (!pfxCache || pfxCache.key !== key) {
-    const buffer =
-      source === 'base64' ? Buffer.from(e.SICOOB_CERT_BASE64, 'base64') : fs.readFileSync(e.SICOOB_CERT_PATH);
-    pfxCache = { key, buffer };
-  }
-  return { pfx: pfxCache.buffer, passphrase: e.SICOOB_CERT_PASSWORD };
+  const cached = pfxCache.get(scope);
+  if (cached && cached.key === key) return { pfx: cached.buffer, passphrase: e.SICOOB_CERT_PASSWORD };
+  const buffer = source === 'base64' ? Buffer.from(e.SICOOB_CERT_BASE64, 'base64') : fs.readFileSync(e.SICOOB_CERT_PATH);
+  pfxCache.set(scope, { key, buffer });
+  return { pfx: buffer, passphrase: e.SICOOB_CERT_PASSWORD };
 }
 
-async function accessToken(): Promise<string> {
-  const e = integrationEnv();
+async function accessToken(scope = ''): Promise<string> {
+  const e = integrationEnv(scope);
   if (!e.SICOOB_CLIENT_ID) throw new SicoobNotConfiguredError(['Client ID (SICOOB_CLIENT_ID)']);
 
   if (e.SICOOB_ENV === 'sandbox') {
@@ -86,9 +86,10 @@ async function accessToken(): Promise<string> {
     return e.SICOOB_SANDBOX_TOKEN;
   }
 
-  if (tokenCache && tokenCache.expiresAt > Date.now() + 60_000) return tokenCache.value;
+  const cached = tokenCache.get(scope);
+  if (cached && cached.expiresAt > Date.now() + 60_000) return cached.value;
 
-  const { pfx, passphrase } = certificate();
+  const { pfx, passphrase } = certificate(scope);
   const form = new URLSearchParams({
     grant_type: 'client_credentials',
     client_id: e.SICOOB_CLIENT_ID,
@@ -108,11 +109,11 @@ async function accessToken(): Promise<string> {
     throw new SicoobApiError('Sicoob recusou a autenticação (token).', res.status, res.body);
   }
 
-  tokenCache = {
+  tokenCache.set(scope, {
     value: res.body.access_token,
     expiresAt: Date.now() + (res.body.expires_in ?? 300) * 1000,
-  };
-  return tokenCache.value;
+  });
+  return res.body.access_token;
 }
 
 /**
@@ -123,11 +124,13 @@ export async function sicoobCobranca<T = unknown>(
   method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
   path: string,
   body?: unknown,
+  scopeArg?: string | null,
 ): Promise<HttpResponse<T>> {
-  const e = integrationEnv();
+  const scope = normalizeScope(scopeArg);
+  const e = integrationEnv(scope);
   const base = URLS[e.SICOOB_ENV].cobranca;
-  const token = await accessToken();
-  const tls = e.SICOOB_ENV === 'production' ? certificate() : {};
+  const token = await accessToken(scope);
+  const tls = e.SICOOB_ENV === 'production' ? certificate(scope) : {};
 
   let res: HttpResponse<T>;
   try {
@@ -143,7 +146,7 @@ export async function sicoobCobranca<T = unknown>(
     throw err;
   }
 
-  if (res.status === 401) tokenCache = null; // força renovar na próxima
+  if (res.status === 401) tokenCache.delete(scope); // força renovar na próxima
   if (res.status < 200 || res.status >= 300) {
     throw new SicoobApiError(`Sicoob respondeu ${res.status} em ${method} ${path}.`, res.status, res.body);
   }
@@ -151,8 +154,10 @@ export async function sicoobCobranca<T = unknown>(
 }
 
 /** Dados fixos do beneficiário usados em toda chamada de boleto. */
-export function sicoobAccount(): { numeroCliente: number; codigoModalidade: number; numeroContaCorrente: number; pix: boolean } {
-  const e = integrationEnv();
+export function sicoobAccount(
+  scope?: string | null,
+): { numeroCliente: number; codigoModalidade: number; numeroContaCorrente: number; pix: boolean } {
+  const e = integrationEnv(scope);
   if (!e.SICOOB_NUMERO_CLIENTE || !e.SICOOB_CONTA_CORRENTE) {
     throw new SicoobNotConfiguredError(['número do cliente/conta corrente do convênio']);
   }

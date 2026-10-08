@@ -75,3 +75,45 @@ describe('integrationStatus', () => {
     expect(json).not.toContain('token-secreto');
   });
 });
+
+describe('várias empresas (prefixo EMPRESA_<X>_)', () => {
+  const SCOPED = [
+    'EMPRESA_PRISCILLA_SICOOB_CLIENT_ID', 'EMPRESA_PRISCILLA_SICOOB_CERT_BASE64', 'EMPRESA_PRISCILLA_SICOOB_CERT_PASSWORD',
+    'EMPRESA_PRISCILLA_SICOOB_NUMERO_CLIENTE', 'EMPRESA_PRISCILLA_SICOOB_CONTA_CORRENTE', 'EMPRESA_PRISCILLA_FISCAL_API_TOKEN',
+  ];
+  const principal = {
+    SICOOB_ENV: 'production', SICOOB_CLIENT_ID: 'igor', SICOOB_CERT_BASE64: 'QUJD', SICOOB_CERT_PASSWORD: 'x',
+    SICOOB_NUMERO_CLIENTE: '1586513', SICOOB_CONTA_CORRENTE: '37228-5', FISCAL_PROVIDER: 'notaas',
+    FISCAL_API_TOKEN: 'ntaas_igor', BILLING_ENABLED: 'true',
+  };
+
+  it('empresa adicional NUNCA herda credenciais da principal', () => {
+    withEnv(principal);
+    for (const k of SCOPED) vi.stubEnv(k, '');
+    resetIntegrationEnvCache();
+    expect(integrationStatus().sicoob.ready).toBe(true);
+    const pri = integrationStatus('priscilla');
+    expect(pri.sicoob.ready).toBe(false);
+    expect(pri.fiscal.ready).toBe(false);
+    expect(pri.fiscal.missing.join(' ')).toMatch(/Token/);
+    // ajustes gerais são compartilhados
+    expect(pri.billingEnabled).toBe(true);
+    expect(pri.fiscal.provider).toBe('notaas');
+    expect(pri.sicoob.environment).toBe('production');
+  });
+
+  it('com as próprias variáveis, a empresa adicional fica pronta', () => {
+    withEnv(principal);
+    vi.stubEnv('EMPRESA_PRISCILLA_SICOOB_CLIENT_ID', 'pri');
+    vi.stubEnv('EMPRESA_PRISCILLA_SICOOB_CERT_BASE64', 'REVG');
+    vi.stubEnv('EMPRESA_PRISCILLA_SICOOB_CERT_PASSWORD', 'y');
+    vi.stubEnv('EMPRESA_PRISCILLA_SICOOB_NUMERO_CLIENTE', '999');
+    vi.stubEnv('EMPRESA_PRISCILLA_SICOOB_CONTA_CORRENTE', '37766-0');
+    vi.stubEnv('EMPRESA_PRISCILLA_FISCAL_API_TOKEN', 'ntaas_pri');
+    resetIntegrationEnvCache();
+    const pri = integrationStatus('PRISCILLA');
+    expect(pri.sicoob.ready).toBe(true);
+    expect(pri.fiscal.ready).toBe(true);
+    expect(JSON.stringify(pri)).not.toContain('ntaas_pri');
+  });
+});

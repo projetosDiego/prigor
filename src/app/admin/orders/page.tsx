@@ -2381,6 +2381,8 @@ export default function OrdersPage() {
             customerName: billingOrder.customerName,
             status: billingOrder.status,
             docsLink: billingOrder.documents?.link ?? null,
+            issuerId: billingOrder.issuerId ?? null,
+            customerDefaultIssuerId: clientes.find((c) => c.id === billingOrder.customerId)?.defaultIssuerId ?? null,
           }}
           onClose={() => {
             setBillingOrder(null);

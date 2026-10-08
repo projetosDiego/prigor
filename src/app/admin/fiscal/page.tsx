@@ -6,8 +6,9 @@
  * Leitura: gerência. Salvar: só administrador (a API recusa os demais).
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { CheckCircle2, Landmark, Loader2, Receipt, Save, XCircle } from 'lucide-react';
+import { Loader2, Receipt, Save } from 'lucide-react';
 
+import IssuersManager from '@/components/admin/IssuersManager';
 import { useToast } from '@/components/shared/Toast';
 import { apiErrorMessage, errorMessage } from '@/lib/errors';
 
@@ -39,30 +40,7 @@ interface FiscalSettings {
   boletoInterestPct: number | null;
 }
 
-interface IntegrationStatus {
-  billingEnabled: boolean;
-  sicoob: { environment: string; ready: boolean; missing: string[] };
-  fiscal: { provider: string | null; environment: string; ready: boolean; missing: string[] };
-}
-
 type Form = Record<keyof FiscalSettings, string | boolean>;
-
-const TEXT_FIELDS: Array<{ key: keyof FiscalSettings; label: string; placeholder?: string; span?: number }> = [
-  { key: 'legalName', label: 'Razão social', span: 2 },
-  { key: 'tradeName', label: 'Nome fantasia' },
-  { key: 'cnpj', label: 'CNPJ', placeholder: 'só números' },
-  { key: 'ie', label: 'Inscrição Estadual' },
-  { key: 'phone', label: 'Telefone' },
-  { key: 'email', label: 'E-mail' },
-  { key: 'zipCode', label: 'CEP', placeholder: 'só números' },
-  { key: 'address', label: 'Endereço', span: 2 },
-  { key: 'number', label: 'Número' },
-  { key: 'complement', label: 'Complemento' },
-  { key: 'neighborhood', label: 'Bairro' },
-  { key: 'city', label: 'Cidade' },
-  { key: 'state', label: 'UF', placeholder: 'RJ' },
-  { key: 'cityIbgeCode', label: 'Código IBGE da cidade', placeholder: 'Rio = 3304557' },
-];
 
 const FISCAL_FIELDS: Array<{ key: keyof FiscalSettings; label: string; placeholder?: string }> = [
   { key: 'defaultCfopInState', label: 'CFOP padrão (dentro do RJ)', placeholder: 'ex.: 5101' },
@@ -80,19 +58,9 @@ function toForm(s: FiscalSettings): Form {
   return f;
 }
 
-function Status({ ok, label }: { ok: boolean; label: string }) {
-  return (
-    <span className={`inline-flex items-center gap-1 text-xs font-bold ${ok ? 'text-emerald-700' : 'text-stone-500'}`}>
-      {ok ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
-      {label}
-    </span>
-  );
-}
-
 export default function FiscalSettingsPage() {
   const { toast } = useToast();
   const [form, setForm] = useState<Form | null>(null);
-  const [status, setStatus] = useState<IntegrationStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -102,9 +70,8 @@ export default function FiscalSettingsPage() {
       const res = await fetch('/api/settings/fiscal');
       const data: unknown = await res.json();
       if (!res.ok) throw new Error(apiErrorMessage(data, 'Erro ao carregar a configuração fiscal.'));
-      const d = data as { settings: FiscalSettings; integrations: IntegrationStatus };
+      const d = data as { settings: FiscalSettings };
       setForm(toForm(d.settings));
-      setStatus(d.integrations);
     } catch (err: unknown) {
       toast(errorMessage(err), 'error');
     } finally {
@@ -174,48 +141,13 @@ export default function FiscalSettingsPage() {
           <Receipt className="h-5 w-5 text-amber-600" /> Configuração Fiscal
         </h1>
         <p className="text-xs text-stone-500 mt-1">
-          Dados da empresa para a nota fiscal e padrões do boleto. Valores fiscais (CFOP, CSOSN, CRT) devem ser confirmados com o contador.
+          Empresas (CNPJs) que emitem, padrões da nota fiscal e do boleto. Valores fiscais (CFOP, CSOSN, CRT) devem ser confirmados com o contador.
         </p>
       </div>
 
-      {status && (
-        <div className="grid md:grid-cols-2 gap-3">
-          <div className="rounded-xl border border-stone-200 bg-white p-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-sm flex items-center gap-2"><Landmark className="h-4 w-4 text-amber-600" /> Boletos — Sicoob</span>
-              <span className="text-[10px] font-bold uppercase text-stone-400">{status.sicoob.environment === 'production' ? 'Produção' : 'Ambiente de testes'}</span>
-            </div>
-            <Status ok={status.sicoob.ready} label={status.sicoob.ready ? 'Pronto' : 'Pendente'} />
-            {status.sicoob.missing.length > 0 && (
-              <ul className="text-[11px] text-stone-500 list-disc pl-4">{status.sicoob.missing.map((m) => <li key={m}>{m}</li>)}</ul>
-            )}
-          </div>
-          <div className="rounded-xl border border-stone-200 bg-white p-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-sm flex items-center gap-2"><Receipt className="h-4 w-4 text-amber-600" /> Nota fiscal</span>
-              <span className="text-[10px] font-bold uppercase text-stone-400">{status.fiscal.environment === 'producao' ? 'Produção' : 'Homologação'}</span>
-            </div>
-            <Status ok={status.fiscal.ready} label={status.fiscal.ready ? `Pronto (${status.fiscal.provider})` : 'Pendente'} />
-            {status.fiscal.missing.length > 0 && (
-              <ul className="text-[11px] text-stone-500 list-disc pl-4">{status.fiscal.missing.map((m) => <li key={m}>{m}</li>)}</ul>
-            )}
-          </div>
-        </div>
-      )}
+      <IssuersManager />
 
       <form onSubmit={save} className="space-y-5">
-        <section className="rounded-xl border border-stone-200 bg-white p-4">
-          <h2 className="text-xs font-black text-amber-700 uppercase tracking-widest mb-3">Empresa (emitente)</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {TEXT_FIELDS.map((f) => (
-              <div key={f.key} className={f.span === 2 ? 'md:col-span-2' : ''}>
-                <label className={label}>{f.label}</label>
-                <input className={input} placeholder={f.placeholder} value={String(form[f.key] ?? '')} onChange={(e) => set(f.key, e.target.value)} />
-              </div>
-            ))}
-          </div>
-        </section>
-
         <section className="rounded-xl border border-stone-200 bg-white p-4">
           <h2 className="text-xs font-black text-amber-700 uppercase tracking-widest mb-3">Nota fiscal</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

@@ -121,8 +121,8 @@ export function parseNotaasInvoice(body: unknown, fallbackId?: string): FiscalIn
 
 // ─── HTTP ───────────────────────────────────────────────────────────────────
 
-async function call(method: 'GET' | 'POST', path: string, body?: unknown, binary = false) {
-  const token = integrationEnv().FISCAL_API_TOKEN;
+async function call(scope: string, method: 'GET' | 'POST', path: string, body?: unknown, binary = false) {
+  const token = integrationEnv(scope).FISCAL_API_TOKEN;
   let res;
   try {
     res = await httpRequest<unknown>({
@@ -147,28 +147,31 @@ async function call(method: 'GET' | 'POST', path: string, body?: unknown, binary
   return res;
 }
 
-export const notaasProvider: FiscalProvider = {
-  name: 'notaas',
-  async issue(request) {
-    const res = await call('POST', '/nfe/emitir', buildNotaasPayload(request));
-    return parseNotaasInvoice(res.body);
-  },
-  async get(providerId) {
-    const res = await call('GET', `/nfe/invoices/${encodeURIComponent(providerId)}/status`);
-    return parseNotaasInvoice(res.body, providerId);
-  },
-  async cancel(providerId, reason) {
-    const res = await call('POST', '/nfe/cancelar', { invoiceId: providerId, motivo: reason });
-    const parsed = parseNotaasInvoice(res.body, providerId);
-    // 202 = cancelamento aceito na fila; o status final vem na consulta.
-    return parsed;
-  },
-  async danfe(providerId) {
-    const res = await call('GET', `/nfe/invoices/${encodeURIComponent(providerId)}/danfe`, undefined, true);
-    return res.buffer;
-  },
-  async xml(providerId) {
-    const res = await call('GET', `/nfe/invoices/${encodeURIComponent(providerId)}/xml`, undefined, true);
-    return res.buffer;
-  },
-};
+/** Adapter Notaas de uma empresa (cada CNPJ tem a sua chave de API). */
+export function notaasProvider(scope = ''): FiscalProvider {
+  return {
+    name: 'notaas',
+    async issue(request) {
+      const res = await call(scope, 'POST', '/nfe/emitir', buildNotaasPayload(request));
+      return parseNotaasInvoice(res.body);
+    },
+    async get(providerId) {
+      const res = await call(scope, 'GET', `/nfe/invoices/${encodeURIComponent(providerId)}/status`);
+      return parseNotaasInvoice(res.body, providerId);
+    },
+    async cancel(providerId, reason) {
+      const res = await call(scope, 'POST', '/nfe/cancelar', { invoiceId: providerId, motivo: reason });
+      const parsed = parseNotaasInvoice(res.body, providerId);
+      // 202 = cancelamento aceito na fila; o status final vem na consulta.
+      return parsed;
+    },
+    async danfe(providerId) {
+      const res = await call(scope, 'GET', `/nfe/invoices/${encodeURIComponent(providerId)}/danfe`, undefined, true);
+      return res.buffer;
+    },
+    async xml(providerId) {
+      const res = await call(scope, 'GET', `/nfe/invoices/${encodeURIComponent(providerId)}/xml`, undefined, true);
+      return res.buffer;
+    },
+  };
+}

@@ -24,10 +24,27 @@ export interface BillingOrder {
   status: string;
   /** Link secreto para o cliente baixar boleto/NF (só gestão recebe). */
   docsLink?: string | null;
+  /** CNPJ que já faturou o pedido (se houver). */
+  issuerId?: string | null;
+  /** CNPJ padrão do cliente. */
+  customerDefaultIssuerId?: string | null;
 }
+
+/** Empresa emissora (CNPJ) — só o necessário para escolher no faturamento. */
+interface IssuerOption {
+  id: string;
+  name: string;
+  legalName: string;
+  cnpj: string;
+  isDefault: boolean;
+  integrations: { invoice: { ready: boolean; environment: string }; boleto: { ready: boolean } };
+}
+
+const fmtCnpj = (c: string) => c.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
 
 interface Boleto {
   id: string;
+  issuerId: string | null;
   seuNumero: string;
   nossoNumero: string | null;
   linhaDigitavel: string | null;
@@ -58,6 +75,23 @@ export default function OrderBillingModal({ order, onClose }: { order: BillingOr
   const [boletos, setBoletos] = useState<Boleto[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [issuers, setIssuers] = useState<IssuerOption[]>([]);
+  const [chosenIssuer, setChosenIssuer] = useState<string | null>(order.issuerId ?? order.customerDefaultIssuerId ?? null);
+  /** Empresa da NF ativa (informada pela seção de nota). */
+  const [invoiceIssuer, setInvoiceIssuer] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch('/api/settings/issuers');
+        if (!res.ok) return;
+        const d = (await res.json()) as { data?: IssuerOption[] };
+        setIssuers(d.data ?? []);
+      } catch {
+        /* sem lista: o servidor usa a empresa do pedido/cliente/padrão */
+      }
+    })();
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -76,10 +110,13 @@ export default function OrderBillingModal({ order, onClose }: { order: BillingOr
     void load();
   }, [load]);
 
-  const call = async (key: string, url: string, okMsg: string) => {
+  const call = async (key: string, url: string, okMsg: string, body?: unknown) => {
     setBusy(key);
     try {
-      const res = await fetch(url, { method: 'POST' });
+      const res = await fetch(url, {
+        method: 'POST',
+        ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}),
+      });
       if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro na operação.'));
       toast(okMsg, 'success');
     } catch (err) {
@@ -94,13 +131,18 @@ export default function OrderBillingModal({ order, onClose }: { order: BillingOr
     const warn = !isBoletoPaymentMethod(order.paymentMethod)
       ? `\n\nAtenção: a forma de pagamento deste pedido é "${order.paymentMethod}", não boleto.`
       : '';
+    const by = selectedIssuer ? `\n\nCNPJ: ${selectedIssuer.name} (${fmtCnpj(selectedIssuer.cnpj)})` : '';
     const ok = await confirm({
       title: 'Gerar boleto',
-      message: `Registrar no Sicoob um boleto de ${brl(order.total)} com vencimento em ${br(order.dueDate)} para ${order.customerName ?? 'o cliente'}?${warn}`,
+      message: `Registrar no Sicoob um boleto de ${brl(order.total)} com vencimento em ${br(order.dueDate)} para ${order.customerName ?? 'o cliente'}?${by}${warn}`,
       confirmLabel: 'Gerar boleto',
       cancelLabel: 'Voltar',
     });
-    if (ok) await call('issue', `/api/orders/${order.id}/boletos`, 'Boleto registrado no Sicoob.');
+    if (ok) {
+      await call('issue', `/api/orders/${order.id}/boletos`, 'Boleto registrado no Sicoob.', {
+        issuerId: selectedIssuer?.id ?? null,
+      });
+    }
   };
 
   const writeOff = async (b: Boleto) => {
@@ -136,7 +178,13 @@ export default function OrderBillingModal({ order, onClose }: { order: BillingOr
     }
   };
 
-  const hasActive = boletos.some((b) => ['pendente_registro', 'registrado', 'pago'].includes(b.status));
+  const activeBoleto = boletos.find((b) => ['pendente_registro', 'registrado', 'pago'].includes(b.status));
+  const hasActive = Boolean(activeBoleto);
+  // Com NF ou boleto ativo, o CNPJ fica travado no do documento.
+  const lockedIssuerId = activeBoleto?.issuerId ?? invoiceIssuer ?? null;
+  const fallbackIssuer = issuers.find((i) => i.isDefault) ?? issuers[0] ?? null;
+  const selectedIssuer =
+    issuers.find((i) => i.id === (lockedIssuerId ?? chosenIssuer)) ?? (lockedIssuerId ? null : fallbackIssuer);
   const btn = 'inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-stone-200 text-[11px] font-bold hover:bg-stone-50 disabled:opacity-50 cursor-pointer';
 
   return (
@@ -153,6 +201,42 @@ export default function OrderBillingModal({ order, onClose }: { order: BillingOr
         </div>
 
         <div className="p-6 overflow-y-auto space-y-4">
+          {issuers.length > 0 && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-black text-amber-800">Faturar por (CNPJ)</p>
+                {lockedIssuerId && <span className="text-[10px] font-bold text-amber-700">travado: já tem nota ou boleto</span>}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {issuers.map((i) => {
+                  const active = selectedIssuer?.id === i.id;
+                  const disabled = Boolean(lockedIssuerId) && !active;
+                  return (
+                    <button
+                      key={i.id}
+                      type="button"
+                      disabled={disabled || busy !== null}
+                      onClick={() => setChosenIssuer(i.id)}
+                      className={`text-left rounded-lg border px-3 py-2 text-xs transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
+                        active ? 'border-amber-600 bg-white ring-2 ring-amber-500/30' : 'border-stone-200 bg-white/70 hover:border-amber-400'
+                      }`}
+                    >
+                      <span className="block font-black text-stone-800">{i.name}</span>
+                      <span className="block text-[10px] text-stone-500">{fmtCnpj(i.cnpj)}</span>
+                      <span className="mt-1 flex gap-1.5 text-[9px] font-bold uppercase">
+                        <span className={i.integrations.invoice.ready ? 'text-emerald-700' : 'text-stone-400'}>
+                          NF {i.integrations.invoice.ready ? (i.integrations.invoice.environment === 'producao' ? '✓' : '✓ teste') : '—'}
+                        </span>
+                        <span className={i.integrations.boleto.ready ? 'text-emerald-700' : 'text-stone-400'}>
+                          Boleto {i.integrations.boleto.ready ? '✓' : '—'}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {order.docsLink && (
             <div className="flex items-center justify-between gap-3 rounded-xl bg-sky-50 border border-sky-100 px-4 py-3">
               <div className="min-w-0">
@@ -243,7 +327,7 @@ export default function OrderBillingModal({ order, onClose }: { order: BillingOr
             </ul>
           )}
 
-          <InvoiceSection order={order} />
+          <InvoiceSection order={order} issuer={selectedIssuer} onActiveIssuer={setInvoiceIssuer} />
         </div>
       </div>
     </div>
@@ -254,6 +338,7 @@ export default function OrderBillingModal({ order, onClose }: { order: BillingOr
 
 interface Invoice {
   id: string;
+  issuerId: string | null;
   ref: string;
   number: number | null;
   series: number | null;
@@ -274,7 +359,15 @@ const NF_STATUS: Record<Invoice['status'], { label: string; cls: string }> = {
   descartada: { label: 'Descartada', cls: 'bg-stone-100 text-stone-400' },
 };
 
-function InvoiceSection({ order }: { order: BillingOrder }) {
+function InvoiceSection({
+  order,
+  issuer,
+  onActiveIssuer,
+}: {
+  order: BillingOrder;
+  issuer: IssuerOption | null;
+  onActiveIssuer: (issuerId: string | null) => void;
+}) {
   const { toast } = useToast();
   const [notas, setNotas] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -293,6 +386,8 @@ function InvoiceSection({ order }: { order: BillingOrder }) {
       if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao carregar notas.'));
       const d = (await res.json()) as { data?: Invoice[]; defaultMessage?: string; orderNotes?: string | null };
       setNotas(d.data ?? []);
+      const active = (d.data ?? []).find((n) => n.status === 'processando' || n.status === 'autorizada');
+      onActiveIssuer(active?.issuerId ?? null);
       setDefaultMessage(d.defaultMessage ?? '');
       setOrderNotes(d.orderNotes ?? '');
     } catch (err) {
@@ -300,7 +395,7 @@ function InvoiceSection({ order }: { order: BillingOrder }) {
     } finally {
       setLoading(false);
     }
-  }, [order.id, toast]);
+  }, [order.id, toast, onActiveIssuer]);
 
   useEffect(() => {
     void load();
@@ -335,6 +430,7 @@ function InvoiceSection({ order }: { order: BillingOrder }) {
     const ok = await post('issue', `/api/orders/${order.id}/notas`, 'Nota enviada. Clique em "Atualizar status" em alguns segundos.', {
       message: message.trim() || null,
       notes: notes.trim() || null,
+      issuerId: issuer?.id ?? null,
     });
     if (ok) setIssueOpen(false);
   };
@@ -398,6 +494,11 @@ function InvoiceSection({ order }: { order: BillingOrder }) {
         <div className="rounded-xl border border-stone-200 bg-stone-50/60 p-3 space-y-2">
           <p className="text-[11px] text-stone-600">
             NF-e de <strong>{brl(order.total)}</strong> para <strong>{order.customerName ?? 'o cliente'}</strong> — pedido #{order.numero}
+            {issuer && (
+              <>
+                {' '}· emitente <strong>{issuer.name}</strong> ({fmtCnpj(issuer.cnpj)})
+              </>
+            )}
           </p>
           <div>
             <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">Mensagem na nota</label>

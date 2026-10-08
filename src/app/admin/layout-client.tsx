@@ -31,7 +31,8 @@ import {
   UserX,
   PieChart,
   Menu,
-  X
+  X,
+  Building2
 } from 'lucide-react';
 import LogoutButton from '@/components/shared/LogoutButton';
 
@@ -288,6 +289,16 @@ export default function AdminLayoutClient({ children, session }: AdminLayoutClie
             >
               <TrendingUp className="h-4 w-4 text-amber-400" />
               <span>Relatório por Vendedor</span>
+            </Link>
+            <Link 
+              href="/admin/reports/issuers" 
+              onClick={() => setIsMobileMenuOpen(false)}
+              className={`flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                isActive('/admin/reports/issuers') ? 'bg-amber-600 text-white shadow-xs' : 'hover:bg-stone-800 hover:text-white text-stone-300'
+              }`}
+            >
+              <Building2 className="h-4 w-4 text-amber-400" />
+              <span>Faturamento por CNPJ</span>
             </Link>
             <Link 
               href="/admin/reports/supervisors" 

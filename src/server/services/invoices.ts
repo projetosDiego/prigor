@@ -41,6 +41,7 @@ import { docFilename } from '@/lib/filenames';
 import { logOrderEvent } from './order-history';
 import { canAccessOrderDoc, type DocAccess } from './doc-access';
 import { timestamp } from './serializers';
+import { issuerForDocument, resolveOrderIssuer, type IssuerRow } from './issuers';
 
 export type InvoiceStatus = 'processando' | 'autorizada' | 'rejeitada' | 'cancelada' | 'erro' | 'descartada';
 
@@ -57,6 +58,8 @@ export interface InvoiceDTO {
   canceledAt: string | null;
   canCancel: boolean;
   environment: string | null;
+  /** Empresa (CNPJ) que emitiu. */
+  issuerId: string | null;
   createdAt: string | null;
 }
 
@@ -77,15 +80,24 @@ function toDTO(r: InvoiceRow): InvoiceDTO {
     canceledAt: timestamp(r.canceledAt),
     canCancel: r.status === 'autorizada' && canCancelInvoice(r.authorizedAt, new Date()),
     environment: raw.environment ?? null,
+    issuerId: r.issuerId,
     createdAt: timestamp(r.createdAt),
   };
 }
 
 const ACTIVE: InvoiceStatus[] = ['processando', 'autorizada'];
 
-function assertFiscalReady(): void {
-  const s = integrationStatus();
-  if (!s.fiscal.ready) throw conflict(`Nota fiscal não configurada: falta ${s.fiscal.missing.join(', ')}.`);
+function assertFiscalReady(scope = '', issuerName?: string): void {
+  const s = integrationStatus(scope);
+  if (!s.fiscal.ready) {
+    throw conflict(`Nota fiscal não configurada${issuerName ? ` (${issuerName})` : ''}: falta ${s.fiscal.missing.join(', ')}.`);
+  }
+}
+
+/** Prefixo de configuração da empresa da nota ('' = principal; notas antigas são da principal). */
+async function invoiceScope(issuerId: string | null): Promise<{ scope: string; issuer: IssuerRow | null }> {
+  const issuer = await issuerForDocument(issuerId);
+  return { scope: issuer?.configPrefix ?? '', issuer };
 }
 
 function describeError(err: unknown): string {
@@ -117,6 +129,7 @@ async function applyResult(
   row: InvoiceRow,
   result: FiscalInvoiceResult,
   userId: string | null,
+  scope = '',
 ): Promise<InvoiceRow> {
   // O que foi enviado (ex.: situação da IE) acompanha a rejeição, para diagnóstico.
   const sent = ((row.raw ?? {}) as { sent?: string }).sent;
@@ -137,7 +150,7 @@ async function applyResult(
           ? result.authorizedAt ? new Date(result.authorizedAt) : new Date()
           : row.authorizedAt,
       canceledAt: result.status === 'cancelada' && !row.canceledAt ? new Date() : row.canceledAt,
-      raw: { environment: integrationEnv().FISCAL_ENV, sent, response: result.raw } as Prisma.InputJsonValue,
+      raw: { environment: integrationEnv(scope).FISCAL_ENV, sent, response: result.raw } as Prisma.InputJsonValue,
     },
   });
   if (updated.status !== row.status) {
@@ -182,6 +195,8 @@ export interface IssueInvoiceOptions {
   message?: string | null;
   /** Observação específica deste pedido. */
   notes?: string | null;
+  /** Empresa (CNPJ) escolhida na tela; ausente = a do pedido/cliente/padrão. */
+  issuerId?: string | null;
 }
 
 // ─── Emissão ────────────────────────────────────────────────────────────────
@@ -191,8 +206,6 @@ export async function issueInvoice(
   orderId: string,
   options: IssueInvoiceOptions = {},
 ): Promise<InvoiceDTO> {
-  assertFiscalReady();
-
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     select: {
@@ -227,6 +240,11 @@ export async function issueInvoice(
     throw conflict('Este pedido já tem nota fiscal autorizada ou em processamento.');
   }
 
+  // CNPJ que fatura (escolhido na tela, do pedido, do cliente ou o padrão).
+  const issuer = await resolveOrderIssuer(order.id, options.issuerId);
+  const scope = issuer.configPrefix;
+  assertFiscalReady(scope, issuer.name);
+
   const settings = await prisma.fiscalSettings.findFirst();
   const c = { ...order.customer };
 
@@ -250,17 +268,17 @@ export async function issueInvoice(
   const adjustments = invoiceAdjustmentsBlocker({ otherCosts: String(order.otherCosts) });
   if (adjustments) throw conflict(adjustments);
 
-  const issuerState = settings?.state ?? null;
+  // Dados do emitente vêm da empresa escolhida; CFOP/CSOSN padrão, da Configuração Fiscal.
+  const issuerState = issuer.state ?? null;
   const problems = invoiceReadinessProblems({
-    issuer: settings
-      ? {
-          cnpj: settings.cnpj, ie: settings.ie, legalName: settings.legalName, address: settings.address,
-          number: settings.number, neighborhood: settings.neighborhood, city: settings.city,
-          cityIbgeCode: settings.cityIbgeCode, state: settings.state, zipCode: settings.zipCode,
-          defaultCfopInState: settings.defaultCfopInState, defaultCfopOutState: settings.defaultCfopOutState,
-          defaultCsosn: settings.defaultCsosn,
-        }
-      : null,
+    issuer: {
+      cnpj: issuer.cnpj, ie: issuer.ie, legalName: issuer.legalName, address: issuer.address,
+      number: issuer.number, neighborhood: issuer.neighborhood, city: issuer.city,
+      cityIbgeCode: issuer.cityIbgeCode, state: issuer.state, zipCode: issuer.zipCode,
+      defaultCfopInState: settings?.defaultCfopInState ?? null,
+      defaultCfopOutState: settings?.defaultCfopOutState ?? null,
+      defaultCsosn: settings?.defaultCsosn ?? null,
+    },
     customer: c,
     items: order.items.map((i: { product: { name: string; ncm: string | null; cfop: string | null } }) => ({
       name: i.product.name, ncm: i.product.ncm, cfop: i.product.cfop,
@@ -278,7 +296,7 @@ export async function issueInvoice(
   let row: InvoiceRow;
   try {
     row = await prisma.invoice.create({
-      data: { orderId: order.id, providerRef: ref, status: 'processando', createdById: session.userId },
+      data: { orderId: order.id, providerRef: ref, status: 'processando', issuerId: issuer.id, createdById: session.userId },
     });
   } catch (err) {
     if (prismaErrorCode(err) === UNIQUE_VIOLATION) throw conflict('Já existe uma nota sendo emitida para este pedido.');
@@ -302,9 +320,9 @@ export async function issueInvoice(
   const message = options.message !== undefined ? options.message : settings?.invoiceMessage ?? null;
   let result: FiscalInvoiceResult;
   try {
-    result = await fiscalProvider().issue({
+    result = await fiscalProvider(scope).issue({
       ref,
-      environment: integrationEnv().FISCAL_ENV,
+      environment: integrationEnv(scope).FISCAL_ENV,
       operationNature: 'Venda de mercadoria',
       recipient: {
         name: c.legalName || c.tradeName,
@@ -377,7 +395,7 @@ export async function issueInvoice(
   try {
     await prisma.invoice.update({ where: { id: row.id }, data: { raw: { sent: ieSent } as Prisma.InputJsonValue } });
     row = { ...row, raw: { sent: ieSent } as Prisma.JsonValue };
-    row = await applyResult(row, result, session.userId);
+    row = await applyResult(row, result, session.userId, scope);
   } catch (err) {
     logger.error('NF aceita pelo provedor, mas falhou ao gravar o retorno', {
       route: 'invoices.issue', orderId: order.id, ref, providerId: result.providerId, error: err,
@@ -397,29 +415,31 @@ export async function issueInvoice(
 // ─── Status, cancelamento, documentos ───────────────────────────────────────
 
 export async function refreshInvoice(session: SessionPayload, id: string): Promise<InvoiceDTO> {
-  assertFiscalReady();
   const inv = await loadInvoiceForAccess(session, id);
+  const { scope } = await invoiceScope(inv.issuerId);
+  assertFiscalReady(scope);
   if (!inv.providerId) throw conflict('Esta nota não chegou ao provedor.');
   try {
-    const result = await fiscalProvider().get(inv.providerId);
-    return toDTO(await applyResult(inv, result, session.userId));
+    const result = await fiscalProvider(scope).get(inv.providerId);
+    return toDTO(await applyResult(inv, result, session.userId, scope));
   } catch (err) {
     throw badRequest(`Não consegui consultar a nota: ${describeError(err)}`);
   }
 }
 
 export async function cancelInvoice(session: SessionPayload, id: string, reason: string): Promise<InvoiceDTO> {
-  assertFiscalReady();
   const inv = await loadInvoiceForAccess(session, id);
+  const { scope } = await invoiceScope(inv.issuerId);
+  assertFiscalReady(scope);
   if (inv.status !== 'autorizada' || !inv.providerId) throw conflict('Só nota autorizada pode ser cancelada.');
   if (!canCancelInvoice(inv.authorizedAt, new Date())) {
     throw conflict('Prazo de cancelamento (24h) encerrado. Fale com o contador sobre nota de devolução.');
   }
   try {
-    const result = await fiscalProvider().cancel(inv.providerId, reason);
+    const result = await fiscalProvider(scope).cancel(inv.providerId, reason);
     // Cancelamento entra em fila no provedor: mantém autorizada até a consulta confirmar.
     const next: FiscalInvoiceResult = result.status === 'cancelada' ? result : { ...result, status: 'autorizada' };
-    return toDTO(await applyResult(inv, next, session.userId));
+    return toDTO(await applyResult(inv, next, session.userId, scope));
   } catch (err) {
     throw badRequest(`O provedor não aceitou o cancelamento: ${describeError(err)}`);
   }
@@ -443,7 +463,7 @@ export async function invoiceDocument(
     throw conflict('Documento disponível só para nota autorizada ou cancelada.');
   }
   try {
-    const provider = fiscalProvider();
+    const provider = fiscalProvider((await invoiceScope(inv.issuerId)).scope);
     const data = kind === 'danfe' ? await provider.danfe(inv.providerId) : await provider.xml(inv.providerId);
     const cliente = inv.order.customer?.tradeName;
     return kind === 'danfe'
@@ -468,14 +488,15 @@ export async function invoiceDanfe(
     throw conflict('DANFE disponível só para nota autorizada ou cancelada.');
   }
   const filename = docFilename('NF-e', inv.order.customer?.tradeName, inv.order.numero, 'pdf');
-  const provider = fiscalProvider();
+  const { scope, issuer } = await invoiceScope(inv.issuerId);
+  const provider = fiscalProvider(scope);
   if (!opts.provider) {
     try {
       const xml = (await provider.xml(inv.providerId)).toString('utf8');
       const settings = await prisma.fiscalSettings.findFirst({ select: { tradeName: true, phone: true } });
       const pdf = await renderDanfe(xml, {
-        brandName: settings?.tradeName || 'Doces Prigor',
-        phone: settings?.phone,
+        brandName: issuer?.tradeName || settings?.tradeName || 'Doces Prigor',
+        phone: issuer?.phone || settings?.phone,
         cancelled: inv.status === 'cancelada',
         footer: `Pedido PRIGOR nº ${inv.order.numero} · Doces Prigor · docesprigor.com.br`,
       });

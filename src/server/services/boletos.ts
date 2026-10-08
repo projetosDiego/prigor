@@ -38,12 +38,15 @@ import {
 import { logger } from '../http/logger';
 import { docFilename } from '@/lib/filenames';
 import { logOrderEvent } from './order-history';
+import { issuerForDocument, resolveOrderIssuer } from './issuers';
 import { canAccessOrderDoc, type DocAccess } from './doc-access';
 import { dateOnly, num, timestamp } from './serializers';
 
 export interface BoletoDTO {
   id: string;
   orderId: string;
+  /** Empresa (CNPJ) que emitiu. */
+  issuerId: string | null;
   seuNumero: string;
   nossoNumero: string | null;
   linhaDigitavel: string | null;
@@ -64,6 +67,7 @@ function toDTO(b: BoletoRow): BoletoDTO {
   return {
     id: b.id,
     orderId: b.orderId,
+    issuerId: b.issuerId,
     seuNumero: b.seuNumero,
     nossoNumero: b.nossoNumero,
     linhaDigitavel: b.linhaDigitavel,
@@ -97,14 +101,21 @@ function describeSicoobError(err: unknown): string {
   return 'Erro desconhecido ao falar com o Sicoob.';
 }
 
-function assertSicoobReady(): void {
-  const status = integrationStatus();
+function assertSicoobReady(scope = '', issuerName?: string): void {
+  const status = integrationStatus(scope);
   if (!status.billingEnabled) {
     throw conflict('Emissão de boletos desligada. Ative BILLING_ENABLED no .env quando a integração estiver pronta.');
   }
   if (!status.sicoob.ready) {
-    throw conflict(`Integração Sicoob incompleta: falta ${status.sicoob.missing.join(', ')}.`);
+    throw conflict(
+      `Integração Sicoob incompleta${issuerName ? ` (${issuerName})` : ''}: falta ${status.sicoob.missing.join(', ')}.`,
+    );
   }
+}
+
+/** Prefixo de configuração da empresa do boleto ('' = principal; boletos antigos são da principal). */
+async function boletoScope(issuerId: string | null): Promise<string> {
+  return (await issuerForDocument(issuerId))?.configPrefix ?? '';
 }
 
 async function loadOrderForAccess(session: SessionPayload, orderId: string) {
@@ -134,8 +145,11 @@ export async function listOrderBoletos(session: SessionPayload, orderId: string)
 
 // ─── Emissão ────────────────────────────────────────────────────────────────
 
-export async function issueBoleto(session: SessionPayload, orderId: string): Promise<BoletoDTO> {
-  assertSicoobReady();
+export async function issueBoleto(
+  session: SessionPayload,
+  orderId: string,
+  opts: { issuerId?: string | null } = {},
+): Promise<BoletoDTO> {
 
   const order = await prisma.order.findUnique({
     where: { id: orderId },
@@ -187,6 +201,11 @@ export async function issueBoleto(session: SessionPayload, orderId: string): Pro
     throw validationError(`Complete o cadastro antes de gerar o boleto: falta ${missing.join(', ')}.`);
   }
 
+  // CNPJ que fatura (escolhido na tela, do pedido, do cliente ou o padrão).
+  const issuer = await resolveOrderIssuer(order.id, opts.issuerId);
+  const scope = issuer.configPrefix;
+  assertSicoobReady(scope, issuer.name);
+
   const settings = await prisma.fiscalSettings.findFirst();
   const seuNumero = buildSeuNumero(order.numero, nextSequence(order.boletos.map((b: { seuNumero: string }) => b.seuNumero)));
   const dueDate = dateOnly(order.dueDate)!;
@@ -201,6 +220,7 @@ export async function issueBoleto(session: SessionPayload, orderId: string): Pro
         value: String(order.total),
         dueDate: asDate(dueDate),
         status: 'pendente_registro',
+        issuerId: issuer.id,
         createdById: session.userId,
       },
     });
@@ -232,7 +252,7 @@ export async function issueBoleto(session: SessionPayload, orderId: string): Pro
       finePct: settings?.boletoFinePct == null ? null : String(settings.boletoFinePct),
       interestMonthPct: settings?.boletoInterestPct == null ? null : String(settings.boletoInterestPct),
       instructions: settings?.boletoInstructions ? [settings.boletoInstructions] : [],
-    });
+    }, scope);
 
   } catch (err) {
     const message =
@@ -284,15 +304,16 @@ export async function issueBoleto(session: SessionPayload, orderId: string): Pro
 // ─── Atualizar status (consulta) ────────────────────────────────────────────
 
 export async function refreshBoleto(session: SessionPayload, boletoId: string): Promise<BoletoDTO> {
-  assertSicoobReady();
   const boleto = await loadBoletoForAccess(session, boletoId);
+  const scope = await boletoScope(boleto.issuerId);
+  assertSicoobReady(scope);
   if (boleto.status !== 'registrado' || !boleto.nossoNumero) {
     throw conflict('Só boletos registrados podem ser consultados no banco.');
   }
 
   let situation;
   try {
-    ({ situation } = await sicoobGetBoleto(boleto.nossoNumero));
+    ({ situation } = await sicoobGetBoleto(boleto.nossoNumero, scope));
   } catch (err) {
     throw badRequest(`Não consegui consultar o boleto: ${describeSicoobError(err)}`);
   }
@@ -348,13 +369,14 @@ export async function writeOffBoleto(session: SessionPayload, boletoId: string):
     const updated = await prisma.boleto.update({ where: { id: boleto.id }, data: { status: 'cancelado' } });
     return toDTO(updated);
   }
-  assertSicoobReady();
+  const scope = await boletoScope(boleto.issuerId);
+  assertSicoobReady(scope);
   if (!canTransitionBoleto(boleto.status as BoletoStatus, 'baixado') || !boleto.nossoNumero) {
     throw conflict(boleto.status === 'pago' ? 'Boleto pago não pode ser baixado.' : 'Este boleto não está em aberto.');
   }
 
   try {
-    await sicoobWriteOffBoleto(boleto.nossoNumero);
+    await sicoobWriteOffBoleto(boleto.nossoNumero, scope);
   } catch (err) {
     throw badRequest(`O Sicoob não aceitou a baixa: ${describeSicoobError(err)}`);
   }
@@ -371,7 +393,7 @@ export async function boletoPdf(session: DocAccess, boletoId: string): Promise<{
     throw conflict('Este boleto não tem PDF disponível.');
   }
   try {
-    return { pdf: await sicoobBoletoPdf(boleto.nossoNumero), filename: docFilename('Boleto', boleto.order.customer?.tradeName, boleto.order.numero, 'pdf') };
+    return { pdf: await sicoobBoletoPdf(boleto.nossoNumero, await boletoScope(boleto.issuerId)), filename: docFilename('Boleto', boleto.order.customer?.tradeName, boleto.order.numero, 'pdf') };
   } catch (err) {
     throw badRequest(`Não consegui baixar o PDF do boleto: ${describeSicoobError(err)}`);
   }

@@ -166,6 +166,8 @@ export default function AdminCustomersPage() {
   const [formCreditLimit, setFormCreditLimit] = useState('0');
   const [formBoletoAllowed, setFormBoletoAllowed] = useState(false);
   const [formInvoiceRequired, setFormInvoiceRequired] = useState(false);
+  const [formDefaultIssuerId, setFormDefaultIssuerId] = useState('');
+  const [issuerOptions, setIssuerOptions] = useState<{ id: string; name: string; cnpj: string }[]>([]);
   const [formIe, setFormIe] = useState('');
   const [formIeIndicator, setFormIeIndicator] = useState<'' | '1' | '2' | '9'>('');
   const [editCustomerId, setEditCustomerId] = useState<string | null>(null);
@@ -215,6 +217,20 @@ export default function AdminCustomersPage() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  // Empresas (CNPJs) para o campo "Faturar por" — só a gerência recebe a lista.
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch('/api/settings/issuers');
+        if (!res.ok) return;
+        const d = (await res.json()) as { data?: { id: string; name: string; cnpj: string }[] };
+        setIssuerOptions(d.data ?? []);
+      } catch {
+        /* campo some se não carregar */
+      }
+    })();
   }, []);
 
   useEffect(() => {
@@ -495,6 +511,7 @@ export default function AdminCustomersPage() {
     setFormCreditLimit('0');
     setFormBoletoAllowed(false);
     setFormInvoiceRequired(false);
+    setFormDefaultIssuerId('');
     setFormIe('');
     setFormIeIndicator('');
   };
@@ -523,6 +540,7 @@ export default function AdminCustomersPage() {
     setFormCreditLimit(String(cust.creditLimit ?? 0));
     setFormBoletoAllowed(!!cust.boletoAllowed);
     setFormInvoiceRequired(!!cust.invoiceRequired);
+    setFormDefaultIssuerId(cust.defaultIssuerId ?? '');
     setFormIe(cust.ie ?? '');
     setFormIeIndicator((cust.ieIndicator as '' | '1' | '2' | '9') ?? '');
     setEditCustomerId(cust.id);
@@ -557,6 +575,7 @@ export default function AdminCustomersPage() {
       creditLimit: formCreditLimit || '0',
       boletoAllowed: formBoletoAllowed,
       invoiceRequired: formInvoiceRequired,
+      defaultIssuerId: formDefaultIssuerId || null,
       ie: formIe.replace(/\D/g, '') || null,
       ieIndicator: formIeIndicator || null,
     };
@@ -1322,6 +1341,24 @@ export default function AdminCustomersPage() {
                   </span>
                 </label>
               </div>
+              {issuerOptions.length > 1 && (
+                <div>
+                  <label className="text-[10px] font-black text-amber-700 uppercase tracking-widest block mb-1">Faturar por (CNPJ padrão)</label>
+                  <select
+                    value={formDefaultIssuerId}
+                    onChange={(e) => setFormDefaultIssuerId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs bg-white"
+                  >
+                    <option value="">Empresa padrão do sistema</option>
+                    {issuerOptions.map((i) => (
+                      <option key={i.id} value={i.id}>
+                        {i.name} — {i.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-[9px] text-stone-400 block mt-1">Vem marcado no faturamento do pedido; dá para trocar antes de emitir.</span>
+                </div>
+              )}
 
               {/* Endereço & CEP */}
               <div className="border-t border-stone-100 pt-3 space-y-3">
