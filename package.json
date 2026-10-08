@@ -29,7 +29,8 @@
     "cert:setup": "node scripts/setup-certificado.mjs",
     "sicoob:testar": "node scripts/testar-sicoob.mjs",
     "fiscal:setup": "node scripts/setup-fiscal.mjs",
-    "sicoob:comando-vps": "node scripts/comando-vps-sicoob.mjs"
+    "sicoob:comando-vps": "node scripts/comando-vps-sicoob.mjs",
+    "cert:converter": "node scripts/setup-certificado.mjs --so-converter"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

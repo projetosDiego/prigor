@@ -12,6 +12,11 @@
  *    O arquivo original não é alterado.
  * 4. Grava SICOOB_CERT_PATH e SICOOB_CERT_PASSWORD no .env e mostra titular e validade.
  *    A senha nunca é exibida.
+ *
+ * Só converter (outro CNPJ, sem mexer no .env do Sicoob):
+ *   npm run cert:converter
+ * Pega o certificado da pasta que ainda não tem cópia "-moderno", gera a cópia
+ * e o "<nome>-publico.pem". Não grava nada no .env.
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -23,13 +28,20 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const envPath = path.join(root, '.env');
 const defaultDir = path.resolve(root, '..', 'certificado');
 const MODERN_SUFFIX = '-moderno.pfx';
+const ONLY_CONVERT = process.argv.includes('--so-converter');
+const fileArg = process.argv.slice(2).find((a) => !a.startsWith('--'));
 
 function findPfx() {
-  if (process.argv[2]) return path.resolve(process.argv[2]);
+  if (fileArg) return path.resolve(fileArg);
   if (!fs.existsSync(defaultDir)) return null;
-  const files = fs
-    .readdirSync(defaultDir)
-    .filter((f) => /\.(pfx|p12)$/i.test(f) && !f.endsWith(MODERN_SUFFIX));
+  const all = fs.readdirSync(defaultDir);
+  const files = all.filter(
+    (f) =>
+      /\.(pfx|p12)$/i.test(f) &&
+      !f.endsWith(MODERN_SUFFIX) &&
+      // No modo converter, ignora os que já têm cópia moderna.
+      !(ONLY_CONVERT && all.includes(f.replace(/\.(pfx|p12)$/i, MODERN_SUFFIX))),
+  );
   if (files.length > 1) {
     console.error(`Há mais de um certificado em ${defaultDir}: ${files.join(', ')}`);
     console.error('Deixe só o atual na pasta ou rode: npm run cert:setup -- "<caminho do arquivo>"');
@@ -197,17 +209,23 @@ for (let attempt = 1; attempt <= 3 && !cert; attempt++) {
 }
 if (!cert) process.exit(1);
 
-// Barra normal funciona no Windows e evita problema de escape no .env.
-upsertEnv({ SICOOB_CERT_PATH: usedPath.replace(/\\/g, '/'), SICOOB_CERT_PASSWORD: password });
+if (ONLY_CONVERT) {
+  if (usedPath === pfxPath) console.log('Este certificado já está no formato moderno; não precisa de cópia.');
+} else {
+  // Barra normal funciona no Windows e evita problema de escape no .env.
+  upsertEnv({ SICOOB_CERT_PATH: usedPath.replace(/\\/g, '/'), SICOOB_CERT_PASSWORD: password });
+}
 
 // Parte pública, para anexar no portal Sicoob (passo "Segurança").
-const publicPem = path.join(path.dirname(pfxPath), 'certificado-publico.pem');
+const publicPem = ONLY_CONVERT
+  ? pfxPath.replace(/\.(pfx|p12)$/i, '-publico.pem')
+  : path.join(path.dirname(pfxPath), 'certificado-publico.pem');
 fs.writeFileSync(publicPem, cert.toString());
 
 const validTo = new Date(cert.validTo);
 const days = Math.floor((validTo.getTime() - Date.now()) / 86_400_000);
 const cn = (s) => s.split('\n').find((l) => l.startsWith('CN=')) ?? s;
-console.log('\n✔ Certificado configurado no .env');
+console.log(ONLY_CONVERT ? `\n✔ Certificado pronto: ${path.basename(usedPath)} (o .env não foi alterado)` : '\n✔ Certificado configurado no .env');
 console.log(`  Titular:  ${cn(cert.subject)}`);
 console.log(`  Emissor:  ${cn(cert.issuer)}`);
 console.log(`  Validade: ${validTo.toLocaleDateString('pt-BR')} (${days} dias)`);
