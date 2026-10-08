@@ -20,6 +20,54 @@ try {
   process.exit(1);
 }
 
+// ─── Outra empresa (CNPJ) sem mexer no .env: npm run sicoob:testar -- --empresa <cód. beneficiário>
+if (process.argv.includes('--empresa')) {
+  const { createInterface } = await import('node:readline/promises');
+  const ask = async (q) => {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const a = (await rl.question(q)).trim();
+    rl.close();
+    return a;
+  };
+  const askHidden = (q) =>
+    new Promise((resolve) => {
+      const stdin = process.stdin;
+      process.stdout.write(q);
+      let value = '';
+      const tty = Boolean(stdin.isTTY);
+      if (tty) stdin.setRawMode(true);
+      stdin.resume();
+      stdin.setEncoding('utf8');
+      const onData = (chunk) => {
+        for (const ch of chunk) {
+          if (ch === '\r' || ch === '\n' || ch === '\u0004') {
+            if (tty) stdin.setRawMode(false);
+            stdin.pause();
+            stdin.off('data', onData);
+            process.stdout.write('\n');
+            return resolve(value);
+          }
+          if (ch === '\u0003') process.exit(130);
+          if (ch === '\u0008' || ch === '\u007f') { value = value.slice(0, -1); continue; }
+          if (ch === '\u001b') continue;
+          value += ch;
+          if (tty) process.stdout.write('*');
+        }
+      };
+      stdin.on('data', onData);
+    });
+  const certDir = path.resolve(root, '..', 'certificado');
+  const files = fs.readdirSync(certDir).filter((f) => f.endsWith('-moderno.pfx'));
+  console.log('Certificados:');
+  files.forEach((f, i) => console.log(`  ${i + 1}) ${f}`));
+  const n = Number(await ask('Número do certificado desta empresa: ')) - 1;
+  if (!files[n]) { console.error('Opção inválida.'); process.exit(1); }
+  process.env.SICOOB_CERT_PATH = path.join(certDir, files[n]);
+  process.env.SICOOB_CLIENT_ID = await ask('Client ID do aplicativo Sicoob desta empresa: ');
+  process.env.SICOOB_CERT_PASSWORD = await askHidden('Senha do certificado (não aparece): ');
+  process.env.SICOOB_NUMERO_CLIENTE = '';
+}
+
 const TOKEN_URL = 'https://auth.sicoob.com.br/auth/realms/cooperado/protocol/openid-connect/token';
 const SCOPES = 'boletos_inclusao boletos_consulta boletos_alteracao webhooks_inclusao webhooks_consulta webhooks_alteracao';
 
@@ -64,7 +112,7 @@ const req = https.request(
         console.log('\n✔ Conexão com o Sicoob funcionando!');
         console.log(`  Token válido por ${Math.round((json.expires_in ?? 0) / 60)} min`);
         console.log(`  Permissões: ${json.scope ?? '(não informadas)'}`);
-        if (numeroCliente) checkContract(json.access_token);
+        if (numeroCliente || process.argv.slice(2).some((a) => /^\d+$/.test(a))) checkContract(json.access_token);
         else console.log('\n(Sem SICOOB_NUMERO_CLIENTE no .env: contrato de cobrança não conferido.)');
         return;
       }
