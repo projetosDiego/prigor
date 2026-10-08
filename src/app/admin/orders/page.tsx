@@ -250,6 +250,7 @@ export default function OrdersPage() {
 
   // Seleção e impressão em lote
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
+  const [batchStatusBusy, setBatchStatusBusy] = useState(false);
   const [batchPrinting, setBatchPrinting] = useState(false);
 
   // Edição rápida de telefone do cliente no pedido
@@ -1047,6 +1048,54 @@ export default function OrdersPage() {
     }
   };
 
+  // Concluir em lote: confirma os pedidos novos ou marca como entregues.
+  const handleBatchStatus = async (target: 'confirmado' | 'entregue') => {
+    const selected = pedidos.filter((p) => selectedOrderIds.includes(p.id));
+    const eligible = selected.filter((p) =>
+      target === 'confirmado'
+        ? p.status === 'novo' && !(p.hasNegotiatedPrice && !p.approvedByAdmin)
+        : p.status === 'confirmado' || p.status === 'em_producao' || p.status === 'novo',
+    );
+    const skipped = selected.length - eligible.length;
+    if (eligible.length === 0) {
+      toast(
+        target === 'confirmado'
+          ? 'Nenhum pedido selecionado está como "novo" (pedidos com preço negociado precisam de aprovação individual).'
+          : 'Nenhum pedido selecionado pode ser marcado como entregue.',
+        'error',
+      );
+      return;
+    }
+    const label = target === 'confirmado' ? 'concluídos (confirmados)' : 'marcados como entregues';
+    const ok = await confirm({
+      title: target === 'confirmado' ? 'Concluir pedidos' : 'Marcar como entregues',
+      message: `${eligible.length} pedido(s) serão ${label}.${skipped ? ` ${skipped} selecionado(s) ficam de fora por não estarem na etapa certa.` : ''}`,
+      confirmLabel: target === 'confirmado' ? 'Concluir todos' : 'Marcar entregues',
+      cancelLabel: 'Voltar',
+    });
+    if (!ok) return;
+    setBatchStatusBusy(true);
+    let done = 0;
+    const failed: number[] = [];
+    for (const p of eligible) {
+      try {
+        const res = await fetch(`/api/orders/${p.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: target }),
+        });
+        if (!res.ok) throw new Error();
+        done += 1;
+      } catch {
+        failed.push(p.numero);
+      }
+    }
+    setBatchStatusBusy(false);
+    await refreshOrders();
+    toast(`${done} pedido(s) ${label}.`, 'success');
+    if (failed.length) toast(`Não consegui atualizar: ${failed.map((n) => `#${n}`).join(', ')}.`, 'error');
+  };
+
   const handleBatchPrint = async (customIds?: string[]) => {
     const targetIds = Array.isArray(customIds) && customIds.length > 0 ? customIds : selectedOrderIds;
     if (targetIds.length === 0) {
@@ -1065,7 +1114,25 @@ export default function OrdersPage() {
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
       setTimeout(() => URL.revokeObjectURL(url), 60000);
-      toast(`${targetIds.length} pedidos combinados para impressão em arquivo único!`, 'success');
+      // Resumo do lote: quantas notas/boletos entraram e o que falhou.
+      let msg = `${targetIds.length} pedidos combinados em um arquivo.`;
+      let warnings: string[] = [];
+      try {
+        const raw = res.headers.get('x-lote-resumo');
+        if (raw) {
+          const bytes = Uint8Array.from(atob(raw), (c) => c.charCodeAt(0));
+          const r = JSON.parse(new TextDecoder().decode(bytes)) as {
+            summary: { invoices: number; boletos: number; mirrors: number };
+            warnings: string[];
+          };
+          msg = `${targetIds.length} pedidos: ${r.summary.invoices} nota(s), ${r.summary.boletos} boleto(s) e ${r.summary.mirrors} espelho(s).`;
+          warnings = r.warnings ?? [];
+        }
+      } catch {
+        /* resumo é só informativo */
+      }
+      toast(msg, 'success');
+      if (warnings.length) toast(warnings.join(' '), 'error');
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Erro ao imprimir pedidos selecionados.', 'error');
     } finally {
@@ -1368,6 +1435,26 @@ export default function OrdersPage() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => handleBatchStatus('confirmado')}
+                  disabled={batchStatusBusy}
+                  className="px-3 py-1.5 rounded-lg border border-emerald-300 bg-white hover:bg-emerald-50 text-emerald-800 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                  title="Confirma todos os pedidos novos selecionados"
+                >
+                  {batchStatusBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                  Concluir todos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleBatchStatus('entregue')}
+                  disabled={batchStatusBusy}
+                  className="px-3 py-1.5 rounded-lg border border-sky-300 bg-white hover:bg-sky-50 text-sky-800 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                  title="Marca os pedidos selecionados como entregues"
+                >
+                  <Truck className="h-4 w-4" />
+                  Marcar entregues
+                </button>
+                <button
+                  type="button"
                   onClick={() => handleBatchPrint()}
                   disabled={batchPrinting}
                   className="px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50"
@@ -1380,7 +1467,7 @@ export default function OrdersPage() {
                   ) : (
                     <>
                       <Printer className="h-4 w-4" />
-                      <span>Imprimir Selecionados ({selectedOrderIds.length})</span>
+                      <span>Imprimir com NF e boleto ({selectedOrderIds.length})</span>
                     </>
                   )}
                 </button>
@@ -1480,6 +1567,19 @@ export default function OrdersPage() {
                           </span>
                         </div>
                       )}
+                      {ped.status !== 'cancelado' &&
+                        isBoletoPaymentMethod(ped.paymentMethod) &&
+                        !ped.documents?.boleto &&
+                        clientes.find((c) => c.id === ped.customerId)?.boletoAllowed === false && (
+                          <div className="mt-1">
+                            <span
+                              className="inline-flex px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-amber-100 text-amber-900 border border-amber-300"
+                              title="Cliente ainda não liberado para boleto. Gere o boleto no faturamento para aprovar (o cliente passa a ser liberado)."
+                            >
+                              Boleto a aprovar
+                            </span>
+                          </div>
+                        )}
                       {(ped.documents?.boleto || ped.documents?.invoice) && (
                         <div className="mt-1.5 flex flex-wrap justify-center gap-1" onClick={(e) => e.stopPropagation()}>
                           {ped.documents.boleto && (
@@ -2383,6 +2483,7 @@ export default function OrdersPage() {
             docsLink: billingOrder.documents?.link ?? null,
             issuerId: billingOrder.issuerId ?? null,
             customerDefaultIssuerId: clientes.find((c) => c.id === billingOrder.customerId)?.defaultIssuerId ?? null,
+            customerBoletoAllowed: clientes.find((c) => c.id === billingOrder.customerId)?.boletoAllowed ?? true,
           }}
           onClose={() => {
             setBillingOrder(null);

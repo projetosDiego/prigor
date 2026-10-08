@@ -159,8 +159,10 @@ export async function issueBoleto(
       status: true,
       total: true,
       dueDate: true,
+      customerId: true,
       customer: {
         select: {
+          boletoAllowed: true,
           tradeName: true,
           legalName: true,
           cnpj: true,
@@ -298,6 +300,13 @@ export async function issueBoleto(
     throw conflict(`O boleto foi registrado no Sicoob (nº ${boleto.nossoNumero}), mas houve erro ao gravar no PRIGOR. Não gere outro.`);
   }
   await logOrderEvent(prisma, { orderId: order.id, userId: session.userId, action: 'boleto_emitido', to: seuNumero });
+  // Gerência emitiu boleto para cliente ainda não liberado = aprovou: libera o cliente
+  // para os próximos pedidos não aparecerem como "boleto a aprovar".
+  if (!order.customer.boletoAllowed) {
+    await prisma.customer
+      .update({ where: { id: order.customerId }, data: { boletoAllowed: true } })
+      .catch((error) => logger.warn('não consegui liberar o cliente para boleto', { route: 'boletos.issue', error }));
+  }
   return toDTO(row);
 }
 

@@ -26,7 +26,6 @@ import {
   UserCheck,
 } from 'lucide-react';
 
-import { isBoletoPaymentMethod } from '@/lib/payment-method';
 
 interface ProductItem {
   id: string;
@@ -123,10 +122,8 @@ export default function PedidoClient() {
   const [paymentMethod, setPaymentMethod] = useState('Pix');
   const [notes, setNotes] = useState('');
 
-  // Boleto só aparece para cliente já cadastrado e liberado pela gerência.
-  const boletoAvailable = clientMode === 'busca' && !!selectedClient?.boletoAllowed;
-  const effectivePaymentMethod =
-    !boletoAvailable && isBoletoPaymentMethod(paymentMethod) ? 'Pix' : paymentMethod;
+  // Boleto disponível para qualquer cliente (inclusive novo); a gerência aprova ao faturar.
+  const effectivePaymentMethod = paymentMethod;
 
   // Envio e resultado
   const [submitting, setSubmitting] = useState(false);
@@ -1356,12 +1353,8 @@ export default function PedidoClient() {
                   className="block w-full rounded-xl border border-stone-300 bg-stone-50 py-2.5 px-3 text-sm font-semibold text-stone-900 focus:border-amber-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
                 >
                   <option value="Pix">PIX</option>
-                  {boletoAvailable && (
-                    <>
-                      <option value="Boleto 7 dias">Boleto Bancário (7 dias)</option>
-                      <option value="Boleto 14 dias">Boleto Bancário (14 dias)</option>
-                    </>
-                  )}
+                  <option value="Boleto 7 dias">Boleto Bancário (7 dias)</option>
+                  <option value="Boleto 14 dias">Boleto Bancário (14 dias)</option>
                   <option value="Cartão de Crédito">Cartão de Crédito</option>
                   <option value="Cartão de Débito">Cartão de Débito</option>
                   <option value="Dinheiro">Dinheiro na entrega</option>

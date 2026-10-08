@@ -36,9 +36,9 @@ describe('checkBoletoPaymentMethod', () => {
       checkBoletoPaymentMethod({ paymentMethod: 'Boleto 7 dias', boletoAllowed: true, isManagement: false }),
     ).toEqual({ ok: true, override: false });
   });
-  it('cliente não liberado: vendedor é bloqueado', () => {
+  it('cliente não liberado: vendedor/portal passa, marcado para a gerência aprovar', () => {
     const r = checkBoletoPaymentMethod({ paymentMethod: 'Boleto 7 dias', boletoAllowed: false, isManagement: false });
-    expect(r.ok).toBe(false);
+    expect(r).toEqual({ ok: true, override: true });
   });
   it('cliente não liberado: gerência pode, marcado como override', () => {
     expect(

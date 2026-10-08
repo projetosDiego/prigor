@@ -28,6 +28,8 @@ export interface BillingOrder {
   issuerId?: string | null;
   /** CNPJ padrão do cliente. */
   customerDefaultIssuerId?: string | null;
+  /** Cliente já liberado para boleto? (false = gerar boleto aprova e libera) */
+  customerBoletoAllowed?: boolean;
 }
 
 /** Empresa emissora (CNPJ) — só o necessário para escolher no faturamento. */
@@ -132,9 +134,13 @@ export default function OrderBillingModal({ order, onClose }: { order: BillingOr
       ? `\n\nAtenção: a forma de pagamento deste pedido é "${order.paymentMethod}", não boleto.`
       : '';
     const by = selectedIssuer ? `\n\nCNPJ: ${selectedIssuer.name} (${fmtCnpj(selectedIssuer.cnpj)})` : '';
+    const approve =
+      order.customerBoletoAllowed === false
+        ? '\n\nCliente ainda não liberado para boleto: gerar este boleto APROVA o pedido e libera o cliente para os próximos.'
+        : '';
     const ok = await confirm({
       title: 'Gerar boleto',
-      message: `Registrar no Sicoob um boleto de ${brl(order.total)} com vencimento em ${br(order.dueDate)} para ${order.customerName ?? 'o cliente'}?${by}${warn}`,
+      message: `Registrar no Sicoob um boleto de ${brl(order.total)} com vencimento em ${br(order.dueDate)} para ${order.customerName ?? 'o cliente'}?${by}${approve}${warn}`,
       confirmLabel: 'Gerar boleto',
       cancelLabel: 'Voltar',
     });

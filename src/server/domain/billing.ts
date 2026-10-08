@@ -37,12 +37,10 @@ export function checkBoletoPaymentMethod(input: {
 }): BoletoPaymentCheck {
   if (!isBoletoPaymentMethod(input.paymentMethod)) return { ok: true, override: false };
   if (input.boletoAllowed) return { ok: true, override: false };
-  if (input.isManagement) return { ok: true, override: true };
-  return {
-    ok: false,
-    reason:
-      'Este cliente não está liberado para pagar no boleto. Escolha outra forma de pagamento ou peça a liberação à gerência.',
-  };
+  // Decisão de negócio (08/10/2026): boleto fica disponível para qualquer
+  // cliente, inclusive novo. O pedido passa e fica marcado "boleto a aprovar";
+  // a gerência decide na hora de faturar (só ela emite o boleto).
+  return { ok: true, override: true };
 }
 
 // ─── Identificadores (idempotência) ────────────────────────────────────────

@@ -6,10 +6,16 @@ import { badRequest } from '@/server/http/errors';
 import { readJson, route } from '@/server/http/respond';
 import { getOrder } from '@/server/services/orders';
 import { renderOrdersBatchPdf } from '@/server/services/order-pdf';
+import { renderBatchWithDocuments } from '@/server/services/batch-print';
 import type { OrderDTO } from '@/server/services/serializers';
 
 const batchPdfSchema = z.object({
-  ids: z.array(z.string().uuid('ID de pedido inválido.')).min(1, 'Selecione ao menos um pedido para impressão.'),
+  ids: z
+    .array(z.string().uuid('ID de pedido inválido.'))
+    .min(1, 'Selecione ao menos um pedido para impressão.')
+    .max(100, 'Selecione no máximo 100 pedidos por vez.'),
+  /** Junta NF e boleto de cada pedido (gerência). Padrão: sim. */
+  withDocuments: z.boolean().default(true),
 });
 
 export const POST = route('pedidos.batchPdf', async (request) => {
@@ -21,7 +27,7 @@ export const POST = route('pedidos.batchPdf', async (request) => {
     throw badRequest(parsed.error.issues[0]?.message ?? 'Dados inválidos.');
   }
 
-  const { ids } = parsed.data;
+  const { ids, withDocuments } = parsed.data;
 
   const orders: OrderDTO[] = [];
   for (const id of ids) {
@@ -39,14 +45,27 @@ export const POST = route('pedidos.batchPdf', async (request) => {
     throw badRequest('Nenhum pedido válido encontrado para impressão.');
   }
 
-  const pdf = await renderOrdersBatchPdf(orders);
+  if (!withDocuments) {
+    const pdf = await renderOrdersBatchPdf(orders);
+    return new NextResponse(pdf as unknown as BodyInit, {
+      status: 200,
+      headers: {
+        'content-type': 'application/pdf',
+        'content-disposition': 'inline; filename="pedidos-lote.pdf"',
+        'cache-control': 'no-store',
+      },
+    });
+  }
 
+  const { pdf, warnings, summary } = await renderBatchWithDocuments(session, orders);
   return new NextResponse(pdf as unknown as BodyInit, {
     status: 200,
     headers: {
       'content-type': 'application/pdf',
       'content-disposition': 'inline; filename="pedidos-lote.pdf"',
       'cache-control': 'no-store',
+      // Resumo para a tela (cabeçalho só ASCII: vai em base64).
+      'x-lote-resumo': Buffer.from(JSON.stringify({ summary, warnings }), 'utf8').toString('base64'),
     },
   });
 });

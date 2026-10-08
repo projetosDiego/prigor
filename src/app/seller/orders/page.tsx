@@ -128,12 +128,10 @@ export default function SellerOrdersPage() {
   const [formaPagamento, setFormaPagamento] = useState('Pix');
   const [formasPagamento, setFormasPagamento] = useState<{ id: string; name: string; netDays: number | null }[]>([]);
 
-  // Boleto só para cliente liberado pela gerência (o servidor também barra).
+  // Boleto disponível para qualquer cliente; sem liberação, a gerência aprova ao faturar.
   const boletoLiberado = !!clientes.find((c) => c.id === clienteId)?.boletoAllowed;
-  const formasDisponiveis = formasPagamento.filter((f) => boletoLiberado || !isBoletoPaymentMethod(f.name));
-  // Se o cliente trocar para um não liberado, a forma "boleto" escolhida antes cai para Pix.
-  const formaPagamentoEfetiva =
-    !boletoLiberado && isBoletoPaymentMethod(formaPagamento) ? 'Pix' : formaPagamento;
+  const formasDisponiveis = formasPagamento;
+  const formaPagamentoEfetiva = formaPagamento;
   const [dataPedido, setDataPedido] = useState(new Date().toISOString().split('T')[0]);
   const [desconto, setDesconto] = useState('0');
   const [frete, setFrete] = useState('0');
@@ -971,7 +969,7 @@ export default function SellerOrdersPage() {
                       ))}
                     </select>
                     {clienteId && !boletoLiberado && formasPagamento.some((f) => isBoletoPaymentMethod(f.name)) && (
-                      <p className="text-[9px] text-stone-400 mt-1">Boleto indisponível: cliente não liberado pela gerência.</p>
+                      <p className="text-[9px] text-stone-400 mt-1">Cliente ainda sem boleto liberado: o pedido vai para aprovação da gerência.</p>
                     )}
                   </div>
 
