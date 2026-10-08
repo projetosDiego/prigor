@@ -745,7 +745,8 @@ function IngredientsTab({ data, reload }: { data: PricingBundleDTO; reload: () =
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
   const [editing, setEditing] = useState<IngredientDTO | 'new' | null>(null);
-  const now = Date.now();
+  // Data de referência fixa na montagem (ler o relógio no render quebra a regra de pureza do React).
+  const [now] = useState(() => Date.now());
 
   const rows = data.ingredients.filter(
     (i) => i.name.toLowerCase().includes(q.toLowerCase()) && (!cat || i.category === cat),
