@@ -849,7 +849,7 @@ export default function CostsPage() {
                     </tr>
                   ) : (
                     employees.map((e) => (
-                      <tr key={e.id} className={`hover:bg-stone-50/50 ${!e.active ? 'opacity-50' : ''}`}>
+                      <tr key={e.id} onClick={() => openEdit(e)} className={`cursor-pointer hover:bg-stone-50/50 ${!e.active ? 'opacity-50' : ''}`}>
                         <td className="py-3 px-4">
                           <span className="font-bold text-stone-850 block">{e.name}</span>
                           {e.role && <span className="text-[10px] text-stone-400">{e.role}</span>}
@@ -887,7 +887,7 @@ export default function CostsPage() {
                             {e.active ? 'ATIVO' : 'INATIVO'}
                           </span>
                         </td>
-                        <td className="py-3 px-4 text-center">
+                        <td className="py-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-center gap-1.5">
                             <button
                               onClick={() => openAbsences(e)}

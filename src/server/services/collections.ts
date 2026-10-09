@@ -160,16 +160,19 @@ export interface CollectionRunSummary {
   reminders: { sent: number; skippedNoEmail: number; failed: number };
 }
 
-export async function runCollections(options: { sendEmails?: boolean } = {}): Promise<CollectionRunSummary> {
+export async function runCollections(options: { sendEmails?: boolean; syncBank?: boolean } = {}): Promise<CollectionRunSummary> {
   const sendEmails = options.sendEmails !== false;
+  const syncBank = options.syncBank !== false;
 
-  let boletos: CollectionRunSummary['boletos'];
-  try {
-    boletos = await syncOpenBoletos();
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.warn('Cobrança: não consegui conferir boletos no banco', { message });
-    boletos = { skipped: message };
+  let boletos: CollectionRunSummary['boletos'] = { skipped: 'não solicitado' };
+  if (syncBank) {
+    try {
+      boletos = await syncOpenBoletos();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn('Cobrança: não consegui conferir boletos no banco', { message });
+      boletos = { skipped: message };
+    }
   }
 
   const reminders = { sent: 0, skippedNoEmail: 0, failed: 0 };

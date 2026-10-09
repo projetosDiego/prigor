@@ -368,7 +368,7 @@ export default function FinancialPage() {
               </thead>
               <tbody className="divide-y divide-stone-100 font-semibold text-stone-700">
                 {lancamentos.map((l) => (
-                  <tr key={l.id} className="hover:bg-stone-50/50">
+                  <tr key={l.id} onClick={() => handleOpenEdit(l)} className="cursor-pointer hover:bg-stone-50/50">
                     <td className="py-4 px-6">
                       <span className={`inline-flex px-2 py-0.5 rounded text-[9px] font-black uppercase ${
                         l.type === 'receita' ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' : 'bg-red-50 text-red-700 border border-red-100'
@@ -396,7 +396,7 @@ export default function FinancialPage() {
                       {l.type === 'despesa' ? '-' : ''}
                       {l.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                     </td>
-                    <td className="py-4 px-6 text-center">
+                    <td className="py-4 px-6 text-center" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-center gap-1.5">
                         {l.status !== 'pago' ? (
                           <button 

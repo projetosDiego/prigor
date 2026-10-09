@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BellRing, Copy, Loader2, MessageCircle, RefreshCw } from 'lucide-react';
+import { BellRing, Copy, Loader2, Mail, MessageCircle, RefreshCw } from 'lucide-react';
 
 import { responseErrorMessage } from '@/lib/errors';
 import { useToast } from '@/components/shared/Toast';
@@ -30,7 +30,7 @@ export default function CollectionsPage() {
   const { toast } = useToast();
   const [data, setData] = useState<CollectionsDTO | null>(null);
   const [loading, setLoading] = useState(true);
-  const [running, setRunning] = useState(false);
+  const [running, setRunning] = useState<'sync' | 'remind' | null>(null);
   const [filter, setFilter] = useState<Filter>('atrasado');
 
   const load = useCallback(async () => {
@@ -49,30 +49,42 @@ export default function CollectionsPage() {
     void load();
   }, [load]);
 
-  async function run() {
-    setRunning(true);
+  async function run(action: 'sync' | 'remind') {
+    setRunning(action);
     try {
-      const res = await fetch('/api/collections/run', { method: 'POST' });
+      const res = await fetch('/api/collections/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
       if (!res.ok) throw new Error(await responseErrorMessage(res, 'Não foi possível executar.'));
       const r = (await res.json()) as {
         boletos: { checked?: number; paid?: number; writtenOff?: number; errors?: unknown[]; skipped?: string };
         reminders: { sent: number; skippedNoEmail: number; failed: number };
       };
-      const bank = r.boletos.skipped
-        ? `Banco não consultado (${r.boletos.skipped}).`
-        : `${r.boletos.checked ?? 0} boleto(s) conferido(s), ${r.boletos.paid ?? 0} pago(s).`;
-      toast(
-        `${bank} ${r.reminders.sent} lembrete(s) enviado(s)` +
-          (r.reminders.skippedNoEmail ? `, ${r.reminders.skippedNoEmail} cliente(s) sem e-mail` : '') +
-          (r.reminders.failed ? `, ${r.reminders.failed} falha(s)` : '') +
-          '.',
-        r.reminders.failed || r.boletos.skipped ? 'info' : 'success',
-      );
+      if (action === 'sync') {
+        toast(
+          r.boletos.skipped
+            ? `Banco não consultado: ${r.boletos.skipped}`
+            : `${r.boletos.checked ?? 0} boleto(s) conferido(s) · ${r.boletos.paid ?? 0} pago(s) baixado(s)` +
+                ((r.boletos.errors?.length ?? 0) > 0 ? ` · ${r.boletos.errors!.length} com erro` : '') +
+                '.',
+          r.boletos.skipped || (r.boletos.errors?.length ?? 0) > 0 ? 'info' : 'success',
+        );
+      } else {
+        toast(
+          `${r.reminders.sent} lembrete(s) enviado(s)` +
+            (r.reminders.skippedNoEmail ? ` · ${r.reminders.skippedNoEmail} cliente(s) sem e-mail` : '') +
+            (r.reminders.failed ? ` · ${r.reminders.failed} falha(s)` : '') +
+            '.',
+          r.reminders.failed ? 'info' : 'success',
+        );
+      }
       await load();
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Erro ao executar.', 'error');
     } finally {
-      setRunning(false);
+      setRunning(null);
     }
   }
 
@@ -113,9 +125,14 @@ export default function CollectionsPage() {
             A receber por vencimento. O sistema confere os boletos no banco, dá baixa nos pagos e avisa o cliente por e-mail (−2 dias, no dia, +3 e +7).
           </p>
         </div>
-        <button className={btn} disabled={running} onClick={() => void run()}>
-          {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Conferir banco e enviar lembretes
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button className={btn} disabled={running !== null} onClick={() => void run('sync')} title="Consulta o Sicoob e dá baixa nos boletos pagos">
+            {running === 'sync' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Conferir banco
+          </button>
+          <button className={btn} disabled={running !== null} onClick={() => void run('remind')} title="Envia por e-mail os lembretes da régua (−2 d, no dia, +3 d, +7 d)">
+            {running === 'remind' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />} Enviar lembretes
+          </button>
+        </div>
       </header>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

@@ -347,7 +347,16 @@ export default function AdminRegionsPage() {
                   </thead>
                   <tbody className="divide-y divide-stone-100">
                     {bairrosOrdenados.map((n) => (
-                      <tr key={n.id} className="hover:bg-stone-50/50">
+                      <tr key={n.id} onClick={() => {
+                          setNeighId(n.id);
+                          setNeighName(n.name);
+                          setNeighCity(n.city);
+                          setNeighState(n.state);
+                          setNeighRegionId(n.regionId);
+                          setNeighSellerId(n.sellerId || '');
+                          setNeighActive(n.active);
+                          setShowNeighForm(true);
+                        }} className="cursor-pointer hover:bg-stone-50/50">
                         <td className="p-3">
                           <span className="font-bold text-stone-850 block">{n.name}</span>
                           <span className="text-[9px] text-stone-400 font-medium">{n.city} - {n.state}</span>
@@ -360,7 +369,7 @@ export default function AdminRegionsPage() {
                             <span className="rounded bg-orange-50 text-orange-850 border border-orange-150 font-extrabold text-[10px] px-2 py-0.5">SEM VENDEDOR (FILA)</span>
                           )}
                         </td>
-                        <td className="p-3 text-center">
+                        <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
                           <div className="flex gap-2 justify-center">
                             <button
                               onClick={() => { 

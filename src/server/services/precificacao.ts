@@ -33,6 +33,7 @@ import type {
   PricingSettingsInputDTO,
   PricingSheetInput,
 } from '../validation/precificacao';
+import { logger } from '../http/logger';
 import { dateOnly, num } from './serializers';
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -148,7 +149,24 @@ export interface RevenueInfo {
   used: number;
 }
 
+/** Produto do cadastro (Produtos Acabados) visto pela precificação. */
+export interface CatalogProductDTO {
+  id: string;
+  name: string;
+  sku: string | null;
+  category: string | null;
+  salePrice: number;
+  wholesalePrice: number;
+  cost: number;
+  stock: number;
+  /** Itens da receita cadastrada em Produtos Acabados (insumos com estoque). */
+  recipeLines: number;
+  /** Ficha técnica ligada a este produto (null = ainda sem ficha). */
+  sheetId: string | null;
+}
+
 export interface PricingBundleDTO {
+  catalog: CatalogProductDTO[];
   settings: PricingSettingsDTO;
   fixedCosts: FixedCostDTO[];
   fixedTotal: number;
@@ -201,6 +219,7 @@ export async function updatePricingSettings(input: PricingSettingsInputDTO): Pro
     where: { id: current.id },
     data: { ...input, workDaysPerMonth: Math.round(input.workDaysPerMonth), revenueMonths: Math.round(input.revenueMonths) },
   });
+  scheduleCostSync();
   return settingsDTO(updated);
 }
 
@@ -294,7 +313,7 @@ export async function getPricingBundle(priceOverrides: Record<string, number> = 
   const settingsRow = await getSettingsRow();
   const settings = settingsDTO(settingsRow);
 
-  const [fixedRows, resourceRows, ingredientRows, sheetRows] = await Promise.all([
+  const [fixedRows, resourceRows, ingredientRows, sheetRows, productRows] = await Promise.all([
     prisma.pricingFixedCost.findMany({ orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] }),
     prisma.pricingResource.findMany({ orderBy: { name: 'asc' } }),
     prisma.pricingIngredient.findMany({ orderBy: { name: 'asc' } }),
@@ -304,6 +323,21 @@ export async function getPricingBundle(priceOverrides: Record<string, number> = 
         product: { select: { id: true, name: true, salePrice: true } },
         lines: { orderBy: { position: 'asc' } },
         _count: { select: { usedIn: true } },
+      },
+    }),
+    prisma.product.findMany({
+      where: { active: true, type: 'venda' },
+      orderBy: { name: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        sku: true,
+        category: true,
+        salePrice: true,
+        wholesalePrice: true,
+        cost: true,
+        stock: true,
+        _count: { select: { ingredients: true } },
       },
     }),
   ]);
@@ -440,7 +474,20 @@ export async function getPricingBundle(priceOverrides: Record<string, number> = 
   });
 
   const summary = buildSummary(sheets, ingredients, settings, fixedTotal);
-  return { settings, fixedCosts, fixedTotal, revenue, fixedRatePct: rate, resources, ingredients, sheets, summary };
+  const sheetByProduct = new Map(sheetRows.filter((s) => s.productId).map((s) => [s.productId as string, s.id]));
+  const catalog: CatalogProductDTO[] = productRows.map((p) => ({
+    id: p.id,
+    name: p.name,
+    sku: p.sku,
+    category: p.category,
+    salePrice: num(p.salePrice),
+    wholesalePrice: num(p.wholesalePrice),
+    cost: num(p.cost),
+    stock: num(p.stock),
+    recipeLines: p._count.ingredients,
+    sheetId: sheetByProduct.get(p.id) ?? null,
+  }));
+  return { catalog, settings, fixedCosts, fixedTotal, revenue, fixedRatePct: rate, resources, ingredients, sheets, summary };
 }
 
 // ─── Custos fixos ────────────────────────────────────────────────────────────
@@ -529,7 +576,9 @@ export async function updateIngredient(id: string, input: PricingIngredientInput
     // Preço mudou e a data não foi informada: marca a atualização de hoje.
     const priceChanged = num(before.purchasePrice) !== input.purchasePrice || num(before.purchaseQty) !== input.purchaseQty;
     if (!input.priceUpdatedAt && priceChanged) data.priceUpdatedAt = new Date();
-    return await prisma.pricingIngredient.update({ where: { id }, data });
+    const saved = await prisma.pricingIngredient.update({ where: { id }, data });
+    scheduleCostSync();
+    return saved;
   } catch (e) {
     return uniqueGuard(e, 'um insumo');
   }
@@ -603,7 +652,7 @@ export async function updateSheet(id: string, input: PricingSheetInput) {
   if (!exists) throw notFound('Ficha');
   await assertNoCycle(id, input.lines.map((l) => l.subSheetId).filter((x): x is string => !!x));
   try {
-    return await prisma.$transaction(async (tx) => {
+    const saved = await prisma.$transaction(async (tx) => {
       await tx.pricingSheetLine.deleteMany({ where: { sheetId: id } });
       return tx.pricingSheet.update({
         where: { id },
@@ -611,6 +660,8 @@ export async function updateSheet(id: string, input: PricingSheetInput) {
         select: { id: true },
       });
     });
+    scheduleCostSync();
+    return saved;
   } catch (e) {
     return uniqueGuard(e, 'uma ficha desse tipo');
   }
@@ -768,6 +819,7 @@ export async function importPricing(input: PricingImportInput, replaceFixedCosts
     { timeout: 60_000, maxWait: 10_000 },
   );
 
+  scheduleCostSync();
   return {
     settings: !!input.settings,
     fixedCosts: input.fixedCosts.length,
@@ -835,4 +887,107 @@ export async function simulateIngredientPrice(
       marginBefore: s.channels.balcao.mcPct,
       marginAfter: a.channels.balcao.mcPct,
     }));
+}
+
+// ─── Integração com o cadastro de produtos ───────────────────────────────────
+
+/** Grava o custo por unidade das fichas em `Product.cost` dos produtos ligados. */
+export async function syncLinkedProductCosts(): Promise<{ updated: number }> {
+  const bundle = await getPricingBundle();
+  const linked = bundle.sheets.filter((s) => s.kind === 'produto' && s.productId && s.costPerUnit > 0);
+  const byId = new Map(bundle.catalog.map((p) => [p.id, p]));
+  const changes = linked
+    .map((s) => ({ productId: s.productId as string, cost: Math.round(s.costPerUnit * 100) / 100 }))
+    .filter((c) => byId.has(c.productId) && Math.abs((byId.get(c.productId)?.cost ?? 0) - c.cost) >= 0.005);
+  if (changes.length === 0) return { updated: 0 };
+  await prisma.$transaction(changes.map((c) => prisma.product.update({ where: { id: c.productId }, data: { cost: c.cost } })));
+  return { updated: changes.length };
+}
+
+/** Dispara a sincronização sem travar a resposta; falha só vira log. */
+function scheduleCostSync(): void {
+  void syncLinkedProductCosts().catch((error) => logger.warn('Precificação: falha ao sincronizar custos nos produtos', { error }));
+}
+
+export interface FromProductResult {
+  id: string;
+  created: boolean;
+  /** Itens da receita cadastrada que não têm insumo de mesmo nome na precificação. */
+  unmatched: string[];
+}
+
+/**
+ * Cria a ficha técnica de um produto cadastrado, trazendo a receita que já
+ * existe em Produtos Acabados (casando os insumos pelo nome). Se já houver
+ * ficha de mesmo nome sem vínculo, apenas liga.
+ */
+export async function createSheetFromProduct(productId: string): Promise<FromProductResult> {
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    include: { ingredients: { include: { ingredient: { select: { name: true } } }, orderBy: { id: 'asc' } } },
+  });
+  if (!product) throw notFound('Produto');
+
+  const already = await prisma.pricingSheet.findFirst({ where: { productId }, select: { id: true } });
+  if (already) return { id: already.id, created: false, unmatched: [] };
+
+  const sameName = await prisma.pricingSheet.findFirst({ where: { kind: 'produto', name: product.name }, select: { id: true, productId: true } });
+  if (sameName && !sameName.productId) {
+    await prisma.pricingSheet.update({ where: { id: sameName.id }, data: { productId } });
+    return { id: sameName.id, created: false, unmatched: [] };
+  }
+
+  const pricingIngredients = await prisma.pricingIngredient.findMany({ select: { id: true, name: true } });
+  const byName = new Map(pricingIngredients.map((i) => [normName(i.name), i.id]));
+  const lines: Array<{ position: number; ingredientId: string; quantity: number }> = [];
+  const unmatched: string[] = [];
+  for (const r of product.ingredients) {
+    const id = byName.get(normName(r.ingredient.name));
+    if (id) lines.push({ position: lines.length, ingredientId: id, quantity: num(r.quantity) });
+    else unmatched.push(r.ingredient.name);
+  }
+
+  const sale = num(product.salePrice);
+  const row = await prisma.pricingSheet.create({
+    data: {
+      kind: 'produto',
+      name: sameName ? `${product.name} (cadastro)` : product.name,
+      yieldQty: 1,
+      yieldUnit: 'unidades',
+      markupPct: 100,
+      actualPrice: sale > 0 ? sale : null,
+      productId,
+      lines: { create: lines },
+    },
+    select: { id: true },
+  });
+  return { id: row.id, created: true, unmatched };
+}
+
+/** Cria a ficha de todos os produtos de venda que ainda não têm. */
+export async function createSheetsForAllProducts(): Promise<{ created: number; withRecipe: number; unmatched: string[] }> {
+  const products = await prisma.product.findMany({
+    where: { active: true, type: 'venda', pricingSheets: { none: {} } },
+    select: { id: true },
+    orderBy: { name: 'asc' },
+  });
+  let created = 0;
+  let withRecipe = 0;
+  const unmatched = new Set<string>();
+  for (const p of products) {
+    const r = await createSheetFromProduct(p.id);
+    if (r.created) created += 1;
+    for (const u of r.unmatched) unmatched.add(u);
+    if (r.created && r.unmatched.length === 0) withRecipe += 1;
+  }
+  return { created, withRecipe, unmatched: [...unmatched] };
+}
+
+function normName(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 }

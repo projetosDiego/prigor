@@ -1,9 +1,24 @@
+import { z } from 'zod';
+
 import { requireManager } from '@/server/auth/guard';
-import { ok, route } from '@/server/http/respond';
+import { ok, readJson, route } from '@/server/http/respond';
 import { runCollections } from '@/server/services/collections';
 
-/** Botão "Atualizar com o banco e enviar lembretes" da tela de cobrança. */
-export const POST = route('cobranca.executar', async () => {
+const bodySchema = z.object({ action: z.enum(['sync', 'remind', 'all']).default('all') });
+
+/**
+ * Ações da tela de cobrança, separadas:
+ *  - sync:   confere os boletos no banco e dá baixa nos pagos (não envia e-mail);
+ *  - remind: envia os lembretes por e-mail da régua (não consulta o banco);
+ *  - all:    as duas coisas (é o que o cron diário faz).
+ */
+export const POST = route('cobranca.executar', async (request) => {
   await requireManager();
-  return ok(await runCollections());
+  const { action } = bodySchema.parse(await readJson(request).catch(() => ({})));
+  return ok(
+    await runCollections({
+      syncBank: action !== 'remind',
+      sendEmails: action !== 'sync',
+    }),
+  );
 });

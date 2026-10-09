@@ -400,7 +400,7 @@ export default function ProductsPage() {
                   const isLowStock = prod.minStock > 0 && prod.stock <= prod.minStock;
 
                   return (
-                    <tr key={prod.id} className="hover:bg-stone-50/50">
+                    <tr key={prod.id} onClick={() => handleOpenEditModal(prod)} className="cursor-pointer hover:bg-stone-50/50">
                       <td className="py-4 px-6">
                         {prod.sku && <span className="text-[10px] text-stone-400 font-bold block mb-0.5">{prod.sku}</span>}
                         <span className="text-stone-850 font-bold text-sm block">{prod.name}</span>
@@ -435,7 +435,7 @@ export default function ProductsPage() {
                           {prod.stock} un
                         </span>
                       </td>
-                      <td className="py-4 px-6 text-center">
+                      <td className="py-4 px-6 text-center" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
                           onClick={() => handleTogglePortal(prod)}
@@ -459,8 +459,15 @@ export default function ProductsPage() {
                           )}
                         </button>
                       </td>
-                      <td className="py-4 px-6 text-center">
+                      <td className="py-4 px-6 text-center" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-2">
+                          <Link
+                            href={`/admin/pricing?product=${prod.id}`}
+                            title="Ficha técnica, custo e preço"
+                            className="px-2 py-1 border border-amber-200 rounded-lg text-[11px] font-bold text-amber-700 hover:bg-amber-50 transition-all cursor-pointer"
+                          >
+                            Ficha & preço
+                          </Link>
                           <button 
                             onClick={() => handleOpenEditModal(prod)}
                             className="p-1.5 border border-stone-200 rounded-lg hover:bg-stone-50 hover:text-stone-900 text-stone-400 transition-all cursor-pointer"

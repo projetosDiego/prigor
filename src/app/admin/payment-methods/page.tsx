@@ -143,7 +143,7 @@ export default function PaymentMethodsPage() {
               {formas.length === 0 ? (
                 <tr><td colSpan={5} className="py-8 text-center text-stone-400">Nenhuma forma cadastrada.</td></tr>
               ) : formas.map((f) => (
-                <tr key={f.id} className="hover:bg-stone-50/50">
+                <tr key={f.id} onClick={() => openEdit(f)} className="cursor-pointer hover:bg-stone-50/50">
                   <td className="py-3 px-6 text-stone-400">{f.sortOrder}</td>
                   <td className="py-3 px-6 text-stone-850 font-bold text-sm">{f.name}</td>
                   <td className="py-3 px-6 text-center text-stone-500">{f.netDays != null ? `${f.netDays} dia${f.netDays === 1 ? '' : 's'}` : '—'}</td>
@@ -152,7 +152,7 @@ export default function PaymentMethodsPage() {
                       {f.active ? 'ATIVA' : 'DESATIVADA'}
                     </span>
                   </td>
-                  <td className="py-3 px-6 text-center">
+                  <td className="py-3 px-6 text-center" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-center gap-1.5">
                       <button onClick={() => openEdit(f)} className="p-1 text-stone-400 hover:text-amber-700 hover:bg-stone-50 rounded transition-all cursor-pointer"><Edit2 className="h-4 w-4" /></button>
                       {f.active && (

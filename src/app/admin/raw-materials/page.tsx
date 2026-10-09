@@ -253,7 +253,7 @@ export default function RawMaterialsPage() {
                 {filteredInsumos.map((insumo) => {
                   const isLowStock = insumo.minStock > 0 && insumo.stock <= insumo.minStock;
                   return (
-                    <tr key={insumo.id} className="hover:bg-stone-50/50">
+                    <tr key={insumo.id} onClick={() => handleOpenEditModal(insumo)} className="cursor-pointer hover:bg-stone-50/50">
                       <td className="py-4 px-6">
                         {insumo.sku && <span className="text-[10px] text-stone-400 font-bold block mb-0.5">{insumo.sku}</span>}
                         <span className="text-stone-850 font-bold text-sm block">{insumo.name}</span>
@@ -272,7 +272,7 @@ export default function RawMaterialsPage() {
                         </span>
                       </td>
                       <td className="py-4 px-6 text-center text-stone-400">{insumo.minStock} {insumo.unit}</td>
-                      <td className="py-4 px-6 text-center">
+                      <td className="py-4 px-6 text-center" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-2">
                           <button 
                             onClick={() => handleOpenEditModal(insumo)}

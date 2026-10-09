@@ -26,8 +26,9 @@ import {
 
 import { responseErrorMessage } from '@/lib/errors';
 import { useToast } from '@/components/shared/Toast';
-import { computePricing, markupForTargetMargin } from '@/server/domain/precificacao';
+import { channelMargin, computePricing, priceForTargetMargin, suggestedPrice } from '@/server/domain/precificacao';
 import type {
+  CatalogProductDTO,
   FixedCostDTO,
   IngredientDTO,
   PricingBundleDTO,
@@ -106,6 +107,9 @@ export default function PricingPage() {
   const [data, setData] = useState<PricingBundleDTO | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('painel');
+  const [drawer, setDrawer] = useState<OpenTarget>(null);
+  const [pendingOpen, setPendingOpen] = useState<string | null>(null);
+  const handledQuery = React.useRef(false);
 
   const load = useCallback(async () => {
     try {
@@ -120,6 +124,43 @@ export default function PricingPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const createFromProduct = useCallback(
+    async (productId: string) => {
+      try {
+        const r = await api<{ id: string; created: boolean; unmatched: string[] }>('/api/pricing/sheets/from-product', 'POST', { productId });
+        if (r.created && r.unmatched?.length) {
+          toast(`Ficha criada. Sem correspondência nos insumos: ${r.unmatched.slice(0, 4).join(', ')}${r.unmatched.length > 4 ? '…' : ''}`, 'info');
+        }
+        setPendingOpen(r.id);
+        await load();
+      } catch (e) {
+        toast(e instanceof Error ? e.message : 'Erro ao criar ficha.', 'error');
+      }
+    },
+    [load, toast],
+  );
+
+  useEffect(() => {
+    if (!pendingOpen || !data) return;
+    const found = data.sheets.find((x) => x.id === pendingOpen);
+    if (found) {
+      setTab('fichas');
+      setDrawer(found);
+      setPendingOpen(null);
+    }
+  }, [pendingOpen, data]);
+
+  useEffect(() => {
+    if (!data || handledQuery.current) return;
+    handledQuery.current = true;
+    const productId = new URLSearchParams(window.location.search).get('product');
+    if (!productId) return;
+    setTab('fichas');
+    const existing = data.sheets.find((x) => x.productId === productId);
+    if (existing) setDrawer(existing);
+    else void createFromProduct(productId);
+  }, [data, createFromProduct]);
 
   if (loading || !data) {
     return (
@@ -143,6 +184,7 @@ export default function PricingPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <SyncCostsButton onDone={load} />
           <LinkProductsButton onDone={load} />
           <button className={btnGhost} onClick={() => exportCsv(data)}>
             <Download className="h-4 w-4" /> Exportar CSV
@@ -150,8 +192,6 @@ export default function PricingPage() {
           <ImportButton onDone={load} />
         </div>
       </header>
-
-      <Summary data={data} />
 
       {empty && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
@@ -182,11 +222,24 @@ export default function PricingPage() {
         ))}
       </nav>
 
-      {tab === 'painel' && <DashboardTab data={data} reload={load} />}
-      {tab === 'fichas' && <SheetsTab data={data} reload={load} />}
+      {tab === 'painel' && <DashboardTab data={data} reload={load} onOpen={setDrawer} />}
+      {tab === 'fichas' && <SheetsTab data={data} reload={load} onOpen={setDrawer} onCreateFromProduct={createFromProduct} />}
       {tab === 'insumos' && <IngredientsTab data={data} reload={load} />}
       {tab === 'recursos' && <ResourcesTab data={data} reload={load} />}
       {tab === 'custos' && <CostsTab data={data} reload={load} />}
+
+      {drawer && (
+        <SheetDrawer
+          key={isSheet(drawer) ? drawer.id : 'new'}
+          data={data}
+          target={drawer}
+          onClose={() => setDrawer(null)}
+          onSaved={async () => {
+            setDrawer(null);
+            await load();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -279,6 +332,28 @@ function LinkProductsButton({ onDone }: { onDone: () => Promise<void> }) {
   );
 }
 
+function SyncCostsButton({ onDone }: { onDone: () => Promise<void> }) {
+  const { toast } = useToast();
+  const [busy, setBusy] = useState(false);
+  async function run() {
+    setBusy(true);
+    try {
+      const r = await api<{ updated?: number }>('/api/pricing/sync-costs', 'POST', {});
+      toast(`Custos atualizados nos produtos${typeof r.updated === 'number' ? ` (${r.updated})` : ''}.`, 'success');
+      await onDone();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Erro ao atualizar custos.', 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <button className={btnGhost} disabled={busy} onClick={() => void run()} title="Grava o custo por unidade das fichas no cadastro dos produtos">
+      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <TrendingDown className="h-4 w-4" />} Atualizar custos nos produtos
+    </button>
+  );
+}
+
 // ─── Painel ──────────────────────────────────────────────────────────────────
 
 function MarginBar({ value, target }: { value: number; target: number }) {
@@ -294,7 +369,7 @@ function MarginBar({ value, target }: { value: number; target: number }) {
   );
 }
 
-function DashboardTab({ data, reload }: { data: PricingBundleDTO; reload: () => Promise<void> }) {
+function DashboardTab({ data, reload, onOpen }: { data: PricingBundleDTO; reload: () => Promise<void>; onOpen: (t: OpenTarget) => void }) {
   const { toast, confirm } = useToast();
   const target = data.settings.targetMarginPct / 100;
   const products = data.sheets.filter((s) => s.kind === 'produto' && s.active && s.status !== 'sem_custo');
@@ -346,7 +421,7 @@ function DashboardTab({ data, reload }: { data: PricingBundleDTO; reload: () => 
         ) : (
           <div className="divide-y divide-stone-100">
             {toFix.map((s) => (
-              <div key={s.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+              <div key={s.id} className="flex cursor-pointer flex-wrap items-center gap-3 px-4 py-3 hover:bg-stone-50" onClick={() => onOpen(s)}>
                 <div className="min-w-[10rem] flex-1">
                   <div className="font-semibold text-stone-900">{s.name}</div>
                   <div className="text-xs text-stone-500">
@@ -357,7 +432,7 @@ function DashboardTab({ data, reload }: { data: PricingBundleDTO; reload: () => 
                   <div className="text-stone-400 line-through">{brl(s.effectivePrice)}</div>
                   <div className="font-black text-emerald-700">{brl(s.targetPrice)}</div>
                 </div>
-                <button className={btnGhost} onClick={() => void apply(s)} disabled={!s.productId} title={s.productId ? 'Gravar no cadastro do produto' : 'Sem produto vinculado'}>
+                <button className={btnGhost} onClick={(e) => { e.stopPropagation(); void apply(s); }} disabled={!s.productId} title={s.productId ? 'Gravar no cadastro do produto' : 'Sem produto vinculado'}>
                   <CheckCircle2 className="h-4 w-4 text-emerald-600" /> Aplicar
                 </button>
               </div>
@@ -385,7 +460,7 @@ function DashboardTab({ data, reload }: { data: PricingBundleDTO; reload: () => 
             </thead>
             <tbody className="divide-y divide-stone-100">
               {bars.map((s) => (
-                <tr key={s.id}>
+                <tr key={s.id} className="cursor-pointer hover:bg-stone-50" onClick={() => onOpen(s)}>
                   <td className="px-4 py-2 font-semibold text-stone-900">{s.name}</td>
                   <td className="px-3 py-2 text-right text-stone-700">
                     {brl(s.effectivePrice)}
@@ -459,20 +534,61 @@ function ImportButton({ onDone }: { onDone: () => Promise<void> }) {
 
 // ─── Fichas ──────────────────────────────────────────────────────────────────
 
-function SheetsTab({ data, reload }: { data: PricingBundleDTO; reload: () => Promise<void> }) {
+type OpenTarget = SheetDTO | { newKind: Kind } | null;
+
+function isSheet(t: OpenTarget): t is SheetDTO {
+  return !!t && 'id' in t;
+}
+
+type ProductRow =
+  | { type: 'sheet'; key: string; name: string; sheet: SheetDTO }
+  | { type: 'catalog'; key: string; name: string; product: CatalogProductDTO };
+
+function SheetsTab({
+  data,
+  reload,
+  onOpen,
+  onCreateFromProduct,
+}: {
+  data: PricingBundleDTO;
+  reload: () => Promise<void>;
+  onOpen: (t: OpenTarget) => void;
+  onCreateFromProduct: (productId: string) => Promise<void>;
+}) {
   const { toast, confirm } = useToast();
   const [kind, setKind] = useState<Kind>('produto');
   const [q, setQ] = useState('');
-  const [editing, setEditing] = useState<SheetDTO | 'new' | null>(null);
+  const [filter, setFilter] = useState<'todos' | 'sem_ficha' | 'ajustar'>('todos');
+  const [busy, setBusy] = useState<string | null>(null);
+  const target = data.settings.targetMarginPct / 100;
 
-  const rows = useMemo(
+  const catalogNoSheet = useMemo(() => data.catalog.filter((p) => !p.sheetId), [data.catalog]);
+
+  const productRows = useMemo<ProductRow[]>(() => {
+    const needle = q.toLowerCase();
+    const all: ProductRow[] = [
+      ...data.sheets
+        .filter((s) => s.kind === 'produto')
+        .map((s) => ({ type: 'sheet' as const, key: s.id, name: s.name, sheet: s })),
+      ...catalogNoSheet.map((p) => ({ type: 'catalog' as const, key: `p-${p.id}`, name: p.name, product: p })),
+    ];
+    return all
+      .filter((r) => r.name.toLowerCase().includes(needle))
+      .filter((r) => {
+        if (filter === 'sem_ficha') return r.type === 'catalog';
+        if (filter === 'ajustar') return r.type === 'sheet' && (r.sheet.status === 'baixa' || r.sheet.status === 'prejuizo');
+        return true;
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }, [data.sheets, catalogNoSheet, q, filter]);
+
+  const subRows = useMemo(
     () => data.sheets.filter((s) => s.kind === kind && s.name.toLowerCase().includes(q.toLowerCase())),
     [data.sheets, kind, q],
   );
-  const target = data.settings.targetMarginPct / 100;
 
   async function apply(s: SheetDTO) {
-    if (!s.productId) return toast('Vincule a ficha a um produto (editar ficha) para aplicar o preço.', 'error');
+    if (!s.productId) return toast('Vincule a ficha a um produto (abra a ficha) para aplicar o preço.', 'error');
     const ok = await confirm({
       title: 'Aplicar preço',
       message: `Gravar ${brl(s.targetPrice)} (margem alvo) como preço de venda de "${s.productName}"? (hoje: ${brl(s.productPrice ?? 0)})`,
@@ -507,6 +623,29 @@ function SheetsTab({ data, reload }: { data: PricingBundleDTO; reload: () => Pro
       toast(e instanceof Error ? e.message : 'Erro ao excluir.', 'error');
     }
   }
+  async function createAll() {
+    const ok = await confirm({
+      title: 'Criar fichas dos produtos',
+      message: `Criar ficha técnica para os ${catalogNoSheet.length} produtos sem ficha, usando a receita cadastrada em Produtos Acabados?`,
+      confirmLabel: 'Criar fichas',
+    });
+    if (!ok) return;
+    setBusy('all');
+    try {
+      const r = await api<{ created: number; withRecipe: number; unmatched: string[] }>('/api/pricing/sheets/from-product', 'POST', { all: true });
+      toast(
+        `${r.created} ficha(s) criada(s), ${r.withRecipe} com receita.${r.unmatched.length ? ` Insumos sem correspondência: ${r.unmatched.slice(0, 5).join(', ')}${r.unmatched.length > 5 ? '…' : ''}` : ''}`,
+        r.unmatched.length ? 'info' : 'success',
+      );
+      await reload();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Erro ao criar fichas.', 'error');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const stop = (e: React.MouseEvent) => e.stopPropagation();
 
   return (
     <section className="space-y-3">
@@ -517,80 +656,153 @@ function SheetsTab({ data, reload }: { data: PricingBundleDTO; reload: () => Pro
             onClick={() => setKind(k)}
             className={`rounded-full px-3 py-1 text-xs font-bold ${kind === k ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-600'}`}
           >
-            {KIND_LABEL[k]} ({data.sheets.filter((s) => s.kind === k).length})
+            {KIND_LABEL[k]} ({k === 'produto' ? data.sheets.filter((s) => s.kind === 'produto').length + catalogNoSheet.length : data.sheets.filter((s) => s.kind === k).length})
           </button>
         ))}
+        {kind === 'produto' && (
+          <select className="rounded-lg border border-stone-300 bg-white px-2 py-1 text-xs font-semibold text-stone-700" value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)}>
+            <option value="todos">Todos</option>
+            <option value="sem_ficha">Sem ficha ({catalogNoSheet.length})</option>
+            <option value="ajustar">Preço a ajustar</option>
+          </select>
+        )}
         <div className="relative ml-auto w-full sm:w-64">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-stone-400" />
-          <input className={`${inputCls} pl-9`} placeholder="Buscar ficha…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className={`${inputCls} pl-9`} placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
-        <button className={btnPrimary} onClick={() => setEditing('new')}>
+        {kind === 'produto' && catalogNoSheet.length > 0 && (
+          <button className={btnGhost} disabled={busy === 'all'} onClick={() => void createAll()}>
+            {busy === 'all' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />} Criar fichas dos {catalogNoSheet.length} sem ficha
+          </button>
+        )}
+        <button className={btnPrimary} onClick={() => onOpen({ newKind: kind })}>
           <Plus className="h-4 w-4" /> Nova ficha
         </button>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-stone-200 bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-stone-50 text-left text-[11px] font-bold uppercase tracking-wide text-stone-500">
-            <tr>
-              <th className="px-3 py-2">Ficha</th>
-              <th className="px-3 py-2 text-right">Rend.</th>
-              <th className="px-3 py-2 text-right">Custo/un</th>
-              {kind === 'produto' ? (
-                <>
-                  <th className="px-3 py-2 text-right">Preço em uso</th>
-                  <th className="px-3 py-2 text-right">Balcão</th>
-                  <th className="px-3 py-2 text-right">iFood</th>
-                  <th className="px-3 py-2 text-right">Revenda</th>
-                  <th className="px-3 py-2 text-right">Preço p/ meta</th>
-                </>
-              ) : (
-                <th className="px-3 py-2 text-right">Custo por {kind === 'massa' || kind === 'recheio' ? 'unid. de uso' : 'un'}</th>
+      {kind === 'produto' ? (
+        <div className="overflow-x-auto rounded-xl border border-stone-200 bg-white">
+          <table className="w-full text-sm">
+            <thead className="bg-stone-50 text-left text-[11px] font-bold uppercase tracking-wide text-stone-500">
+              <tr>
+                <th className="px-3 py-2">Produto</th>
+                <th className="px-3 py-2 text-right">Rend.</th>
+                <th className="px-3 py-2 text-right">Custo/un</th>
+                <th className="px-3 py-2 text-right">Preço em uso</th>
+                <th className="px-3 py-2 text-right">Balcão</th>
+                <th className="px-3 py-2 text-right">iFood</th>
+                <th className="px-3 py-2 text-right">Revenda</th>
+                <th className="px-3 py-2 text-right">Preço p/ meta</th>
+                <th className="px-3 py-2" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-stone-100">
+              {productRows.map((r) => {
+                if (r.type === 'catalog') {
+                  const p = r.product;
+                  return (
+                    <tr key={r.key} className="cursor-pointer bg-amber-50/40 hover:bg-amber-50" onClick={() => void onCreateFromProduct(p.id)}>
+                      <td className="px-3 py-2 font-semibold text-stone-900">
+                        {p.name}
+                        <span className="ml-2 rounded bg-amber-100 px-1.5 text-[10px] font-bold text-amber-800">sem ficha</span>
+                        <div className="text-[11px] font-normal text-stone-400">
+                          {p.recipeLines > 0 ? `${p.recipeLines} item(ns) de receita cadastrados` : 'sem receita cadastrada'}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-right text-stone-400">—</td>
+                      <td className="px-3 py-2 text-right text-stone-600">{p.cost > 0 ? brl(p.cost) : '—'}</td>
+                      <td className="px-3 py-2 text-right font-semibold text-stone-800">
+                        {brl(p.salePrice)}
+                        <div className="text-[10px] font-normal text-stone-400">produto</div>
+                      </td>
+                      <td colSpan={4} className="px-3 py-2 text-right text-xs text-stone-400">
+                        Clique para criar a ficha a partir da receita
+                      </td>
+                      <td className="px-3 py-2 text-right" onClick={stop}>
+                        <button className="rounded-lg border border-amber-300 bg-white px-2 py-1 text-xs font-bold text-amber-700 hover:bg-amber-50" onClick={() => void onCreateFromProduct(p.id)}>
+                          Criar ficha
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                }
+                const s = r.sheet;
+                const low = s.status === 'baixa';
+                return (
+                  <tr key={r.key} className="cursor-pointer hover:bg-stone-50" onClick={() => onOpen(s)}>
+                    <td className="px-3 py-2 font-semibold text-stone-900">
+                      {s.name}
+                      {s.warnings.length > 0 && <AlertTriangle className="ml-1 inline h-3.5 w-3.5 text-red-500" />}
+                      {s.productName && <div className="text-[11px] font-normal text-stone-400">↔ {s.productName}</div>}
+                      {!s.active && <span className="ml-2 rounded bg-stone-200 px-1.5 text-[10px] text-stone-600">inativa</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right text-stone-600">
+                      {dec(s.yieldQty)} {s.yieldUnit}
+                    </td>
+                    <td className="px-3 py-2 text-right">{brl(s.costPerUnit)}</td>
+                    <td className="px-3 py-2 text-right font-semibold text-stone-800">
+                      {brl(s.effectivePrice)}
+                      <div className="text-[10px] font-normal text-stone-400">{s.priceSource}</div>
+                    </td>
+                    <td className={`px-3 py-2 text-right font-bold ${s.status === 'prejuizo' ? 'text-red-600' : low ? 'text-amber-600' : 'text-emerald-600'}`}>{pct(s.channels.balcao.mcPct)}</td>
+                    <td className={`px-3 py-2 text-right text-xs font-bold ${s.channels.ifood.mcPct < target ? 'text-amber-600' : 'text-stone-700'}`}>{pct(s.channels.ifood.mcPct)}</td>
+                    <td className={`px-3 py-2 text-right text-xs font-bold ${s.channels.revenda.mcPct < target ? 'text-amber-600' : 'text-stone-700'}`}>{pct(s.channels.revenda.mcPct)}</td>
+                    <td className="px-3 py-2 text-right font-bold text-amber-700">{brl(s.targetPrice)}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right" onClick={stop}>
+                      {s.productId && (
+                        <button title="Aplicar preço da margem alvo no produto" onClick={() => void apply(s)} className="rounded p-1.5 text-emerald-600 hover:bg-emerald-50">
+                          <CheckCircle2 className="h-4 w-4" />
+                        </button>
+                      )}
+                      <button title="Duplicar" onClick={() => void dup(s)} className="rounded p-1.5 text-stone-600 hover:bg-stone-100">
+                        <Copy className="h-4 w-4" />
+                      </button>
+                      <button title="Excluir" onClick={() => void remove(s)} className="rounded p-1.5 text-red-500 hover:bg-red-50">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {productRows.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="px-3 py-8 text-center text-stone-400">
+                    Nenhum produto.
+                  </td>
+                </tr>
               )}
-              <th className="px-3 py-2" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-stone-100">
-            {rows.map((s) => {
-              const low = s.kind === 'produto' && s.status === 'baixa';
-              return (
-                <tr key={s.id} className="hover:bg-stone-50">
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-stone-200 bg-white">
+          <table className="w-full text-sm">
+            <thead className="bg-stone-50 text-left text-[11px] font-bold uppercase tracking-wide text-stone-500">
+              <tr>
+                <th className="px-3 py-2">Ficha</th>
+                <th className="px-3 py-2 text-right">Rend.</th>
+                <th className="px-3 py-2 text-right">Custo do lote</th>
+                <th className="px-3 py-2 text-right">Custo por unid. de uso</th>
+                <th className="px-3 py-2" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-stone-100">
+              {subRows.map((s) => (
+                <tr key={s.id} className="cursor-pointer hover:bg-stone-50" onClick={() => onOpen(s)}>
                   <td className="px-3 py-2 font-semibold text-stone-900">
                     {s.name}
                     {s.warnings.length > 0 && <AlertTriangle className="ml-1 inline h-3.5 w-3.5 text-red-500" />}
-                    {s.productName && <div className="text-[11px] font-normal text-stone-400">↔ {s.productName}</div>}
                     {!s.active && <span className="ml-2 rounded bg-stone-200 px-1.5 text-[10px] text-stone-600">inativa</span>}
                   </td>
                   <td className="px-3 py-2 text-right text-stone-600">
                     {dec(s.yieldQty)} {s.yieldUnit}
                   </td>
-                  <td className="px-3 py-2 text-right">{brl(s.kind === 'produto' ? s.costPerUnit : s.unitCost, s.kind === 'produto' ? 2 : 4)}</td>
-                  {s.kind === 'produto' ? (
-                    <>
-                      <td className="px-3 py-2 text-right font-semibold text-stone-800">
-                        {brl(s.effectivePrice)}
-                        <div className="text-[10px] font-normal text-stone-400">{s.priceSource}</div>
-                      </td>
-                      <td className={`px-3 py-2 text-right font-bold ${s.status === 'prejuizo' ? 'text-red-600' : low ? 'text-amber-600' : 'text-emerald-600'}`}>{pct(s.channels.balcao.mcPct)}</td>
-                      <td className={`px-3 py-2 text-right text-xs font-bold ${s.channels.ifood.mcPct < target ? 'text-amber-600' : 'text-stone-700'}`}>{pct(s.channels.ifood.mcPct)}</td>
-                      <td className={`px-3 py-2 text-right text-xs font-bold ${s.channels.revenda.mcPct < target ? 'text-amber-600' : 'text-stone-700'}`}>{pct(s.channels.revenda.mcPct)}</td>
-                      <td className="px-3 py-2 text-right font-bold text-amber-700">{brl(s.targetPrice)}</td>
-                    </>
-                  ) : (
-                    <td className="px-3 py-2 text-right text-stone-600">
-                      {brl(s.unitCost, 4)} / {s.yieldUnit === 'gramas' ? 'g' : 'un'}
-                      {s.usedInCount > 0 && <div className="text-[11px] text-stone-400">usada em {s.usedInCount}</div>}
-                    </td>
-                  )}
-                  <td className="whitespace-nowrap px-3 py-2 text-right">
-                    {s.kind === 'produto' && s.productId && (
-                      <button title="Aplicar preço da margem alvo no produto" onClick={() => void apply(s)} className="rounded p-1.5 text-emerald-600 hover:bg-emerald-50">
-                        <CheckCircle2 className="h-4 w-4" />
-                      </button>
-                    )}
-                    <button title="Editar" onClick={() => setEditing(s)} className="rounded p-1.5 text-stone-600 hover:bg-stone-100">
-                      <Pencil className="h-4 w-4" />
-                    </button>
+                  <td className="px-3 py-2 text-right">{brl(s.manufacturingCost)}</td>
+                  <td className="px-3 py-2 text-right text-stone-600">
+                    {brl(s.unitCost, 4)} / {s.yieldUnit === 'gramas' ? 'g' : 'un'}
+                    {s.usedInCount > 0 && <div className="text-[11px] text-stone-400">usada em {s.usedInCount}</div>}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right" onClick={stop}>
                     <button title="Duplicar" onClick={() => void dup(s)} className="rounded p-1.5 text-stone-600 hover:bg-stone-100">
                       <Copy className="h-4 w-4" />
                     </button>
@@ -599,30 +811,17 @@ function SheetsTab({ data, reload }: { data: PricingBundleDTO; reload: () => Pro
                     </button>
                   </td>
                 </tr>
-              );
-            })}
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={8} className="px-3 py-8 text-center text-stone-400">
-                  Nenhuma ficha.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {editing && (
-        <SheetEditor
-          data={data}
-          sheet={editing === 'new' ? null : editing}
-          defaultKind={kind}
-          onClose={() => setEditing(null)}
-          onSaved={async () => {
-            setEditing(null);
-            await reload();
-          }}
-        />
+              ))}
+              {subRows.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-3 py-8 text-center text-stone-400">
+                    Nenhuma ficha.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );
@@ -634,22 +833,24 @@ interface DraftLine {
   quantity: string;
 }
 
-function SheetEditor({
+const SEG_COLORS = ['bg-amber-500', 'bg-rose-400', 'bg-sky-500', 'bg-emerald-500', 'bg-violet-500', 'bg-stone-500', 'bg-orange-300'];
+
+function SheetDrawer({
   data,
-  sheet,
-  defaultKind,
+  target,
   onClose,
   onSaved,
 }: {
   data: PricingBundleDTO;
-  sheet: SheetDTO | null;
-  defaultKind: Kind;
+  target: Exclude<OpenTarget, null>;
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
-  const { toast } = useToast();
+  const { toast, confirm } = useToast();
+  const sheet = isSheet(target) ? target : null;
+  const defaultKind: Kind = isSheet(target) ? target.kind : target.newKind;
   const [saving, setSaving] = useState(false);
-  const [products, setProducts] = useState<Array<{ id: string; name: string }>>([]);
+  const [more, setMore] = useState(false);
   const [f, setF] = useState({
     kind: (sheet?.kind ?? defaultKind) as Kind,
     name: sheet?.name ?? '',
@@ -672,16 +873,21 @@ function SheetEditor({
   );
 
   useEffect(() => {
-    fetch('/api/products?pageSize=500')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
-        const arr = (j?.data ?? j?.items ?? j) as Array<{ id: string; name: string }> | null;
-        if (Array.isArray(arr)) setProducts(arr.map((p) => ({ id: p.id, name: p.name })));
-      })
-      .catch(() => undefined);
-  }, []);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   const draftId = sheet?.id ?? '__new__';
+  const isProduct = f.kind === 'produto';
+  const s = data.settings;
+  const balcaoFee = s.cardFeePct + s.taxPct;
+  const ifoodFee = s.ifoodFeePct;
+  const resellerFee = s.taxPct + s.resellerCommissionPct;
+  const targetPct = s.targetMarginPct;
+
   const live = useMemo(() => {
     const draft = {
       id: draftId,
@@ -701,16 +907,16 @@ function SheetEditor({
         })),
     };
     const others = data.sheets
-      .filter((s) => s.id !== draftId)
-      .map((s) => ({
-        id: s.id,
-        kind: s.kind,
-        name: s.name,
-        yieldQty: s.yieldQty,
-        markupPct: s.markupPct,
-        totalWeightG: s.totalWeightG,
-        lossPct: s.lossPct,
-        lines: s.lines.map((l) => ({ ingredientId: l.ingredientId, resourceId: l.resourceId, subSheetId: l.subSheetId, quantity: l.quantity })),
+      .filter((x) => x.id !== draftId)
+      .map((x) => ({
+        id: x.id,
+        kind: x.kind,
+        name: x.name,
+        yieldQty: x.yieldQty,
+        markupPct: x.markupPct,
+        totalWeightG: x.totalWeightG,
+        lossPct: x.lossPct,
+        lines: x.lines.map((l) => ({ ingredientId: l.ingredientId, resourceId: l.resourceId, subSheetId: l.subSheetId, quantity: l.quantity })),
       }));
     const calc = computePricing({
       settings: data.settings,
@@ -722,29 +928,83 @@ function SheetEditor({
     return calc.sheets[draftId];
   }, [f, lines, data, draftId]);
 
-  const feePct = data.settings.cardFeePct + data.settings.taxPct;
-  const markupTarget = markupForTargetMargin(data.settings.targetMarginPct, feePct);
-
-  const options = useMemo(() => {
-    const subs = data.sheets.filter((s) => s.id !== sheet?.id);
-    return {
+  const options = useMemo(
+    () => ({
       ing: data.ingredients.filter((i) => i.active),
       res: data.resources.filter((r) => r.active),
-      subs,
-    };
-  }, [data, sheet]);
+      subs: data.sheets.filter((x) => x.id !== sheet?.id),
+    }),
+    [data, sheet],
+  );
+
+  const catalogOptions = useMemo(
+    () => data.catalog.filter((p) => !p.sheetId || p.sheetId === sheet?.id || p.id === f.productId),
+    [data.catalog, sheet, f.productId],
+  );
 
   function lineInfo(l: DraftLine, idx: number) {
     const valid = lines.slice(0, idx + 1).filter((x) => x.ref).length - 1;
     const r = l.ref ? live?.lines[valid] : undefined;
     let unit = '';
     if (l.ref.startsWith('i:')) unit = data.ingredients.find((i) => i.id === l.ref.slice(2))?.unit ?? '';
-    else if (l.ref.startsWith('r:')) unit = 'minutos';
-    else if (l.ref.startsWith('s:')) unit = data.sheets.find((s) => s.id === l.ref.slice(2))?.yieldUnit ?? '';
+    else if (l.ref.startsWith('r:')) unit = 'min';
+    else if (l.ref.startsWith('s:')) unit = data.sheets.find((x) => x.id === l.ref.slice(2))?.yieldUnit ?? '';
     return { unit, total: r?.totalCost ?? 0, unitCost: r?.unitCost ?? 0 };
   }
 
-  async function save() {
+  // custo por categoria (barra empilhada)
+  const segments = useMemo(() => {
+    const acc = new Map<string, number>();
+    const add = (label: string, v: number) => acc.set(label, (acc.get(label) ?? 0) + v);
+    let idx = -1;
+    for (const l of lines) {
+      if (!l.ref) continue;
+      idx += 1;
+      const total = live?.lines[idx]?.totalCost ?? 0;
+      if (l.ref.startsWith('i:')) {
+        const ing = data.ingredients.find((i) => i.id === l.ref.slice(2));
+        add(CATEGORIES[ing?.category ?? 'outros'] ?? 'Outros', total);
+      } else if (l.ref.startsWith('r:')) {
+        const res = data.resources.find((r) => r.id === l.ref.slice(2));
+        add(res?.kind === 'mao_de_obra' ? 'Mão de obra' : 'Equipamentos (energia/gás)', total);
+      } else add('Bases e recheios', total);
+    }
+    const fixed = (live?.manufacturingCost ?? 0) - (live?.directCost ?? 0);
+    if (fixed > 0) add('Custo fixo rateado', fixed);
+    return [...acc.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  }, [lines, live, data.ingredients, data.resources]);
+  const segTotal = segments.reduce((a, [, v]) => a + v, 0);
+
+  const cost = live?.costPerUnit ?? 0;
+  const price = toNum(f.actualPrice);
+  const priceForCalc = price > 0 ? price : live?.suggestedPrice ?? 0;
+  const balcao = channelMargin(priceForCalc, cost, balcaoFee);
+  const ifood = channelMargin(priceForCalc, cost, ifoodFee);
+  const revenda = channelMargin(priceForCalc, cost, resellerFee);
+  const targetPrice = priceForTargetMargin(cost, targetPct, balcaoFee);
+  const markupFromPrice = cost > 0 && price > 0 ? ((price - cost) / cost) * 100 : null;
+
+  function setPrice(v: string) {
+    const n = toNum(v);
+    const next = { ...f, actualPrice: v };
+    if (n > 0 && cost > 0) next.markupPct = (((n - cost) / cost) * 100).toFixed(2);
+    setF(next);
+  }
+  function setMarkup(v: string) {
+    const next = { ...f, markupPct: v };
+    setF(next);
+  }
+  function pickProduct(id: string) {
+    const p = data.catalog.find((x) => x.id === id);
+    setF((cur) => ({
+      ...cur,
+      productId: id,
+      name: cur.name.trim() ? cur.name : p?.name ?? cur.name,
+      actualPrice: cur.actualPrice.trim() ? cur.actualPrice : p && p.salePrice > 0 ? String(p.salePrice) : cur.actualPrice,
+    }));
+  }
+
+  async function save(applyAfter: boolean) {
     if (!f.name.trim()) return toast('Informe o nome da ficha.', 'error');
     setSaving(true);
     try {
@@ -769,9 +1029,18 @@ function SheetEditor({
             quantity: toNum(l.quantity),
           })),
       };
-      if (sheet) await api(`/api/pricing/sheets/${sheet.id}`, 'PUT', body);
-      else await api('/api/pricing/sheets', 'POST', body);
-      toast('Ficha salva.', 'success');
+      const saved = sheet
+        ? await api<{ id?: string }>(`/api/pricing/sheets/${sheet.id}`, 'PUT', body)
+        : await api<{ id?: string }>('/api/pricing/sheets', 'POST', body);
+      const id = sheet?.id ?? saved?.id;
+      if (applyAfter) {
+        if (!f.productId || !id) toast('Ficha salva, mas falta vincular um produto para aplicar o preço.', 'info');
+        else if (price <= 0) toast('Ficha salva, mas informe o preço que pratico para aplicar.', 'info');
+        else {
+          await api(`/api/pricing/sheets/${id}/apply-price`, 'POST', { price });
+          toast('Ficha salva e preço aplicado no produto.', 'success');
+        }
+      } else toast('Ficha salva.', 'success');
       await onSaved();
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Erro ao salvar.', 'error');
@@ -780,174 +1049,299 @@ function SheetEditor({
     }
   }
 
-  const isProduct = f.kind === 'produto';
-  const mc = live?.contributionMarginPct ?? 0;
+  async function remove() {
+    if (!sheet) return;
+    const ok = await confirm({ title: 'Excluir ficha', message: `Excluir "${sheet.name}"?`, confirmLabel: 'Excluir' });
+    if (!ok) return;
+    try {
+      await api(`/api/pricing/sheets/${sheet.id}`, 'DELETE');
+      toast('Ficha excluída.', 'success');
+      await onSaved();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Erro ao excluir.', 'error');
+    }
+  }
+
+  const mcCls = (v: number) => (v < 0 ? 'text-red-600' : v * 100 < targetPct ? 'text-amber-600' : 'text-emerald-600');
 
   return (
-    <Modal title={sheet ? `Ficha: ${sheet.name}` : 'Nova ficha técnica'} onClose={onClose} wide>
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="space-y-3 lg:col-span-2">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Field label="Tipo">
-              <select className={inputCls} value={f.kind} disabled={!!sheet} onChange={(e) => setF({ ...f, kind: e.target.value as Kind })}>
-                <option value="produto">Produto final</option>
-                <option value="massa">Massa (sub-ficha)</option>
-                <option value="recheio">Recheio (sub-ficha)</option>
-              </select>
-            </Field>
-            <div className="sm:col-span-2">
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={onClose}>
+      <aside
+        className="flex h-full w-full max-w-xl flex-col bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-label={sheet ? `Ficha ${sheet.name}` : 'Nova ficha'}
+      >
+        <div className="flex items-center justify-between border-b border-stone-200 px-5 py-4">
+          <div>
+            <h3 className="text-lg font-black text-stone-900">{sheet ? sheet.name : 'Nova ficha técnica'}</h3>
+            <p className="text-xs text-stone-500">
+              {isProduct ? 'Produto final' : f.kind === 'massa' ? 'Massa (sub-ficha)' : 'Recheio (sub-ficha)'} · custos atualizam ao vivo
+            </p>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-stone-500 hover:bg-stone-100" aria-label="Fechar">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
               <Field label="Nome">
-                <input className={inputCls} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+                <input className={inputCls} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus={!sheet} />
               </Field>
             </div>
-            <Field label="Rendimento">
+            <Field label="Rendimento" hint={f.yieldUnit}>
               <input className={inputCls} inputMode="decimal" value={f.yieldQty} onChange={(e) => setF({ ...f, yieldQty: e.target.value })} />
             </Field>
-            <Field label="Unidade">
-              <input className={inputCls} value={f.yieldUnit} onChange={(e) => setF({ ...f, yieldUnit: e.target.value })} list="unit-list" />
-              <datalist id="unit-list">
-                <option value="unidades" />
-                <option value="gramas" />
-                <option value="ml" />
-              </datalist>
-            </Field>
             {isProduct ? (
-              <Field label="Peso total (g)" hint="Para o preço por kg">
-                <input className={inputCls} inputMode="decimal" value={f.totalWeightG} onChange={(e) => setF({ ...f, totalWeightG: e.target.value })} />
+              <Field label="Markup sobre o custo (%)" hint={`Para ${targetPct}% de margem: ${dec(data.settings.targetMarginPct > 0 ? ((targetPrice - cost) / (cost || 1)) * 100 : 0, 1)}%`}>
+                <input className={inputCls} inputMode="decimal" value={f.markupPct} onChange={(e) => setMarkup(e.target.value)} />
               </Field>
             ) : (
               <Field label="Perda (%)" hint="Ao usar como insumo">
                 <input className={inputCls} inputMode="decimal" value={f.lossPct} onChange={(e) => setF({ ...f, lossPct: e.target.value })} />
               </Field>
             )}
+            {isProduct && (
+              <>
+                <div className="col-span-2">
+                  <Field
+                    label="Preço que pratico (R$)"
+                    hint={markupFromPrice !== null ? `Markup real sobre o custo: ${dec(markupFromPrice, 1)}%` : 'Quanto você cobra no balcão. Vazio = preço do produto vinculado.'}
+                  >
+                    <input className={inputCls} inputMode="decimal" value={f.actualPrice} onChange={(e) => setPrice(e.target.value)} />
+                  </Field>
+                </div>
+                <div className="col-span-2">
+                  <Field label="Produto vinculado (Produtos Acabados)" hint="Custo e preço conversam com o cadastro do produto">
+                    <select className={inputCls} value={f.productId} onChange={(e) => pickProduct(e.target.value)}>
+                      <option value="">— sem vínculo —</option>
+                      {catalogOptions.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} · {brl(p.salePrice)}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+              </>
+            )}
           </div>
 
-          <div className="rounded-xl border border-stone-200">
-            <div className="flex items-center justify-between border-b border-stone-200 px-3 py-2">
-              <span className="text-xs font-black uppercase tracking-wide text-stone-500">Itens da ficha</span>
-              <button className="text-xs font-bold text-amber-700" onClick={() => setLines([...lines, { key: String(Date.now()), ref: '', quantity: '' }])}>
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <h4 className="text-sm font-black text-stone-800">Ingredientes</h4>
+              <button className="text-xs font-bold text-amber-700 hover:underline" onClick={() => setLines([...lines, { key: String(Date.now()), ref: '', quantity: '' }])}>
                 + Adicionar item
               </button>
             </div>
-            <div className="divide-y divide-stone-100">
-              {lines.map((l, idx) => {
-                const info = lineInfo(l, idx);
-                return (
-                  <div key={l.key} className="grid grid-cols-12 items-center gap-2 px-3 py-2">
-                    <select
-                      className={`${inputCls} col-span-12 sm:col-span-6`}
-                      value={l.ref}
-                      onChange={(e) => setLines(lines.map((x) => (x.key === l.key ? { ...x, ref: e.target.value } : x)))}
-                    >
-                      <option value="">Selecione…</option>
-                      <optgroup label="Insumos">
-                        {options.ing.map((i) => (
-                          <option key={i.id} value={`i:${i.id}`}>
-                            {i.name}
-                          </option>
-                        ))}
-                      </optgroup>
-                      <optgroup label="Equipamentos / Mão de obra (minutos)">
-                        {options.res.map((r) => (
-                          <option key={r.id} value={`r:${r.id}`}>
-                            {r.name}
-                          </option>
-                        ))}
-                      </optgroup>
-                      <optgroup label="Massas, recheios e produtos prontos">
-                        {options.subs.map((s) => (
-                          <option key={s.id} value={`s:${s.id}`}>
-                            {s.name}
-                          </option>
-                        ))}
-                      </optgroup>
-                    </select>
-                    <div className="col-span-5 flex items-center gap-1 sm:col-span-2">
-                      <input
-                        className={inputCls}
-                        inputMode="decimal"
-                        placeholder="Qtd"
-                        value={l.quantity}
-                        onChange={(e) => setLines(lines.map((x) => (x.key === l.key ? { ...x, quantity: e.target.value } : x)))}
-                      />
+            <div className="rounded-xl border border-stone-200">
+              <div className="grid grid-cols-12 gap-2 border-b border-stone-100 bg-stone-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-stone-500">
+                <span className="col-span-5">Item</span>
+                <span className="col-span-2 text-right">Qtd</span>
+                <span className="col-span-2 text-right">Custo un.</span>
+                <span className="col-span-2 text-right">Total</span>
+                <span className="col-span-1" />
+              </div>
+              <div className="divide-y divide-stone-100">
+                {lines.map((l, idx) => {
+                  const info = lineInfo(l, idx);
+                  return (
+                    <div key={l.key} className="grid grid-cols-12 items-center gap-2 px-3 py-1.5">
+                      <select
+                        className="col-span-5 w-full rounded-md border border-stone-200 bg-white px-1.5 py-1.5 text-xs"
+                        value={l.ref}
+                        onChange={(e) => setLines(lines.map((x) => (x.key === l.key ? { ...x, ref: e.target.value } : x)))}
+                      >
+                        <option value="">Selecione…</option>
+                        <optgroup label="Insumos">
+                          {options.ing.map((i) => (
+                            <option key={i.id} value={`i:${i.id}`}>
+                              {i.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Equipamentos / Mão de obra (minutos)">
+                          {options.res.map((r) => (
+                            <option key={r.id} value={`r:${r.id}`}>
+                              {r.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Massas, recheios e produtos prontos">
+                          {options.subs.map((x) => (
+                            <option key={x.id} value={`s:${x.id}`}>
+                              {x.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      </select>
+                      <div className="col-span-2 flex items-center gap-1">
+                        <input
+                          className="w-full rounded-md border border-stone-200 px-1.5 py-1.5 text-right text-xs"
+                          inputMode="decimal"
+                          placeholder="0"
+                          value={l.quantity}
+                          onChange={(e) => setLines(lines.map((x) => (x.key === l.key ? { ...x, quantity: e.target.value } : x)))}
+                        />
+                      </div>
+                      <span className="col-span-2 text-right text-xs text-stone-500">
+                        {brl(info.unitCost, 4)}
+                        <span className="block text-[10px] text-stone-400">/{info.unit || 'un'}</span>
+                      </span>
+                      <span className="col-span-2 text-right text-xs font-bold text-stone-800">{brl(info.total)}</span>
+                      <button className="col-span-1 flex justify-end text-stone-400 hover:text-red-500" onClick={() => setLines(lines.filter((x) => x.key !== l.key))} aria-label="Remover item">
+                        <X className="h-4 w-4" />
+                      </button>
                     </div>
-                    <span className="col-span-3 text-xs text-stone-400 sm:col-span-1">{info.unit}</span>
-                    <span className="col-span-3 text-right text-sm font-semibold text-stone-800 sm:col-span-2">{brl(info.total, 4)}</span>
-                    <button className="col-span-1 text-red-500" onClick={() => setLines(lines.filter((x) => x.key !== l.key))} aria-label="Remover item">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                );
-              })}
-              {lines.length === 0 && <div className="px-3 py-6 text-center text-sm text-stone-400">Adicione insumos, equipamentos (minutos de uso) e mão de obra.</div>}
+                  );
+                })}
+                {lines.length === 0 && (
+                  <div className="px-3 py-6 text-center text-sm text-stone-400">Adicione insumos, equipamentos (minutos de uso) e mão de obra.</div>
+                )}
+              </div>
             </div>
           </div>
 
-          <Field label="Observações / modo de preparo">
-            <textarea className={inputCls} rows={2} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} />
-          </Field>
-        </div>
-
-        <aside className="space-y-3 rounded-xl bg-stone-50 p-4">
-          <div className="text-xs font-black uppercase tracking-wide text-stone-500">Resultado ao vivo</div>
-          <Row k="Custo direto (lote)" v={brl(live?.directCost ?? 0)} />
-          <Row k={`+ Custo fixo (${data.fixedRatePct.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%)`} v={brl((live?.manufacturingCost ?? 0) - (live?.directCost ?? 0))} />
-          <Row k="Custo de fabricação" v={brl(live?.manufacturingCost ?? 0)} />
-          <Row k="Custo por unidade" v={brl(live?.costPerUnit ?? 0, 4)} strong />
-          {isProduct && (
-            <>
-              <hr className="border-stone-200" />
-              <Field label="Markup (%)" hint={`Para ${data.settings.targetMarginPct}% de margem: ${dec(markupTarget, 1)}%`}>
-                <div className="flex gap-2">
-                  <input className={inputCls} inputMode="decimal" value={f.markupPct} onChange={(e) => setF({ ...f, markupPct: e.target.value })} />
-                  <button className={btnGhost} type="button" onClick={() => setF({ ...f, markupPct: markupTarget.toFixed(2) })} title="Usar a margem alvo">
-                    Meta
+          <div className="space-y-3 rounded-xl bg-stone-50 p-4">
+            <h4 className="text-sm font-black text-stone-800">Resultado</h4>
+            {segTotal > 0 && (
+              <div>
+                <div className="flex h-3 w-full overflow-hidden rounded-full bg-stone-200">
+                  {segments.map(([label, v], i) => (
+                    <div key={label} className={SEG_COLORS[i % SEG_COLORS.length]} style={{ width: `${(v / segTotal) * 100}%` }} title={`${label}: ${brl(v)}`} />
+                  ))}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-stone-600">
+                  {segments.map(([label, v], i) => (
+                    <span key={label} className="inline-flex items-center gap-1">
+                      <span className={`inline-block h-2 w-2 rounded-full ${SEG_COLORS[i % SEG_COLORS.length]}`} />
+                      {label} {pct(v / segTotal)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            <Row k="Custo da receita" v={brl(live?.manufacturingCost ?? 0)} />
+            <Row k="Custo por unidade" v={brl(cost, 4)} strong accent />
+            {isProduct && (
+              <>
+                <Row k="Margem no balcão" v={`${brl(balcao.mc)} (${pct(balcao.mcPct)})`} warn={balcao.mcPct * 100 < targetPct} />
+                <div className="rounded-lg border border-pink-200 bg-pink-50 p-3">
+                  <p className="text-sm text-pink-900">
+                    Para bater a meta de <strong>{targetPct}%</strong> no balcão, venda a <strong>{brl(targetPrice)}</strong>
+                  </p>
+                  <button
+                    type="button"
+                    className="mt-2 rounded-lg bg-pink-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-pink-700 disabled:opacity-40"
+                    disabled={targetPrice <= 0}
+                    onClick={() => setPrice(targetPrice.toFixed(2))}
+                  >
+                    Usar este preço
                   </button>
                 </div>
-              </Field>
-              <Row k="Preço sugerido (markup)" v={brl(live?.suggestedPrice ?? 0)} strong accent />
-              <Row k="Preço iFood" v={brl(live?.ifoodPrice ?? 0)} />
-              <Field label="Preço praticado (R$)" hint="Quanto você realmente cobra no balcão. Vazio = usa o preço do produto vinculado.">
-                <input className={inputCls} inputMode="decimal" value={f.actualPrice} onChange={(e) => setF({ ...f, actualPrice: e.target.value })} />
-              </Field>
-              {toNum(f.actualPrice) > 0 && (
-                <Row
-                  k="Margem no preço praticado"
-                  v={pct((toNum(f.actualPrice) * (1 - feePct / 100) - (live?.costPerUnit ?? 0)) / toNum(f.actualPrice))}
-                  warn={(toNum(f.actualPrice) * (1 - feePct / 100) - (live?.costPerUnit ?? 0)) / toNum(f.actualPrice) < data.settings.targetMarginPct / 100}
-                />
-              )}
-              {toNum(f.totalWeightG) > 0 && <Row k="Preço por kg" v={brl(live?.pricePerKg ?? 0)} />}
-              <Row k="Margem de contribuição" v={`${brl(live?.contributionMargin ?? 0)} (${pct(mc)})`} warn={mc < data.settings.targetMarginPct / 100} />
-              <Field label="Produto vinculado" hint="Permite aplicar o preço no catálogo">
-                <select className={inputCls} value={f.productId} onChange={(e) => setF({ ...f, productId: e.target.value })}>
-                  <option value="">— sem vínculo —</option>
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                  {f.productId && !products.some((p) => p.id === f.productId) && <option value={f.productId}>{sheet?.productName ?? 'Produto atual'}</option>}
-                </select>
-              </Field>
-            </>
+                <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
+                  <table className="w-full text-xs">
+                    <thead className="bg-stone-50 text-left text-[10px] font-bold uppercase tracking-wide text-stone-500">
+                      <tr>
+                        <th className="px-2 py-1.5">Canal</th>
+                        <th className="px-2 py-1.5 text-right">Taxa</th>
+                        <th className="px-2 py-1.5 text-right">Lucro/un</th>
+                        <th className="px-2 py-1.5 text-right">Margem</th>
+                        <th className="px-2 py-1.5 text-right">Preço p/ meta</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-100">
+                      {(
+                        [
+                          ['Balcão', balcaoFee, balcao],
+                          ['iFood', ifoodFee, ifood],
+                          ['Revenda', resellerFee, revenda],
+                        ] as Array<[string, number, ReturnType<typeof channelMargin>]>
+                      ).map(([label, fee, m]) => (
+                        <tr key={label}>
+                          <td className="px-2 py-1.5 font-semibold text-stone-800">{label}</td>
+                          <td className="px-2 py-1.5 text-right text-stone-500">{dec(fee, 1)}%</td>
+                          <td className={`px-2 py-1.5 text-right font-bold ${mcCls(m.mcPct)}`}>{brl(m.mc)}</td>
+                          <td className={`px-2 py-1.5 text-right font-bold ${mcCls(m.mcPct)}`}>{pct(m.mcPct)}</td>
+                          <td className="px-2 py-1.5 text-right text-stone-700">{brl(priceForTargetMargin(cost, targetPct, fee))}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-[11px] text-stone-400">
+                  Calculado sobre {price > 0 ? 'o preço que você pratica' : `o preço sugerido pelo markup (${brl(live?.suggestedPrice ?? 0)})`}. Sugerido pelo markup: {brl(suggestedPrice(cost, toNum(f.markupPct), balcaoFee))}.
+                </p>
+              </>
+            )}
+            {!isProduct && <Row k="Custo por unidade de uso" v={brl(live?.unitCost ?? 0, 4)} strong accent />}
+            {live?.warnings.length ? <div className="text-xs text-red-600">{live.warnings.join(' · ')}</div> : null}
+          </div>
+
+          <div>
+            <button className="text-xs font-bold text-stone-500 hover:underline" onClick={() => setMore(!more)}>
+              {more ? '− Menos opções' : '+ Mais opções'}
+            </button>
+            {more && (
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <Field label="Unidade do rendimento">
+                  <input className={inputCls} value={f.yieldUnit} onChange={(e) => setF({ ...f, yieldUnit: e.target.value })} list="unit-list" />
+                  <datalist id="unit-list">
+                    <option value="unidades" />
+                    <option value="gramas" />
+                    <option value="ml" />
+                  </datalist>
+                </Field>
+                {isProduct ? (
+                  <Field label="Peso total (g)" hint="Para o preço por kg">
+                    <input className={inputCls} inputMode="decimal" value={f.totalWeightG} onChange={(e) => setF({ ...f, totalWeightG: e.target.value })} />
+                  </Field>
+                ) : (
+                  <div />
+                )}
+                {!sheet && (
+                  <Field label="Tipo">
+                    <select className={inputCls} value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value as Kind })}>
+                      <option value="produto">Produto final</option>
+                      <option value="massa">Massa (sub-ficha)</option>
+                      <option value="recheio">Recheio (sub-ficha)</option>
+                    </select>
+                  </Field>
+                )}
+                <div className="col-span-2">
+                  <Field label="Observações / modo de preparo">
+                    <textarea className={inputCls} rows={2} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} />
+                  </Field>
+                </div>
+                <label className="col-span-2 flex items-center gap-2 text-sm text-stone-700">
+                  <input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} /> Ficha ativa
+                </label>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 border-t border-stone-200 bg-white px-5 py-3">
+          {sheet && (
+            <button className="rounded-lg px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50" onClick={() => void remove()}>
+              Excluir
+            </button>
           )}
-          {!isProduct && <Row k="Custo por unidade de uso" v={brl(live?.unitCost ?? 0, 4)} strong accent />}
-          <label className="flex items-center gap-2 text-sm text-stone-700">
-            <input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} /> Ficha ativa
-          </label>
-          {live?.warnings.length ? <div className="text-xs text-red-600">{live.warnings.join(' · ')}</div> : null}
-        </aside>
-      </div>
-      <div className="mt-5 flex justify-end gap-2">
-        <button className={btnGhost} onClick={onClose}>
-          Cancelar
-        </button>
-        <button className={btnPrimary} disabled={saving} onClick={() => void save()}>
-          {saving && <Loader2 className="h-4 w-4 animate-spin" />} Salvar ficha
-        </button>
-      </div>
-    </Modal>
+          <div className="ml-auto flex gap-2">
+            {isProduct && (
+              <button className={btnGhost} disabled={saving} onClick={() => void save(true)} title="Salva a ficha e grava o preço que pratico no produto vinculado">
+                Salvar e aplicar preço
+              </button>
+            )}
+            <button className={btnPrimary} disabled={saving} onClick={() => void save(false)}>
+              {saving && <Loader2 className="h-4 w-4 animate-spin" />} Salvar
+            </button>
+          </div>
+        </div>
+      </aside>
+    </div>
   );
 }
 
@@ -1024,7 +1418,7 @@ function IngredientsTab({ data, reload }: { data: PricingBundleDTO; reload: () =
             {rows.map((i) => {
               const old = i.priceUpdatedAt ? (now - new Date(i.priceUpdatedAt).getTime()) / 86_400_000 > 90 : true;
               return (
-                <tr key={i.id} className="hover:bg-stone-50">
+                <tr key={i.id} className="cursor-pointer hover:bg-stone-50" onClick={() => setEditing(i)}>
                   <td className="px-3 py-2 font-semibold text-stone-900">{i.name}</td>
                   <td className="px-3 py-2 text-stone-600">{CATEGORIES[i.category] ?? i.category}</td>
                   <td className="px-3 py-2 text-right text-stone-700">
@@ -1036,7 +1430,7 @@ function IngredientsTab({ data, reload }: { data: PricingBundleDTO; reload: () =
                     {i.priceUpdatedAt ? new Date(`${i.priceUpdatedAt}T12:00:00`).toLocaleDateString('pt-BR') : 'sem data'}
                   </td>
                   <td className="px-3 py-2 text-right text-stone-500">{i.usedIn}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right">
+                  <td className="whitespace-nowrap px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
                     <button onClick={() => setSimulating(i)} className="rounded p-1.5 text-amber-600 hover:bg-amber-50" title="Simular novo preço de compra" disabled={i.usedIn === 0}>
                       <Calculator className="h-4 w-4" />
                     </button>
@@ -1265,7 +1659,7 @@ function ResourcesTab({ data, reload }: { data: PricingBundleDTO; reload: () => 
                 ? `${dec(r.gasKgPerHour)} kg/h`
                 : `${brl(r.monthlySalary, 0)} + ${dec(r.chargesPct, 1)}% encargos`;
           return (
-            <div key={r.id} className={`rounded-xl border bg-white p-4 ${r.active ? 'border-stone-200' : 'border-dashed opacity-60'}`}>
+            <div key={r.id} onClick={() => setEditing(r)} className={`cursor-pointer rounded-xl border bg-white p-4 transition hover:shadow-sm ${r.active ? 'border-stone-200' : 'border-dashed opacity-60'}`}>
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <Icon className="h-4 w-4 text-amber-600" />
@@ -1276,7 +1670,7 @@ function ResourcesTab({ data, reload }: { data: PricingBundleDTO; reload: () => 
                     </div>
                   </div>
                 </div>
-                <div className="flex">
+                <div className="flex" onClick={(e) => e.stopPropagation()}>
                   <button onClick={() => setEditing(r)} className="rounded p-1.5 text-stone-600 hover:bg-stone-100" title="Editar">
                     <Pencil className="h-4 w-4" />
                   </button>
@@ -1470,9 +1864,9 @@ function CostsTab({ data, reload }: { data: PricingBundleDTO; reload: () => Prom
         </div>
         <ul className="divide-y divide-stone-100">
           {data.fixedCosts.map((c) => (
-            <li key={c.id} className={`flex items-center justify-between py-2 text-sm ${c.active ? '' : 'opacity-40'}`}>
+            <li key={c.id} onClick={() => setEditing(c)} className={`flex cursor-pointer items-center justify-between rounded px-1 py-2 text-sm hover:bg-stone-50 ${c.active ? '' : 'opacity-40'}`}>
               <span className="text-stone-800">{c.name}</span>
-              <span className="flex items-center gap-1">
+              <span className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                 <strong>{brl(c.monthlyAmount)}</strong>
                 <button onClick={() => setEditing(c)} className="rounded p-1.5 text-stone-600 hover:bg-stone-100">
                   <Pencil className="h-3.5 w-3.5" />

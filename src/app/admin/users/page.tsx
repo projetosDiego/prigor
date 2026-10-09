@@ -128,7 +128,7 @@ export default function AdminUsersPage() {
               {users.length === 0 ? (
                 <tr><td colSpan={5} className="py-8 text-center text-stone-400">Nenhum usuário.</td></tr>
               ) : users.map((u) => (
-                <tr key={u.id} className="hover:bg-stone-50/50">
+                <tr key={u.id} onClick={() => openEdit(u)} className="cursor-pointer hover:bg-stone-50/50">
                   <td className="py-3 px-6 text-stone-850 font-bold text-sm">{u.name}</td>
                   <td className="py-3 px-6 text-stone-500"><span className="flex items-center gap-1.5"><Mail className="h-3.5 w-3.5 text-stone-400" />{u.email}</span></td>
                   <td className="py-3 px-6 text-center">
@@ -137,7 +137,7 @@ export default function AdminUsersPage() {
                   <td className="py-3 px-6 text-center">
                     <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${u.active ? 'bg-emerald-50 text-emerald-800 border-emerald-100' : 'bg-red-50 text-red-800 border-red-100'}`}>{u.active ? 'ATIVO' : 'DESATIVADO'}</span>
                   </td>
-                  <td className="py-3 px-6 text-center">
+                  <td className="py-3 px-6 text-center" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-center gap-1.5">
                       <button onClick={() => openEdit(u)} className="p-1 text-stone-400 hover:text-amber-700 hover:bg-stone-50 rounded transition-all cursor-pointer"><Edit2 className="h-4 w-4" /></button>
                       {u.active && (
