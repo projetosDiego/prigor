@@ -308,3 +308,16 @@ export async function sendNewOrderNotification(orderId: string): Promise<SendRes
     return { success: false, error: msg };
   }
 }
+
+/** Envio genérico (cobrança, avisos). Não lança: devolve o resultado. */
+export async function sendMail(args: { to: string; subject: string; html: string; text?: string }): Promise<SendResult> {
+  try {
+    const transporter = getTransporter();
+    if (!transporter) return { success: false, error: 'SMTP não configurado.' };
+    const from = process.env.SMTP_FROM || `Doces Prigor <${process.env.SMTP_USER || 'contato@docesprigor.com.br'}>`;
+    const info = await transporter.sendMail({ from, to: args.to, subject: args.subject, html: args.html, text: args.text });
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}

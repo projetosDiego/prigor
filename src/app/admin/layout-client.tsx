@@ -26,6 +26,8 @@ import {
   ScanLine,
   Wallet,
   Calculator,
+  ChefHat,
+  BellRing,
   Plus,
   CalendarDays,
   UserX,
@@ -188,7 +190,7 @@ export default function AdminLayoutClient({ children, session }: AdminLayoutClie
               }`}
             >
               <Package className="h-4 w-4 text-amber-400" />
-              <span>Produtos Acabados</span>
+              <span>Cadastro de Produtos</span>
             </Link>
 
             <Link 
@@ -252,7 +254,27 @@ export default function AdminLayoutClient({ children, session }: AdminLayoutClie
               }`}
             >
               <Calculator className="h-4 w-4 text-amber-400" />
-              <span>Precificação</span>
+              <span>Produtos & Preços</span>
+            </Link>
+            <Link 
+              href="/admin/production" 
+              onClick={() => setIsMobileMenuOpen(false)}
+              className={`flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                isActive('/admin/production') ? 'bg-amber-600 text-white shadow-xs' : 'hover:bg-stone-800 hover:text-white text-stone-300'
+              }`}
+            >
+              <ChefHat className="h-4 w-4 text-amber-400" />
+              <span>Produção & Compras</span>
+            </Link>
+            <Link 
+              href="/admin/collections" 
+              onClick={() => setIsMobileMenuOpen(false)}
+              className={`flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                isActive('/admin/collections') ? 'bg-amber-600 text-white shadow-xs' : 'hover:bg-stone-800 hover:text-white text-stone-300'
+              }`}
+            >
+              <BellRing className="h-4 w-4 text-amber-400" />
+              <span>Cobrança</span>
             </Link>
           </div>
 

@@ -181,6 +181,22 @@ export interface OrderItemDTO {
   unitPrice: number;
   discountItem: number;
   subtotal: number;
+  /** Só gestão: custo unitário registrado (ou custo atual do produto, em pedidos antigos). */
+  unitCost?: number | null;
+}
+
+/** Margem do pedido (só gestão). */
+export interface OrderMarginDTO {
+  /** Custo dos produtos (qtd × custo unitário). */
+  cost: number;
+  /** Venda líquida dos itens (subtotal − desconto do pedido). */
+  revenue: number;
+  /** Receita − custo − comissão do vendedor. */
+  profit: number;
+  /** Lucro sobre a receita (0–1). */
+  profitPct: number;
+  /** Algum item está sem custo cadastrado: o lucro real é menor que o mostrado. */
+  incomplete: boolean;
 }
 
 /** Documentos prontos para baixar direto da lista de pedidos (só gestão). */
@@ -226,6 +242,7 @@ export interface OrderDTO {
   createdAt: string | null;
   updatedAt: string | null;
   items: OrderItemDTO[];
+  margin?: OrderMarginDTO;
   documents?: OrderDocumentsDTO;
   /** Endereço do cliente, para a tela de logística não precisar de N+1. */
   deliveryAddress?: {
@@ -306,7 +323,8 @@ export interface OrderRow {
     unitPrice: NumericInput;
     discountItem: NumericInput;
     subtotal: NumericInput;
-    product?: { name: string; barCode: string | null; internalCode: string | null; sku: string | null; unit: string } | null;
+    unitCost?: NumericInput | null;
+    product?: { name: string; barCode: string | null; internalCode: string | null; sku: string | null; unit: string; cost?: NumericInput | null } | null;
   }>;
 }
 
@@ -320,7 +338,7 @@ function computePaymentStatus(
   return 'pendente';
 }
 
-export function toOrderDTO(row: OrderRow, options: { withAddress?: boolean } = { withAddress: true }): OrderDTO {
+export function toOrderDTO(row: OrderRow, options: { withAddress?: boolean; withMargin?: boolean } = { withAddress: true }): OrderDTO {
   const dto: OrderDTO = {
     id: row.id,
     numero: row.numero,
@@ -364,6 +382,21 @@ export function toOrderDTO(row: OrderRow, options: { withAddress?: boolean } = {
       subtotal: num(item.subtotal),
     })),
   };
+
+  if (options.withMargin) {
+    let cost = 0;
+    let incomplete = false;
+    for (const item of row.items ?? []) {
+      const unit = item.unitCost != null ? num(item.unitCost) : item.product?.cost != null ? num(item.product.cost) : 0;
+      if (!(unit > 0)) incomplete = true;
+      cost += unit * num(item.quantity);
+      const dtoItem = dto.items.find((i) => i.id === item.id);
+      if (dtoItem) dtoItem.unitCost = unit;
+    }
+    const revenue = dto.subtotal - dto.discount;
+    const profit = revenue - cost - dto.commissionVal;
+    dto.margin = { cost, revenue, profit, profitPct: revenue > 0 ? profit / revenue : 0, incomplete };
+  }
 
   if (options.withAddress !== false && row.customer) {
     const main = {

@@ -312,8 +312,21 @@ export async function issueBoleto(
 
 // ─── Atualizar status (consulta) ────────────────────────────────────────────
 
-export async function refreshBoleto(session: SessionPayload, boletoId: string): Promise<BoletoDTO> {
-  const boleto = await loadBoletoForAccess(session, boletoId);
+type SyncableBoleto = {
+  id: string;
+  orderId: string;
+  issuerId: string | null;
+  status: string;
+  nossoNumero: string | null;
+  seuNumero: string;
+};
+
+/**
+ * Consulta o banco e atualiza o boleto: pago → baixa o lançamento a receber;
+ * baixado no banco → marca como baixado. Devolve a linha atualizada (ou null
+ * se nada mudou). Usado pela tela (usuário) e pela rotina diária (`userId` nulo).
+ */
+async function syncBoletoWithBank(boleto: SyncableBoleto, userId: string | null) {
   const scope = await boletoScope(boleto.issuerId);
   assertSicoobReady(scope);
   if (boleto.status !== 'registrado' || !boleto.nossoNumero) {
@@ -355,17 +368,54 @@ export async function refreshBoleto(session: SessionPayload, boletoId: string): 
       }
       return row;
     });
-    await logOrderEvent(prisma, { orderId: boleto.orderId, userId: session.userId, action: 'boleto_pago', to: boleto.seuNumero });
-    return toDTO(updated);
+    await logOrderEvent(prisma, { orderId: boleto.orderId, userId, action: 'boleto_pago', to: boleto.seuNumero });
+    return updated;
   }
 
   if (situation.state === 'baixado') {
     const updated = await prisma.boleto.update({ where: { id: boleto.id }, data: { status: 'baixado' } });
-    await logOrderEvent(prisma, { orderId: boleto.orderId, userId: session.userId, action: 'boleto_baixado', to: boleto.seuNumero });
-    return toDTO(updated);
+    await logOrderEvent(prisma, { orderId: boleto.orderId, userId, action: 'boleto_baixado', to: boleto.seuNumero });
+    return updated;
   }
 
-  return toDTO(boleto);
+  return null;
+}
+
+export async function refreshBoleto(session: SessionPayload, boletoId: string): Promise<BoletoDTO> {
+  const boleto = await loadBoletoForAccess(session, boletoId);
+  const updated = await syncBoletoWithBank(boleto, session.userId);
+  return toDTO(updated ?? boleto);
+}
+
+export interface BoletoSyncSummary {
+  checked: number;
+  paid: number;
+  writtenOff: number;
+  errors: Array<{ seuNumero: string; message: string }>;
+}
+
+/** Rotina diária: confere no banco todos os boletos registrados e dá baixa nos pagos. */
+export async function syncOpenBoletos(limit = 300): Promise<BoletoSyncSummary> {
+  const open = await prisma.boleto.findMany({
+    where: { status: 'registrado', nossoNumero: { not: null } },
+    orderBy: { dueDate: 'asc' },
+    take: limit,
+    select: { id: true, orderId: true, issuerId: true, status: true, nossoNumero: true, seuNumero: true },
+  });
+  const summary: BoletoSyncSummary = { checked: 0, paid: 0, writtenOff: 0, errors: [] };
+  for (const boleto of open) {
+    summary.checked += 1;
+    try {
+      const updated = await syncBoletoWithBank(boleto, null);
+      if (updated?.status === 'pago') summary.paid += 1;
+      else if (updated?.status === 'baixado') summary.writtenOff += 1;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn('Falha ao conferir boleto na rotina diária', { seuNumero: boleto.seuNumero, message });
+      summary.errors.push({ seuNumero: boleto.seuNumero, message });
+    }
+  }
+  return summary;
 }
 
 // ─── Baixa (cancelar no banco) ──────────────────────────────────────────────

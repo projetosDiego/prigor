@@ -147,3 +147,35 @@ describe('planilha PreçoFácil importada', () => {
     });
   }
 });
+
+describe('canais e preço-alvo', () => {
+  it('arredonda para cima em R$ 0,05', async () => {
+    const { roundUpToStep } = await import('@/server/domain/precificacao');
+    expect(roundUpToStep(4.91)).toBe(4.95);
+    expect(roundUpToStep(4.95)).toBe(4.95);
+    expect(roundUpToStep(4.96)).toBe(5);
+    expect(roundUpToStep(0)).toBe(0);
+  });
+
+  it('preço-alvo entrega a margem pedida (ou mais) no canal', async () => {
+    const { priceForTargetMargin, channelMargin } = await import('@/server/domain/precificacao');
+    const price = priceForTargetMargin(2.5, 40, 5);
+    const m = channelMargin(price, 2.5, 5);
+    expect(m.mcPct).toBeGreaterThanOrEqual(0.4 - 1e-9);
+    expect(m.mcPct).toBeLessThan(0.42);
+    expect(priceForTargetMargin(2.5, 99, 5)).toBe(0);
+  });
+
+  it('margem de canal desconta taxa sobre o preço', async () => {
+    const { channelMargin } = await import('@/server/domain/precificacao');
+    const m = channelMargin(10, 4, 10);
+    expect(m.mc).toBeCloseTo(5);
+    expect(m.mcPct).toBeCloseTo(0.5);
+  });
+
+  it('ponto de equilíbrio = fixo ÷ margem média', async () => {
+    const { breakEvenRevenue } = await import('@/server/domain/precificacao');
+    expect(breakEvenRevenue(6000, 0.4)).toBeCloseTo(15000);
+    expect(breakEvenRevenue(6000, 0)).toBe(0);
+  });
+});

@@ -1,1813 +1,1815 @@
 {
- "source": "PreçoFácil 5.0.21.xlsm",
- "settings": {
-  "energyKwhPrice": 1.09,
-  "gasCylinderPrice": 110.0,
-  "gasCylinderKg": 13.0,
-  "workDaysPerMonth": 24,
-  "hoursPerDay": 8.0,
-  "ifoodFeePct": 15.5,
-  "cardFeePct": 3.38,
-  "taxPct": 4.0,
-  "targetMarginPct": 40.0
- },
- "fixedCosts": [
-  {
-   "name": "Energia elétrica",
-   "monthlyAmount": 300.0
-  },
-  {
-   "name": "Aluguel",
-   "monthlyAmount": 300.0
-  },
-  {
-   "name": "Água",
-   "monthlyAmount": 150.0
-  },
-  {
-   "name": "Colaboradores",
-   "monthlyAmount": 1100.0
-  },
-  {
-   "name": "Contador",
-   "monthlyAmount": 300.0
-  },
-  {
-   "name": "Internet",
-   "monthlyAmount": 100.0
-  },
-  {
-   "name": "Pró-labore",
-   "monthlyAmount": 2000.0
-  },
-  {
-   "name": "Mat. de Limpeza",
-   "monthlyAmount": 200.0
-  }
- ],
- "resources": [
-  {
-   "name": "Microondas",
-   "kind": "eletrico",
-   "watts": 1500.0
-  },
-  {
-   "name": "Liquidificador",
-   "kind": "eletrico",
-   "watts": 450.0
-  },
-  {
-   "name": "Batedeira Planetária",
-   "kind": "eletrico",
-   "watts": 367.0
-  },
-  {
-   "name": "Forno Elétrico",
-   "kind": "eletrico",
-   "watts": 2500.0
-  },
-  {
-   "name": "Geladeira",
-   "kind": "eletrico",
-   "watts": 250.0
-  },
-  {
-   "name": "Panela de Mexer Brigadeiro",
-   "kind": "eletrico",
-   "watts": 25.0
-  },
-  {
-   "name": "Fritadeira Elétrica",
-   "kind": "eletrico",
-   "watts": 3500.0
-  },
-  {
-   "name": "Gás - Fritadeira à gás",
-   "kind": "gas",
-   "gasKgPerHour": 2.1
-  },
-  {
-   "name": "Gás - de uma Boca do Fogão",
-   "kind": "gas",
-   "gasKgPerHour": 0.148
-  },
-  {
-   "name": "Gás - do Forno à Gás",
-   "kind": "gas",
-   "gasKgPerHour": 0.592
-  },
-  {
-   "name": "Mão de Obra Confeiteira",
-   "kind": "mao_de_obra",
-   "monthlySalary": 1518.0,
-   "chargesPct": 35.0
-  },
-  {
-   "name": "Mão de Obra Forneira",
-   "kind": "mao_de_obra",
-   "monthlySalary": 1518.0,
-   "chargesPct": 55.0
-  },
-  {
-   "name": "Mão de Obra Masseira",
-   "kind": "mao_de_obra",
-   "monthlySalary": 1518.0,
-   "chargesPct": 35.0
-  },
-  {
-   "name": "Mão de Obra Salgadeira",
-   "kind": "mao_de_obra",
-   "monthlySalary": 1518.0,
-   "chargesPct": 35.0
-  }
- ],
- "ingredients": [
-  {
-   "name": "OVO",
-   "category": "materia_prima",
-   "unit": "unidades",
-   "purchaseQty": 1.0,
-   "purchasePrice": 0.55,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "FARINHA",
-   "category": "materia_prima",
-   "unit": "gramas",
-   "purchaseQty": 15000.0,
-   "purchasePrice": 187.0,
-   "lossPct": 5.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "MANTEIGA",
-   "category": "materia_prima",
-   "unit": "gramas",
-   "purchaseQty": 1000.0,
-   "purchasePrice": 13.0,
-   "lossPct": 5.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "AÇUCAR",
-   "category": "materia_prima",
-   "unit": "gramas",
-   "purchaseQty": 5000.0,
-   "purchasePrice": 19.0,
-   "lossPct": 5.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "NESCAU",
-   "category": "materia_prima",
-   "unit": "gramas",
-   "purchaseQty": 2000.0,
-   "purchasePrice": 22.0,
-   "lossPct": 5.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "CHOCOLATE 50%",
-   "category": "materia_prima",
-   "unit": "gramas",
-   "purchaseQty": 1000.0,
-   "purchasePrice": 30.0,
-   "lossPct": 5.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "RECHEIOS CASEIROS",
-   "category": "base_recheio",
-   "unit": "gramas",
-   "purchaseQty": 1.0,
-   "purchasePrice": 0.03,
-   "lossPct": 5.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "RECHEIOS PRONTOS",
-   "category": "base_recheio",
-   "unit": "gramas",
-   "purchaseQty": 1.0,
-   "purchasePrice": 0.06,
-   "lossPct": 5.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "SACO 10X10",
-   "category": "embalagem",
-   "unit": "unidades",
-   "purchaseQty": 1.0,
-   "purchasePrice": 0.059,
-   "lossPct": 5.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "Cinta",
-   "category": "embalagem",
-   "unit": "unidades",
-   "purchaseQty": 1000.0,
-   "purchasePrice": 70.0,
-   "lossPct": 20.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "Embalagem S-641",
-   "category": "embalagem",
-   "unit": "unidades",
-   "purchaseQty": 1.0,
-   "purchasePrice": 0.45,
-   "lossPct": 5.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "Doce de Leite",
-   "category": "base_recheio",
-   "unit": "unidades",
-   "purchaseQty": 4800.0,
-   "purchasePrice": 79.2,
-   "lossPct": 10.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "EMBALAGEM BOLO 9CM",
-   "category": "embalagem",
-   "unit": "unidades",
-   "purchaseQty": 1.0,
-   "purchasePrice": 2.3,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "SINETE",
-   "category": "base_recheio",
-   "unit": "unidades",
-   "purchaseQty": 1.0,
-   "purchasePrice": 0.5,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "NUTELLA",
-   "category": "base_recheio",
-   "unit": "unidades",
-   "purchaseQty": 3000.0,
-   "purchasePrice": 175.0,
-   "lossPct": 5.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "TOPPING CARO",
-   "category": "base_recheio",
-   "unit": "unidades",
-   "purchaseQty": 1.0,
-   "purchasePrice": 3.0,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "MORANGO",
-   "category": "materia_prima",
-   "unit": "gramas",
-   "purchaseQty": 1000.0,
-   "purchasePrice": 14.0,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "PECTINA",
-   "category": "materia_prima",
-   "unit": "gramas",
-   "purchaseQty": 50.0,
-   "purchasePrice": 22.0,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "LIMÃO",
-   "category": "materia_prima",
-   "unit": "unidades",
-   "purchaseQty": 1.0,
-   "purchasePrice": 0.5,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "MARACUJÁ",
-   "category": "materia_prima",
-   "unit": "gramas",
-   "purchaseQty": 1000.0,
-   "purchasePrice": 35.0,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "LEITE CONDESADO",
-   "category": "materia_prima",
-   "unit": "unidades",
-   "purchaseQty": 1.0,
-   "purchasePrice": 4.75,
-   "lossPct": 5.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "CREME DE LEITE",
-   "category": "materia_prima",
-   "unit": "unidades",
-   "purchaseQty": 1.0,
-   "purchasePrice": 2.27,
-   "lossPct": 5.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "AMORA",
-   "category": "materia_prima",
-   "unit": "gramas",
-   "purchaseQty": 1000.0,
-   "purchasePrice": 30.0,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "PASTA DE FRUTA DO BOSQUE",
-   "category": "materia_prima",
-   "unit": "gramas",
-   "purchaseQty": 250.0,
-   "purchasePrice": 47.5,
-   "lossPct": 10.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "BANANA",
-   "category": "materia_prima",
-   "unit": "gramas",
-   "purchaseQty": 1000.0,
-   "purchasePrice": 9.0,
-   "lossPct": 40.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "ABACAXI",
-   "category": "materia_prima",
-   "unit": "gramas",
-   "purchaseQty": 1000.0,
-   "purchasePrice": 24.0,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "OREO TRITURADO",
-   "category": "materia_prima",
-   "unit": "gramas",
-   "purchaseQty": 1000.0,
-   "purchasePrice": 35.0,
-   "lossPct": 20.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "GRANULE",
-   "category": "materia_prima",
-   "unit": "gramas",
-   "purchaseQty": 400.0,
-   "purchasePrice": 30.0,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "COPO QUADRADO 150ML",
-   "category": "embalagem",
-   "unit": "unidades",
-   "purchaseQty": 100.0,
-   "purchasePrice": 88.9,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "BISCOITO MAIZENA",
-   "category": "materia_prima",
-   "unit": "gramas",
-   "purchaseQty": 170.0,
-   "purchasePrice": 2.0,
-   "lossPct": 20.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "CREAM CHEESE",
-   "category": "materia_prima",
-   "unit": "gramas",
-   "purchaseQty": 1000.0,
-   "purchasePrice": 40.0,
-   "lossPct": 5.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "CHANTILLY",
-   "category": "materia_prima",
-   "unit": "gramas",
-   "purchaseQty": 1000.0,
-   "purchasePrice": 18.0,
-   "lossPct": 10.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "CREME LEITE NINHO",
-   "category": "base_recheio",
-   "unit": "gramas",
-   "purchaseQty": 1000.0,
-   "purchasePrice": 35.0,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "CHOCOLATE",
-   "category": "materia_prima",
-   "unit": "gramas",
-   "purchaseQty": 1000.0,
-   "purchasePrice": 28.0,
-   "lossPct": 10.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "PISTACHE CREM.",
-   "category": "materia_prima",
-   "unit": "gramas",
-   "purchaseQty": 1000.0,
-   "purchasePrice": 93.0,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "EMBALAGEM JANGO/150",
-   "category": "embalagem",
-   "unit": "unidades",
-   "purchaseQty": 1.0,
-   "purchasePrice": 1.2,
-   "lossPct": 10.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "EMBALAGEM JANGO/300",
-   "category": "embalagem",
-   "unit": "unidades",
-   "purchaseQty": 1.0,
-   "purchasePrice": 1.35,
-   "lossPct": 10.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "EMBALAGEM NATAL 25CM",
-   "category": "embalagem",
-   "unit": "unidades",
-   "purchaseQty": 1.0,
-   "purchasePrice": 4.35,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "EMBALAGEM NATAL 10CM",
-   "category": "embalagem",
-   "unit": "unidades",
-   "purchaseQty": 1.0,
-   "purchasePrice": 1.2,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "BASE 25CM",
-   "category": "embalagem",
-   "unit": "unidades",
-   "purchaseQty": 1.0,
-   "purchasePrice": 2.3,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "LAÇO",
-   "category": "outros",
-   "unit": "unidades",
-   "purchaseQty": 1.0,
-   "purchasePrice": 0.65,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "BASE 10CM",
-   "category": "embalagem",
-   "unit": "unidades",
-   "purchaseQty": 1.0,
-   "purchasePrice": 0.5,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "NOZES PICADA",
-   "category": "materia_prima",
-   "unit": "gramas",
-   "purchaseQty": 1000.0,
-   "purchasePrice": 59.0,
-   "lossPct": 5.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "CEREJA",
-   "category": "materia_prima",
-   "unit": "gramas",
-   "purchaseQty": 1000.0,
-   "purchasePrice": 100.0,
-   "lossPct": 5.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "NOZES",
-   "category": "materia_prima",
-   "unit": "gramas",
-   "purchaseQty": 1000.0,
-   "purchasePrice": 65.0,
-   "lossPct": 5.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "CHOCOLATE BRANCO",
-   "category": "materia_prima",
-   "unit": "gramas",
-   "purchaseQty": 1000.0,
-   "purchasePrice": 32.0,
-   "lossPct": 5.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "CORANTE",
-   "category": "materia_prima",
-   "unit": "gramas",
-   "purchaseQty": 100.0,
-   "purchasePrice": 11.0,
-   "lossPct": 5.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "CAIXA ACRILICA 15X15",
-   "category": "embalagem",
-   "unit": "unidades",
-   "purchaseQty": 1.0,
-   "purchasePrice": 10.0,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "TAÇA ACRILICA 1,25L",
-   "category": "embalagem",
-   "unit": "unidades",
-   "purchaseQty": 1.0,
-   "purchasePrice": 12.0,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "UVA",
-   "category": "materia_prima",
-   "unit": "gramas",
-   "purchaseQty": 500.0,
-   "purchasePrice": 10.0,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "PANETONE",
-   "category": "materia_prima",
-   "unit": "gramas",
-   "purchaseQty": 400.0,
-   "purchasePrice": 12.99,
-   "lossPct": 10.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "POTE VIDRO 240ML",
-   "category": "embalagem",
-   "unit": "unidades",
-   "purchaseQty": 1.0,
-   "purchasePrice": 2.95,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "CAIXA ACRILICA REDONDA",
-   "category": "embalagem",
-   "unit": "unidades",
-   "purchaseQty": 1.0,
-   "purchasePrice": 3.8,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "CONE",
-   "category": "base_recheio",
-   "unit": "unidades",
-   "purchaseQty": 1.0,
-   "purchasePrice": 6.5,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "EMBALAGEM 2 ARVORES",
-   "category": "embalagem",
-   "unit": "unidades",
-   "purchaseQty": 1.0,
-   "purchasePrice": 6.51,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  },
-  {
-   "name": "EMBALAGEM 1 CONE",
-   "category": "embalagem",
-   "unit": "unidades",
-   "purchaseQty": 1.0,
-   "purchasePrice": 2.9,
-   "lossPct": 0.0,
-   "priceUpdatedAt": null
-  }
- ],
- "sheets": [
-  {
-   "kind": "massa",
-   "name": "Massa Brownie 7x5",
-   "yieldQty": 70.0,
-   "yieldUnit": "unidades",
-   "lines": [
+  "source": "PreçoFácil 5.0.21.xlsm",
+  "settings": {
+    "energyKwhPrice": 1.09,
+    "gasCylinderPrice": 110.0,
+    "gasCylinderKg": 13.0,
+    "workDaysPerMonth": 24,
+    "hoursPerDay": 8.0,
+    "ifoodFeePct": 15.5,
+    "cardFeePct": 3.38,
+    "taxPct": 4.0,
+    "targetMarginPct": 40.0
+  },
+  "fixedCosts": [
     {
-     "ingredient": "OVO",
-     "quantity": 15.0
+      "name": "Energia elétrica",
+      "monthlyAmount": 300.0
     },
     {
-     "ingredient": "AÇUCAR",
-     "quantity": 1200.0
+      "name": "Aluguel",
+      "monthlyAmount": 300.0
     },
     {
-     "ingredient": "MANTEIGA",
-     "quantity": 900.0
+      "name": "Água",
+      "monthlyAmount": 150.0
     },
     {
-     "ingredient": "CHOCOLATE 50%",
-     "quantity": 300.0
+      "name": "Colaboradores",
+      "monthlyAmount": 1100.0
     },
     {
-     "ingredient": "NESCAU",
-     "quantity": 1200.0
+      "name": "Contador",
+      "monthlyAmount": 300.0
     },
     {
-     "ingredient": "FARINHA",
-     "quantity": 1440.0
+      "name": "Internet",
+      "monthlyAmount": 100.0
     },
     {
-     "resource": "Mão de Obra Confeiteira",
-     "quantity": 0.0
+      "name": "Pró-labore",
+      "monthlyAmount": 2000.0
     },
     {
-     "resource": "Forno Elétrico",
-     "quantity": 18.0
-    },
-    {
-     "resource": "Batedeira Planetária",
-     "quantity": 40.0
+      "name": "Mat. de Limpeza",
+      "monthlyAmount": 200.0
     }
-   ],
-   "lossPct": 5.0
-  },
-  {
-   "kind": "massa",
-   "name": "Massa Brownie 5x5",
-   "yieldQty": 90.0,
-   "yieldUnit": "unidades",
-   "lines": [
+  ],
+  "resources": [
     {
-     "ingredient": "OVO",
-     "quantity": 15.0
+      "name": "Microondas",
+      "kind": "eletrico",
+      "watts": 1500.0
     },
     {
-     "ingredient": "AÇUCAR",
-     "quantity": 1200.0
+      "name": "Liquidificador",
+      "kind": "eletrico",
+      "watts": 450.0
     },
     {
-     "ingredient": "MANTEIGA",
-     "quantity": 900.0
+      "name": "Batedeira Planetária",
+      "kind": "eletrico",
+      "watts": 367.0
     },
     {
-     "ingredient": "CHOCOLATE 50%",
-     "quantity": 300.0
+      "name": "Forno Elétrico",
+      "kind": "eletrico",
+      "watts": 2500.0
     },
     {
-     "ingredient": "NESCAU",
-     "quantity": 1200.0
+      "name": "Geladeira",
+      "kind": "eletrico",
+      "watts": 250.0
     },
     {
-     "ingredient": "FARINHA",
-     "quantity": 1440.0
+      "name": "Panela de Mexer Brigadeiro",
+      "kind": "eletrico",
+      "watts": 25.0
     },
     {
-     "resource": "Mão de Obra Confeiteira",
-     "quantity": 0.0
+      "name": "Fritadeira Elétrica",
+      "kind": "eletrico",
+      "watts": 3500.0
     },
     {
-     "resource": "Forno Elétrico",
-     "quantity": 18.0
+      "name": "Gás - Fritadeira à gás",
+      "kind": "gas",
+      "gasKgPerHour": 2.1
     },
     {
-     "resource": "Batedeira Planetária",
-     "quantity": 40.0
+      "name": "Gás - de uma Boca do Fogão",
+      "kind": "gas",
+      "gasKgPerHour": 0.148
+    },
+    {
+      "name": "Gás - do Forno à Gás",
+      "kind": "gas",
+      "gasKgPerHour": 0.592
+    },
+    {
+      "name": "Mão de Obra Confeiteira",
+      "kind": "mao_de_obra",
+      "monthlySalary": 1518.0,
+      "chargesPct": 35.0
+    },
+    {
+      "name": "Mão de Obra Forneira",
+      "kind": "mao_de_obra",
+      "monthlySalary": 1518.0,
+      "chargesPct": 55.0
+    },
+    {
+      "name": "Mão de Obra Masseira",
+      "kind": "mao_de_obra",
+      "monthlySalary": 1518.0,
+      "chargesPct": 35.0
+    },
+    {
+      "name": "Mão de Obra Salgadeira",
+      "kind": "mao_de_obra",
+      "monthlySalary": 1518.0,
+      "chargesPct": 35.0
     }
-   ],
-   "lossPct": 0.0
-  },
-  {
-   "kind": "massa",
-   "name": "Massa Brownie 7x7",
-   "yieldQty": 58.0,
-   "yieldUnit": "unidades",
-   "lines": [
+  ],
+  "ingredients": [
     {
-     "ingredient": "OVO",
-     "quantity": 15.0
+      "name": "OVO",
+      "category": "materia_prima",
+      "unit": "unidades",
+      "purchaseQty": 1.0,
+      "purchasePrice": 0.55,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
     },
     {
-     "ingredient": "AÇUCAR",
-     "quantity": 1200.0
+      "name": "FARINHA",
+      "category": "materia_prima",
+      "unit": "gramas",
+      "purchaseQty": 15000.0,
+      "purchasePrice": 187.0,
+      "lossPct": 5.0,
+      "priceUpdatedAt": null
     },
     {
-     "ingredient": "MANTEIGA",
-     "quantity": 900.0
+      "name": "MANTEIGA",
+      "category": "materia_prima",
+      "unit": "gramas",
+      "purchaseQty": 1000.0,
+      "purchasePrice": 13.0,
+      "lossPct": 5.0,
+      "priceUpdatedAt": null
     },
     {
-     "ingredient": "CHOCOLATE 50%",
-     "quantity": 300.0
+      "name": "AÇUCAR",
+      "category": "materia_prima",
+      "unit": "gramas",
+      "purchaseQty": 5000.0,
+      "purchasePrice": 19.0,
+      "lossPct": 5.0,
+      "priceUpdatedAt": null
     },
     {
-     "ingredient": "NESCAU",
-     "quantity": 1200.0
+      "name": "NESCAU",
+      "category": "materia_prima",
+      "unit": "gramas",
+      "purchaseQty": 2000.0,
+      "purchasePrice": 22.0,
+      "lossPct": 5.0,
+      "priceUpdatedAt": null
     },
     {
-     "ingredient": "FARINHA",
-     "quantity": 1440.0
+      "name": "CHOCOLATE 50%",
+      "category": "materia_prima",
+      "unit": "gramas",
+      "purchaseQty": 1000.0,
+      "purchasePrice": 30.0,
+      "lossPct": 5.0,
+      "priceUpdatedAt": null
     },
     {
-     "resource": "Mão de Obra Confeiteira",
-     "quantity": 0.0
+      "name": "RECHEIOS CASEIROS",
+      "category": "base_recheio",
+      "unit": "gramas",
+      "purchaseQty": 1.0,
+      "purchasePrice": 0.03,
+      "lossPct": 5.0,
+      "priceUpdatedAt": null
     },
     {
-     "resource": "Forno Elétrico",
-     "quantity": 18.0
+      "name": "RECHEIOS PRONTOS",
+      "category": "base_recheio",
+      "unit": "gramas",
+      "purchaseQty": 1.0,
+      "purchasePrice": 0.06,
+      "lossPct": 5.0,
+      "priceUpdatedAt": null
     },
     {
-     "resource": "Batedeira Planetária",
-     "quantity": 40.0
+      "name": "SACO 10X10",
+      "category": "embalagem",
+      "unit": "unidades",
+      "purchaseQty": 1.0,
+      "purchasePrice": 0.059,
+      "lossPct": 5.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "Cinta",
+      "category": "embalagem",
+      "unit": "unidades",
+      "purchaseQty": 1000.0,
+      "purchasePrice": 70.0,
+      "lossPct": 20.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "Embalagem S-641",
+      "category": "embalagem",
+      "unit": "unidades",
+      "purchaseQty": 1.0,
+      "purchasePrice": 0.45,
+      "lossPct": 5.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "Doce de Leite",
+      "category": "base_recheio",
+      "unit": "unidades",
+      "purchaseQty": 4800.0,
+      "purchasePrice": 79.2,
+      "lossPct": 10.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "EMBALAGEM BOLO 9CM",
+      "category": "embalagem",
+      "unit": "unidades",
+      "purchaseQty": 1.0,
+      "purchasePrice": 2.3,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "SINETE",
+      "category": "base_recheio",
+      "unit": "unidades",
+      "purchaseQty": 1.0,
+      "purchasePrice": 0.5,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "NUTELLA",
+      "category": "base_recheio",
+      "unit": "unidades",
+      "purchaseQty": 3000.0,
+      "purchasePrice": 175.0,
+      "lossPct": 5.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "TOPPING CARO",
+      "category": "base_recheio",
+      "unit": "unidades",
+      "purchaseQty": 1.0,
+      "purchasePrice": 3.0,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "MORANGO",
+      "category": "materia_prima",
+      "unit": "gramas",
+      "purchaseQty": 1000.0,
+      "purchasePrice": 14.0,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "PECTINA",
+      "category": "materia_prima",
+      "unit": "gramas",
+      "purchaseQty": 50.0,
+      "purchasePrice": 22.0,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "LIMÃO",
+      "category": "materia_prima",
+      "unit": "unidades",
+      "purchaseQty": 1.0,
+      "purchasePrice": 0.5,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "MARACUJÁ",
+      "category": "materia_prima",
+      "unit": "gramas",
+      "purchaseQty": 1000.0,
+      "purchasePrice": 35.0,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "LEITE CONDESADO",
+      "category": "materia_prima",
+      "unit": "unidades",
+      "purchaseQty": 1.0,
+      "purchasePrice": 4.75,
+      "lossPct": 5.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "CREME DE LEITE",
+      "category": "materia_prima",
+      "unit": "unidades",
+      "purchaseQty": 1.0,
+      "purchasePrice": 2.27,
+      "lossPct": 5.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "AMORA",
+      "category": "materia_prima",
+      "unit": "gramas",
+      "purchaseQty": 1000.0,
+      "purchasePrice": 30.0,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "PASTA DE FRUTA DO BOSQUE",
+      "category": "materia_prima",
+      "unit": "gramas",
+      "purchaseQty": 250.0,
+      "purchasePrice": 47.5,
+      "lossPct": 10.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "BANANA",
+      "category": "materia_prima",
+      "unit": "gramas",
+      "purchaseQty": 1000.0,
+      "purchasePrice": 9.0,
+      "lossPct": 40.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "ABACAXI",
+      "category": "materia_prima",
+      "unit": "gramas",
+      "purchaseQty": 1000.0,
+      "purchasePrice": 24.0,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "OREO TRITURADO",
+      "category": "materia_prima",
+      "unit": "gramas",
+      "purchaseQty": 1000.0,
+      "purchasePrice": 35.0,
+      "lossPct": 20.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "GRANULE",
+      "category": "materia_prima",
+      "unit": "gramas",
+      "purchaseQty": 400.0,
+      "purchasePrice": 30.0,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "COPO QUADRADO 150ML",
+      "category": "embalagem",
+      "unit": "unidades",
+      "purchaseQty": 100.0,
+      "purchasePrice": 88.9,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "BISCOITO MAIZENA",
+      "category": "materia_prima",
+      "unit": "gramas",
+      "purchaseQty": 170.0,
+      "purchasePrice": 2.0,
+      "lossPct": 20.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "CREAM CHEESE",
+      "category": "materia_prima",
+      "unit": "gramas",
+      "purchaseQty": 1000.0,
+      "purchasePrice": 40.0,
+      "lossPct": 5.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "CHANTILLY",
+      "category": "materia_prima",
+      "unit": "gramas",
+      "purchaseQty": 1000.0,
+      "purchasePrice": 18.0,
+      "lossPct": 10.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "CREME LEITE NINHO",
+      "category": "base_recheio",
+      "unit": "gramas",
+      "purchaseQty": 1000.0,
+      "purchasePrice": 35.0,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "CHOCOLATE",
+      "category": "materia_prima",
+      "unit": "gramas",
+      "purchaseQty": 1000.0,
+      "purchasePrice": 28.0,
+      "lossPct": 10.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "PISTACHE CREM.",
+      "category": "materia_prima",
+      "unit": "gramas",
+      "purchaseQty": 1000.0,
+      "purchasePrice": 93.0,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "EMBALAGEM JANGO/150",
+      "category": "embalagem",
+      "unit": "unidades",
+      "purchaseQty": 1.0,
+      "purchasePrice": 1.2,
+      "lossPct": 10.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "EMBALAGEM JANGO/300",
+      "category": "embalagem",
+      "unit": "unidades",
+      "purchaseQty": 1.0,
+      "purchasePrice": 1.35,
+      "lossPct": 10.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "EMBALAGEM NATAL 25CM",
+      "category": "embalagem",
+      "unit": "unidades",
+      "purchaseQty": 1.0,
+      "purchasePrice": 4.35,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "EMBALAGEM NATAL 10CM",
+      "category": "embalagem",
+      "unit": "unidades",
+      "purchaseQty": 1.0,
+      "purchasePrice": 1.2,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "BASE 25CM",
+      "category": "embalagem",
+      "unit": "unidades",
+      "purchaseQty": 1.0,
+      "purchasePrice": 2.3,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "LAÇO",
+      "category": "outros",
+      "unit": "unidades",
+      "purchaseQty": 1.0,
+      "purchasePrice": 0.65,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "BASE 10CM",
+      "category": "embalagem",
+      "unit": "unidades",
+      "purchaseQty": 1.0,
+      "purchasePrice": 0.5,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "NOZES PICADA",
+      "category": "materia_prima",
+      "unit": "gramas",
+      "purchaseQty": 1000.0,
+      "purchasePrice": 59.0,
+      "lossPct": 5.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "CEREJA",
+      "category": "materia_prima",
+      "unit": "gramas",
+      "purchaseQty": 1000.0,
+      "purchasePrice": 100.0,
+      "lossPct": 5.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "NOZES",
+      "category": "materia_prima",
+      "unit": "gramas",
+      "purchaseQty": 1000.0,
+      "purchasePrice": 65.0,
+      "lossPct": 5.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "CHOCOLATE BRANCO",
+      "category": "materia_prima",
+      "unit": "gramas",
+      "purchaseQty": 1000.0,
+      "purchasePrice": 32.0,
+      "lossPct": 5.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "CORANTE",
+      "category": "materia_prima",
+      "unit": "gramas",
+      "purchaseQty": 100.0,
+      "purchasePrice": 11.0,
+      "lossPct": 5.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "CAIXA ACRILICA 15X15",
+      "category": "embalagem",
+      "unit": "unidades",
+      "purchaseQty": 1.0,
+      "purchasePrice": 10.0,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "TAÇA ACRILICA 1,25L",
+      "category": "embalagem",
+      "unit": "unidades",
+      "purchaseQty": 1.0,
+      "purchasePrice": 12.0,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "UVA",
+      "category": "materia_prima",
+      "unit": "gramas",
+      "purchaseQty": 500.0,
+      "purchasePrice": 10.0,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "PANETONE",
+      "category": "materia_prima",
+      "unit": "gramas",
+      "purchaseQty": 400.0,
+      "purchasePrice": 12.99,
+      "lossPct": 10.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "POTE VIDRO 240ML",
+      "category": "embalagem",
+      "unit": "unidades",
+      "purchaseQty": 1.0,
+      "purchasePrice": 2.95,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "CAIXA ACRILICA REDONDA",
+      "category": "embalagem",
+      "unit": "unidades",
+      "purchaseQty": 1.0,
+      "purchasePrice": 3.8,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "CONE",
+      "category": "base_recheio",
+      "unit": "unidades",
+      "purchaseQty": 1.0,
+      "purchasePrice": 6.5,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "EMBALAGEM 2 ARVORES",
+      "category": "embalagem",
+      "unit": "unidades",
+      "purchaseQty": 1.0,
+      "purchasePrice": 6.51,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
+    },
+    {
+      "name": "EMBALAGEM 1 CONE",
+      "category": "embalagem",
+      "unit": "unidades",
+      "purchaseQty": 1.0,
+      "purchasePrice": 2.9,
+      "lossPct": 0.0,
+      "priceUpdatedAt": null
     }
-   ],
-   "lossPct": 0.0
-  },
-  {
-   "kind": "massa",
-   "name": "Massa Bolo 2 camadas 9cm",
-   "yieldQty": 22.5,
-   "yieldUnit": "unidades",
-   "lines": [
+  ],
+  "sheets": [
     {
-     "ingredient": "OVO",
-     "quantity": 15.0
+      "kind": "massa",
+      "name": "Massa Brownie 7x5",
+      "yieldQty": 70.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "ingredient": "OVO",
+          "quantity": 15.0
+        },
+        {
+          "ingredient": "AÇUCAR",
+          "quantity": 1200.0
+        },
+        {
+          "ingredient": "MANTEIGA",
+          "quantity": 900.0
+        },
+        {
+          "ingredient": "CHOCOLATE 50%",
+          "quantity": 300.0
+        },
+        {
+          "ingredient": "NESCAU",
+          "quantity": 1200.0
+        },
+        {
+          "ingredient": "FARINHA",
+          "quantity": 1440.0
+        },
+        {
+          "resource": "Mão de Obra Confeiteira",
+          "quantity": 0.0
+        },
+        {
+          "resource": "Forno Elétrico",
+          "quantity": 18.0
+        },
+        {
+          "resource": "Batedeira Planetária",
+          "quantity": 40.0
+        }
+      ],
+      "lossPct": 5.0
     },
     {
-     "ingredient": "AÇUCAR",
-     "quantity": 1200.0
+      "kind": "massa",
+      "name": "Massa Brownie 5x5",
+      "yieldQty": 90.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "ingredient": "OVO",
+          "quantity": 15.0
+        },
+        {
+          "ingredient": "AÇUCAR",
+          "quantity": 1200.0
+        },
+        {
+          "ingredient": "MANTEIGA",
+          "quantity": 900.0
+        },
+        {
+          "ingredient": "CHOCOLATE 50%",
+          "quantity": 300.0
+        },
+        {
+          "ingredient": "NESCAU",
+          "quantity": 1200.0
+        },
+        {
+          "ingredient": "FARINHA",
+          "quantity": 1440.0
+        },
+        {
+          "resource": "Mão de Obra Confeiteira",
+          "quantity": 0.0
+        },
+        {
+          "resource": "Forno Elétrico",
+          "quantity": 18.0
+        },
+        {
+          "resource": "Batedeira Planetária",
+          "quantity": 40.0
+        }
+      ],
+      "lossPct": 0.0
     },
     {
-     "ingredient": "MANTEIGA",
-     "quantity": 900.0
+      "kind": "massa",
+      "name": "Massa Brownie 7x7",
+      "yieldQty": 58.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "ingredient": "OVO",
+          "quantity": 15.0
+        },
+        {
+          "ingredient": "AÇUCAR",
+          "quantity": 1200.0
+        },
+        {
+          "ingredient": "MANTEIGA",
+          "quantity": 900.0
+        },
+        {
+          "ingredient": "CHOCOLATE 50%",
+          "quantity": 300.0
+        },
+        {
+          "ingredient": "NESCAU",
+          "quantity": 1200.0
+        },
+        {
+          "ingredient": "FARINHA",
+          "quantity": 1440.0
+        },
+        {
+          "resource": "Mão de Obra Confeiteira",
+          "quantity": 0.0
+        },
+        {
+          "resource": "Forno Elétrico",
+          "quantity": 18.0
+        },
+        {
+          "resource": "Batedeira Planetária",
+          "quantity": 40.0
+        }
+      ],
+      "lossPct": 0.0
     },
     {
-     "ingredient": "CHOCOLATE 50%",
-     "quantity": 300.0
+      "kind": "massa",
+      "name": "Massa Bolo 2 camadas 9cm",
+      "yieldQty": 22.5,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "ingredient": "OVO",
+          "quantity": 15.0
+        },
+        {
+          "ingredient": "AÇUCAR",
+          "quantity": 1200.0
+        },
+        {
+          "ingredient": "MANTEIGA",
+          "quantity": 900.0
+        },
+        {
+          "ingredient": "CHOCOLATE 50%",
+          "quantity": 300.0
+        },
+        {
+          "ingredient": "NESCAU",
+          "quantity": 1200.0
+        },
+        {
+          "ingredient": "FARINHA",
+          "quantity": 1440.0
+        },
+        {
+          "resource": "Mão de Obra Confeiteira",
+          "quantity": 0.0
+        },
+        {
+          "resource": "Forno Elétrico",
+          "quantity": 18.0
+        },
+        {
+          "resource": "Batedeira Planetária",
+          "quantity": 40.0
+        }
+      ],
+      "lossPct": 0.0
     },
     {
-     "ingredient": "NESCAU",
-     "quantity": 1200.0
+      "kind": "massa",
+      "name": "MASSA BROWNIE",
+      "yieldQty": 5800.0,
+      "yieldUnit": "gramas",
+      "lines": [
+        {
+          "ingredient": "OVO",
+          "quantity": 15.0
+        },
+        {
+          "ingredient": "AÇUCAR",
+          "quantity": 1200.0
+        },
+        {
+          "ingredient": "MANTEIGA",
+          "quantity": 900.0
+        },
+        {
+          "ingredient": "CHOCOLATE 50%",
+          "quantity": 300.0
+        },
+        {
+          "ingredient": "NESCAU",
+          "quantity": 1200.0
+        },
+        {
+          "ingredient": "FARINHA",
+          "quantity": 1440.0
+        },
+        {
+          "resource": "Mão de Obra Confeiteira",
+          "quantity": 0.0
+        },
+        {
+          "resource": "Forno Elétrico",
+          "quantity": 18.0
+        },
+        {
+          "resource": "Batedeira Planetária",
+          "quantity": 40.0
+        }
+      ],
+      "lossPct": 0.0
     },
     {
-     "ingredient": "FARINHA",
-     "quantity": 1440.0
+      "kind": "massa",
+      "name": "MASSA BROWNIE RED",
+      "yieldQty": 2200.0,
+      "yieldUnit": "gramas",
+      "lines": [
+        {
+          "ingredient": "OVO",
+          "quantity": 8.0
+        },
+        {
+          "ingredient": "AÇUCAR",
+          "quantity": 600.0
+        },
+        {
+          "ingredient": "MANTEIGA",
+          "quantity": 300.0
+        },
+        {
+          "ingredient": "CHOCOLATE BRANCO",
+          "quantity": 500.0
+        },
+        {
+          "ingredient": "CORANTE",
+          "quantity": 10.0
+        },
+        {
+          "ingredient": "FARINHA",
+          "quantity": 400.0
+        },
+        {
+          "resource": "Mão de Obra Confeiteira",
+          "quantity": 0.0
+        },
+        {
+          "resource": "Forno Elétrico",
+          "quantity": 18.0
+        },
+        {
+          "resource": "Batedeira Planetária",
+          "quantity": 40.0
+        }
+      ],
+      "lossPct": 5.0
     },
     {
-     "resource": "Mão de Obra Confeiteira",
-     "quantity": 0.0
+      "kind": "recheio",
+      "name": "GELEIA DE MORANGO",
+      "yieldQty": 1300.0,
+      "yieldUnit": "gramas",
+      "lines": [
+        {
+          "ingredient": "PECTINA",
+          "quantity": 10.0
+        },
+        {
+          "ingredient": "LIMÃO",
+          "quantity": 2.0
+        },
+        {
+          "ingredient": "MORANGO",
+          "quantity": 1000.0
+        },
+        {
+          "ingredient": "AÇUCAR",
+          "quantity": 600.0
+        },
+        {
+          "resource": "Gás - do Forno à Gás",
+          "quantity": 35.0
+        }
+      ],
+      "lossPct": 10.0
     },
     {
-     "resource": "Forno Elétrico",
-     "quantity": 18.0
+      "kind": "recheio",
+      "name": "RECHEIO DE MARACUJÁ",
+      "yieldQty": 2500.0,
+      "yieldUnit": "gramas",
+      "lines": [
+        {
+          "ingredient": "CREME DE LEITE",
+          "quantity": 10.0
+        },
+        {
+          "ingredient": "LEITE CONDESADO",
+          "quantity": 5.0
+        },
+        {
+          "ingredient": "MARACUJÁ",
+          "quantity": 500.0
+        }
+      ],
+      "lossPct": 10.0
     },
     {
-     "resource": "Batedeira Planetária",
-     "quantity": 40.0
+      "kind": "recheio",
+      "name": "GELEIA DE FRUTAS VERMELHAS",
+      "yieldQty": 1400.0,
+      "yieldUnit": "gramas",
+      "lines": [
+        {
+          "ingredient": "AMORA",
+          "quantity": 250.0
+        },
+        {
+          "ingredient": "MORANGO",
+          "quantity": 1000.0
+        },
+        {
+          "ingredient": "PECTINA",
+          "quantity": 10.0
+        },
+        {
+          "ingredient": "AÇUCAR",
+          "quantity": 600.0
+        },
+        {
+          "ingredient": "LIMÃO",
+          "quantity": 2.0
+        },
+        {
+          "ingredient": "PASTA DE FRUTA DO BOSQUE",
+          "quantity": 10.0
+        }
+      ],
+      "lossPct": 10.0
+    },
+    {
+      "kind": "recheio",
+      "name": "BANANA CARAM.",
+      "yieldQty": 1000.0,
+      "yieldUnit": "gramas",
+      "lines": [
+        {
+          "ingredient": "BANANA",
+          "quantity": 800.0
+        },
+        {
+          "ingredient": "AÇUCAR",
+          "quantity": 500.0
+        }
+      ],
+      "lossPct": 10.0
+    },
+    {
+      "kind": "recheio",
+      "name": "GELEIA ABACAXI",
+      "yieldQty": 650.0,
+      "yieldUnit": "gramas",
+      "lines": [
+        {
+          "ingredient": "ABACAXI",
+          "quantity": 1000.0
+        },
+        {
+          "ingredient": "AÇUCAR",
+          "quantity": 200.0
+        }
+      ],
+      "lossPct": 10.0
+    },
+    {
+      "kind": "recheio",
+      "name": "RECHEIO DE CREAM.",
+      "yieldQty": 2500.0,
+      "yieldUnit": "gramas",
+      "lines": [
+        {
+          "ingredient": "CREAM CHEESE",
+          "quantity": 1000.0
+        },
+        {
+          "ingredient": "LEITE CONDESADO",
+          "quantity": 5.0
+        },
+        {
+          "ingredient": "CREME DE LEITE",
+          "quantity": 10.0
+        }
+      ],
+      "lossPct": 10.0
+    },
+    {
+      "kind": "recheio",
+      "name": "RECHEIO NOZES",
+      "yieldQty": 1800.0,
+      "yieldUnit": "gramas",
+      "lines": [
+        {
+          "ingredient": "LEITE CONDESADO",
+          "quantity": 5.0
+        },
+        {
+          "ingredient": "CREME DE LEITE",
+          "quantity": 10.0
+        },
+        {
+          "ingredient": "Doce de Leite",
+          "quantity": 300.0
+        },
+        {
+          "ingredient": "NOZES PICADA",
+          "quantity": 100.0
+        }
+      ],
+      "lossPct": 5.0
+    },
+    {
+      "kind": "produto",
+      "name": "Brownie 7x5",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "subSheet": "Massa Brownie 7x5",
+          "quantity": 1.0
+        },
+        {
+          "ingredient": "RECHEIOS CASEIROS",
+          "quantity": 30.0
+        },
+        {
+          "ingredient": "SACO 10X10",
+          "quantity": 1.0
+        },
+        {
+          "resource": "Mão de Obra Confeiteira",
+          "quantity": 0.0
+        },
+        {
+          "ingredient": "Cinta",
+          "quantity": 1.0
+        }
+      ],
+      "markupPct": 117.0,
+      "totalWeightG": 1.0,
+      "actualPrice": 4.99
+    },
+    {
+      "kind": "produto",
+      "name": "Brownie 5x5",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "subSheet": "Massa Brownie 5x5",
+          "quantity": 1.0
+        },
+        {
+          "ingredient": "Cinta",
+          "quantity": 1.0
+        },
+        {
+          "ingredient": "Doce de Leite",
+          "quantity": 20.0
+        },
+        {
+          "ingredient": "SACO 10X10",
+          "quantity": 1.0
+        }
+      ],
+      "markupPct": 115.0,
+      "totalWeightG": 1.0,
+      "actualPrice": 3.9
+    },
+    {
+      "kind": "produto",
+      "name": "Brownie 7x7",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "subSheet": "Massa Brownie 7x7",
+          "quantity": 1.0
+        },
+        {
+          "ingredient": "SACO 10X10",
+          "quantity": 1.0
+        }
+      ],
+      "markupPct": 168.0,
+      "totalWeightG": 1.0
+    },
+    {
+      "kind": "produto",
+      "name": "Pote dos sonhos",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "subSheet": "Massa Brownie 7x7",
+          "quantity": 1.0
+        },
+        {
+          "ingredient": "RECHEIOS CASEIROS",
+          "quantity": 30.0
+        },
+        {
+          "ingredient": "Embalagem S-641",
+          "quantity": 1.0
+        },
+        {
+          "ingredient": "NUTELLA",
+          "quantity": 20.0
+        },
+        {
+          "ingredient": "TOPPING CARO",
+          "quantity": 1.0
+        }
+      ],
+      "markupPct": 152.0,
+      "totalWeightG": 1.0
+    },
+    {
+      "kind": "produto",
+      "name": "BOLO 2 CAMADAS 9CM",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "subSheet": "Massa Bolo 2 camadas 9cm",
+          "quantity": 1.0
+        },
+        {
+          "ingredient": "Doce de Leite",
+          "quantity": 160.0
+        },
+        {
+          "ingredient": "EMBALAGEM BOLO 9CM",
+          "quantity": 1.0
+        },
+        {
+          "subSheet": "Massa Brownie 7x7",
+          "quantity": 1.0
+        },
+        {
+          "ingredient": "SINETE",
+          "quantity": 1.0
+        }
+      ],
+      "markupPct": null,
+      "totalWeightG": 1.0
+    },
+    {
+      "kind": "produto",
+      "name": "POTE NINHO COM MORANGO",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "ingredient": "BISCOITO MAIZENA",
+          "quantity": 30.0
+        },
+        {
+          "ingredient": "RECHEIOS CASEIROS",
+          "quantity": 60.0
+        },
+        {
+          "subSheet": "GELEIA DE MORANGO",
+          "quantity": 35.0
+        },
+        {
+          "ingredient": "CHANTILLY",
+          "quantity": 8.0
+        },
+        {
+          "ingredient": "CREME LEITE NINHO",
+          "quantity": 2.0
+        },
+        {
+          "ingredient": "COPO QUADRADO 150ML",
+          "quantity": 1.0
+        }
+      ],
+      "markupPct": null,
+      "totalWeightG": 1.0
+    },
+    {
+      "kind": "produto",
+      "name": "POTE CHEESECAKE",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "ingredient": "BISCOITO MAIZENA",
+          "quantity": 30.0
+        },
+        {
+          "subSheet": "RECHEIO DE CREAM.",
+          "quantity": 70.0
+        },
+        {
+          "subSheet": "GELEIA DE FRUTAS VERMELHAS",
+          "quantity": 50.0
+        },
+        {
+          "ingredient": "COPO QUADRADO 150ML",
+          "quantity": 1.0
+        }
+      ],
+      "markupPct": 122.0,
+      "totalWeightG": 1.0
+    },
+    {
+      "kind": "produto",
+      "name": "POTE ABACAXI",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "ingredient": "RECHEIOS CASEIROS",
+          "quantity": 60.0
+        },
+        {
+          "ingredient": "CHANTILLY",
+          "quantity": 8.0
+        },
+        {
+          "ingredient": "CREME LEITE NINHO",
+          "quantity": 2.0
+        },
+        {
+          "ingredient": "COPO QUADRADO 150ML",
+          "quantity": 1.0
+        },
+        {
+          "subSheet": "GELEIA ABACAXI",
+          "quantity": 80.0
+        }
+      ],
+      "markupPct": 100.0,
+      "totalWeightG": 1.0
+    },
+    {
+      "kind": "produto",
+      "name": "POTE DE MARACUJÁ",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "ingredient": "OREO TRITURADO",
+          "quantity": 25.0
+        },
+        {
+          "subSheet": "RECHEIO DE MARACUJÁ",
+          "quantity": 80.0
+        },
+        {
+          "ingredient": "GRANULE",
+          "quantity": 5.0
+        },
+        {
+          "ingredient": "RECHEIOS CASEIROS",
+          "quantity": 60.0
+        },
+        {
+          "ingredient": "COPO QUADRADO 150ML",
+          "quantity": 1.0
+        }
+      ],
+      "markupPct": 200.0,
+      "totalWeightG": 1.0
+    },
+    {
+      "kind": "produto",
+      "name": "BANOFFE",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "ingredient": "BISCOITO MAIZENA",
+          "quantity": 15.0
+        },
+        {
+          "ingredient": "Doce de Leite",
+          "quantity": 60.0
+        },
+        {
+          "subSheet": "BANANA CARAM.",
+          "quantity": 75.0
+        },
+        {
+          "ingredient": "CHANTILLY",
+          "quantity": 8.0
+        },
+        {
+          "ingredient": "CREME LEITE NINHO",
+          "quantity": 2.0
+        },
+        {
+          "ingredient": "COPO QUADRADO 150ML",
+          "quantity": 1.0
+        }
+      ],
+      "markupPct": null,
+      "totalWeightG": 1.0
+    },
+    {
+      "kind": "produto",
+      "name": "BARRA 150G",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "ingredient": "CHOCOLATE",
+          "quantity": 70.0
+        },
+        {
+          "ingredient": "RECHEIOS CASEIROS",
+          "quantity": 35.0
+        },
+        {
+          "ingredient": "EMBALAGEM JANGO/150",
+          "quantity": 1.0
+        }
+      ],
+      "markupPct": null,
+      "totalWeightG": 1.0
+    },
+    {
+      "kind": "produto",
+      "name": "BARRA 300G",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "ingredient": "CHOCOLATE",
+          "quantity": 0.0
+        }
+      ],
+      "markupPct": null,
+      "totalWeightG": 1.0
+    },
+    {
+      "kind": "produto",
+      "name": "GUIRLANDA DE BROWNIE 25CM",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "subSheet": "MASSA BROWNIE",
+          "quantity": 730.0
+        },
+        {
+          "ingredient": "Doce de Leite",
+          "quantity": 300.0
+        },
+        {
+          "ingredient": "TOPPING CARO",
+          "quantity": 1.66
+        },
+        {
+          "ingredient": "EMBALAGEM NATAL 25CM",
+          "quantity": 1.0
+        },
+        {
+          "ingredient": "BASE 25CM",
+          "quantity": 1.0
+        },
+        {
+          "ingredient": "LAÇO",
+          "quantity": 1.0
+        }
+      ],
+      "markupPct": null,
+      "totalWeightG": 1.0
+    },
+    {
+      "kind": "produto",
+      "name": "GUIRLANDA DE BROWNIE 10CM",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "subSheet": "MASSA BROWNIE",
+          "quantity": 150.0
+        },
+        {
+          "ingredient": "RECHEIOS CASEIROS",
+          "quantity": 70.0
+        },
+        {
+          "ingredient": "TOPPING CARO",
+          "quantity": 0.2
+        },
+        {
+          "ingredient": "EMBALAGEM NATAL 10CM",
+          "quantity": 1.0
+        },
+        {
+          "ingredient": "BASE 10CM",
+          "quantity": 1.0
+        },
+        {
+          "ingredient": "LAÇO",
+          "quantity": 1.0
+        }
+      ],
+      "markupPct": 122.0,
+      "totalWeightG": 1.0
+    },
+    {
+      "kind": "produto",
+      "name": "GUIRLANDA DE BROWNIE RED 25CM",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "subSheet": "MASSA BROWNIE RED",
+          "quantity": 730.0
+        },
+        {
+          "subSheet": "RECHEIO DE CREAM.",
+          "quantity": 300.0
+        },
+        {
+          "ingredient": "TOPPING CARO",
+          "quantity": 2.0
+        },
+        {
+          "ingredient": "EMBALAGEM NATAL 25CM",
+          "quantity": 1.0
+        },
+        {
+          "ingredient": "BASE 10CM",
+          "quantity": 1.0
+        },
+        {
+          "ingredient": "LAÇO",
+          "quantity": 1.0
+        }
+      ],
+      "markupPct": null,
+      "totalWeightG": 1.0
+    },
+    {
+      "kind": "produto",
+      "name": "BROWNIE BOX NOZES",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "subSheet": "RECHEIO NOZES",
+          "quantity": 700.0
+        },
+        {
+          "ingredient": "Doce de Leite",
+          "quantity": 200.0
+        },
+        {
+          "subSheet": "MASSA BROWNIE",
+          "quantity": 350.0
+        },
+        {
+          "ingredient": "CAIXA ACRILICA 15X15",
+          "quantity": 1.0
+        }
+      ],
+      "markupPct": null,
+      "totalWeightG": 1.0
+    },
+    {
+      "kind": "produto",
+      "name": "BROWNIE TAÇA UVA",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "ingredient": "CHANTILLY",
+          "quantity": 160.0
+        },
+        {
+          "subSheet": "MASSA BROWNIE",
+          "quantity": 220.0
+        },
+        {
+          "ingredient": "UVA",
+          "quantity": 220.0
+        },
+        {
+          "ingredient": "RECHEIOS CASEIROS",
+          "quantity": 500.0
+        },
+        {
+          "ingredient": "TAÇA ACRILICA 1,25L",
+          "quantity": 1.0
+        }
+      ],
+      "markupPct": null,
+      "totalWeightG": 1.0
+    },
+    {
+      "kind": "produto",
+      "name": "TAÇA RED",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "subSheet": "MASSA BROWNIE RED",
+          "quantity": 450.0
+        },
+        {
+          "subSheet": "RECHEIO DE CREAM.",
+          "quantity": 260.0
+        },
+        {
+          "subSheet": "GELEIA DE FRUTAS VERMELHAS",
+          "quantity": 200.0
+        },
+        {
+          "ingredient": "CHANTILLY",
+          "quantity": 250.0
+        },
+        {
+          "ingredient": "TAÇA ACRILICA 1,25L",
+          "quantity": 1.0
+        }
+      ],
+      "markupPct": null,
+      "totalWeightG": 1.0
+    },
+    {
+      "kind": "produto",
+      "name": "MINI BOLO RED",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "subSheet": "MASSA BROWNIE RED",
+          "quantity": 340.0
+        },
+        {
+          "subSheet": "RECHEIO DE CREAM.",
+          "quantity": 260.0
+        },
+        {
+          "ingredient": "BASE 10CM",
+          "quantity": 1.0
+        },
+        {
+          "ingredient": "TOPPING CARO",
+          "quantity": 0.33
+        },
+        {
+          "ingredient": "EMBALAGEM NATAL 10CM",
+          "quantity": 1.0
+        }
+      ],
+      "markupPct": null,
+      "totalWeightG": 1.0
+    },
+    {
+      "kind": "produto",
+      "name": "MINI BOLO",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "subSheet": "Massa Bolo 2 camadas 9cm",
+          "quantity": 1.0
+        },
+        {
+          "ingredient": "RECHEIOS CASEIROS",
+          "quantity": 260.0
+        },
+        {
+          "ingredient": "BASE 10CM",
+          "quantity": 1.0
+        },
+        {
+          "ingredient": "TOPPING CARO",
+          "quantity": 0.33
+        },
+        {
+          "ingredient": "EMBALAGEM NATAL 10CM",
+          "quantity": 1.0
+        }
+      ],
+      "markupPct": null,
+      "totalWeightG": 1.0
+    },
+    {
+      "kind": "produto",
+      "name": "MINI ARVORE NATAL",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "ingredient": "CHOCOLATE",
+          "quantity": 12.0
+        },
+        {
+          "ingredient": "RECHEIOS CASEIROS",
+          "quantity": 7.0
+        }
+      ],
+      "markupPct": null,
+      "totalWeightG": 1.0
+    },
+    {
+      "kind": "produto",
+      "name": "CAIXA 8 MINI ARVORE",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "subSheet": "MINI ARVORE NATAL",
+          "quantity": 8.0
+        },
+        {
+          "ingredient": "CAIXA ACRILICA REDONDA",
+          "quantity": 1.0
+        }
+      ],
+      "markupPct": 123.0,
+      "totalWeightG": 1.0
+    },
+    {
+      "kind": "produto",
+      "name": "ARVORE NATAL",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "ingredient": "CHOCOLATE",
+          "quantity": 30.0
+        },
+        {
+          "ingredient": "RECHEIOS CASEIROS",
+          "quantity": 30.0
+        }
+      ],
+      "markupPct": null,
+      "totalWeightG": 1.0
+    },
+    {
+      "kind": "produto",
+      "name": "CAIXA 2 ARVORES NATAL",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "subSheet": "ARVORE NATAL",
+          "quantity": 2.0
+        },
+        {
+          "ingredient": "EMBALAGEM 2 ARVORES",
+          "quantity": 1.0
+        }
+      ],
+      "markupPct": null,
+      "totalWeightG": 1.0
+    },
+    {
+      "kind": "produto",
+      "name": "Cone Natal",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "ingredient": "CONE",
+          "quantity": 1.0
+        },
+        {
+          "ingredient": "EMBALAGEM 1 CONE",
+          "quantity": 1.0
+        }
+      ],
+      "markupPct": null,
+      "totalWeightG": 1.0
+    },
+    {
+      "kind": "produto",
+      "name": "PANETONE POTE NINHO COM NUTELLA",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "ingredient": "POTE VIDRO 240ML",
+          "quantity": 1.0
+        },
+        {
+          "ingredient": "PANETONE",
+          "quantity": 65.0
+        },
+        {
+          "ingredient": "RECHEIOS CASEIROS",
+          "quantity": 100.0
+        },
+        {
+          "ingredient": "NUTELLA",
+          "quantity": 25.0
+        },
+        {
+          "ingredient": "EMBALAGEM NATAL 10CM",
+          "quantity": 1.0
+        }
+      ],
+      "markupPct": null,
+      "totalWeightG": 1.0
+    },
+    {
+      "kind": "produto",
+      "name": "PANETONE POTE NOZES",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "ingredient": "POTE VIDRO 240ML",
+          "quantity": 1.0
+        },
+        {
+          "ingredient": "PANETONE",
+          "quantity": 65.0
+        },
+        {
+          "subSheet": "RECHEIO NOZES",
+          "quantity": 130.0
+        },
+        {
+          "ingredient": "EMBALAGEM NATAL 10CM",
+          "quantity": 1.0
+        }
+      ],
+      "markupPct": null,
+      "totalWeightG": 1.0
+    },
+    {
+      "kind": "produto",
+      "name": "PANETONE PISTACHE",
+      "yieldQty": 1.0,
+      "yieldUnit": "unidades",
+      "lines": [
+        {
+          "ingredient": "POTE VIDRO 240ML",
+          "quantity": 1.0
+        },
+        {
+          "ingredient": "PANETONE",
+          "quantity": 50.0
+        },
+        {
+          "subSheet": "GELEIA DE FRUTAS VERMELHAS",
+          "quantity": 35.0
+        },
+        {
+          "ingredient": "PISTACHE CREM.",
+          "quantity": 85.0
+        },
+        {
+          "ingredient": "EMBALAGEM NATAL 10CM",
+          "quantity": 1.0
+        }
+      ],
+      "markupPct": null,
+      "totalWeightG": 1.0
     }
-   ],
-   "lossPct": 0.0
-  },
-  {
-   "kind": "massa",
-   "name": "MASSA BROWNIE",
-   "yieldQty": 5800.0,
-   "yieldUnit": "gramas",
-   "lines": [
-    {
-     "ingredient": "OVO",
-     "quantity": 15.0
-    },
-    {
-     "ingredient": "AÇUCAR",
-     "quantity": 1200.0
-    },
-    {
-     "ingredient": "MANTEIGA",
-     "quantity": 900.0
-    },
-    {
-     "ingredient": "CHOCOLATE 50%",
-     "quantity": 300.0
-    },
-    {
-     "ingredient": "NESCAU",
-     "quantity": 1200.0
-    },
-    {
-     "ingredient": "FARINHA",
-     "quantity": 1440.0
-    },
-    {
-     "resource": "Mão de Obra Confeiteira",
-     "quantity": 0.0
-    },
-    {
-     "resource": "Forno Elétrico",
-     "quantity": 18.0
-    },
-    {
-     "resource": "Batedeira Planetária",
-     "quantity": 40.0
-    }
-   ],
-   "lossPct": 0.0
-  },
-  {
-   "kind": "massa",
-   "name": "MASSA BROWNIE RED",
-   "yieldQty": 2200.0,
-   "yieldUnit": "gramas",
-   "lines": [
-    {
-     "ingredient": "OVO",
-     "quantity": 8.0
-    },
-    {
-     "ingredient": "AÇUCAR",
-     "quantity": 600.0
-    },
-    {
-     "ingredient": "MANTEIGA",
-     "quantity": 300.0
-    },
-    {
-     "ingredient": "CHOCOLATE BRANCO",
-     "quantity": 500.0
-    },
-    {
-     "ingredient": "CORANTE",
-     "quantity": 10.0
-    },
-    {
-     "ingredient": "FARINHA",
-     "quantity": 400.0
-    },
-    {
-     "resource": "Mão de Obra Confeiteira",
-     "quantity": 0.0
-    },
-    {
-     "resource": "Forno Elétrico",
-     "quantity": 18.0
-    },
-    {
-     "resource": "Batedeira Planetária",
-     "quantity": 40.0
-    }
-   ],
-   "lossPct": 5.0
-  },
-  {
-   "kind": "recheio",
-   "name": "GELEIA DE MORANGO",
-   "yieldQty": 1300.0,
-   "yieldUnit": "gramas",
-   "lines": [
-    {
-     "ingredient": "PECTINA",
-     "quantity": 10.0
-    },
-    {
-     "ingredient": "LIMÃO",
-     "quantity": 2.0
-    },
-    {
-     "ingredient": "MORANGO",
-     "quantity": 1000.0
-    },
-    {
-     "ingredient": "AÇUCAR",
-     "quantity": 600.0
-    },
-    {
-     "resource": "Gás - do Forno à Gás",
-     "quantity": 35.0
-    }
-   ],
-   "lossPct": 10.0
-  },
-  {
-   "kind": "recheio",
-   "name": "RECHEIO DE MARACUJÁ",
-   "yieldQty": 2500.0,
-   "yieldUnit": "gramas",
-   "lines": [
-    {
-     "ingredient": "CREME DE LEITE",
-     "quantity": 10.0
-    },
-    {
-     "ingredient": "LEITE CONDESADO",
-     "quantity": 5.0
-    },
-    {
-     "ingredient": "MARACUJÁ",
-     "quantity": 500.0
-    }
-   ],
-   "lossPct": 10.0
-  },
-  {
-   "kind": "recheio",
-   "name": "GELEIA DE FRUTAS VERMELHAS",
-   "yieldQty": 1400.0,
-   "yieldUnit": "gramas",
-   "lines": [
-    {
-     "ingredient": "AMORA",
-     "quantity": 250.0
-    },
-    {
-     "ingredient": "MORANGO",
-     "quantity": 1000.0
-    },
-    {
-     "ingredient": "PECTINA",
-     "quantity": 10.0
-    },
-    {
-     "ingredient": "AÇUCAR",
-     "quantity": 600.0
-    },
-    {
-     "ingredient": "LIMÃO",
-     "quantity": 2.0
-    },
-    {
-     "ingredient": "PASTA DE FRUTA DO BOSQUE",
-     "quantity": 10.0
-    }
-   ],
-   "lossPct": 10.0
-  },
-  {
-   "kind": "recheio",
-   "name": "BANANA CARAM.",
-   "yieldQty": 1000.0,
-   "yieldUnit": "gramas",
-   "lines": [
-    {
-     "ingredient": "BANANA",
-     "quantity": 800.0
-    },
-    {
-     "ingredient": "AÇUCAR",
-     "quantity": 500.0
-    }
-   ],
-   "lossPct": 10.0
-  },
-  {
-   "kind": "recheio",
-   "name": "GELEIA ABACAXI",
-   "yieldQty": 650.0,
-   "yieldUnit": "gramas",
-   "lines": [
-    {
-     "ingredient": "ABACAXI",
-     "quantity": 1000.0
-    },
-    {
-     "ingredient": "AÇUCAR",
-     "quantity": 200.0
-    }
-   ],
-   "lossPct": 10.0
-  },
-  {
-   "kind": "recheio",
-   "name": "RECHEIO DE CREAM.",
-   "yieldQty": 2500.0,
-   "yieldUnit": "gramas",
-   "lines": [
-    {
-     "ingredient": "CREAM CHEESE",
-     "quantity": 1000.0
-    },
-    {
-     "ingredient": "LEITE CONDESADO",
-     "quantity": 5.0
-    },
-    {
-     "ingredient": "CREME DE LEITE",
-     "quantity": 10.0
-    }
-   ],
-   "lossPct": 10.0
-  },
-  {
-   "kind": "recheio",
-   "name": "RECHEIO NOZES",
-   "yieldQty": 1800.0,
-   "yieldUnit": "gramas",
-   "lines": [
-    {
-     "ingredient": "LEITE CONDESADO",
-     "quantity": 5.0
-    },
-    {
-     "ingredient": "CREME DE LEITE",
-     "quantity": 10.0
-    },
-    {
-     "ingredient": "Doce de Leite",
-     "quantity": 300.0
-    },
-    {
-     "ingredient": "NOZES PICADA",
-     "quantity": 100.0
-    }
-   ],
-   "lossPct": 5.0
-  },
-  {
-   "kind": "produto",
-   "name": "Brownie 7x5",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "subSheet": "Massa Brownie 7x5",
-     "quantity": 1.0
-    },
-    {
-     "ingredient": "RECHEIOS CASEIROS",
-     "quantity": 30.0
-    },
-    {
-     "ingredient": "SACO 10X10",
-     "quantity": 1.0
-    },
-    {
-     "resource": "Mão de Obra Confeiteira",
-     "quantity": 0.0
-    },
-    {
-     "ingredient": "Cinta",
-     "quantity": 1.0
-    }
-   ],
-   "markupPct": 117.0,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "Brownie 5x5",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "subSheet": "Massa Brownie 5x5",
-     "quantity": 1.0
-    },
-    {
-     "ingredient": "Cinta",
-     "quantity": 1.0
-    },
-    {
-     "ingredient": "Doce de Leite",
-     "quantity": 20.0
-    },
-    {
-     "ingredient": "SACO 10X10",
-     "quantity": 1.0
-    }
-   ],
-   "markupPct": 115.0,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "Brownie 7x7",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "subSheet": "Massa Brownie 7x7",
-     "quantity": 1.0
-    },
-    {
-     "ingredient": "SACO 10X10",
-     "quantity": 1.0
-    }
-   ],
-   "markupPct": 168.0,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "Pote dos sonhos",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "subSheet": "Massa Brownie 7x7",
-     "quantity": 1.0
-    },
-    {
-     "ingredient": "RECHEIOS CASEIROS",
-     "quantity": 30.0
-    },
-    {
-     "ingredient": "Embalagem S-641",
-     "quantity": 1.0
-    },
-    {
-     "ingredient": "NUTELLA",
-     "quantity": 20.0
-    },
-    {
-     "ingredient": "TOPPING CARO",
-     "quantity": 1.0
-    }
-   ],
-   "markupPct": 152.0,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "BOLO 2 CAMADAS 9CM",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "subSheet": "Massa Bolo 2 camadas 9cm",
-     "quantity": 1.0
-    },
-    {
-     "ingredient": "Doce de Leite",
-     "quantity": 160.0
-    },
-    {
-     "ingredient": "EMBALAGEM BOLO 9CM",
-     "quantity": 1.0
-    },
-    {
-     "subSheet": "Massa Brownie 7x7",
-     "quantity": 1.0
-    },
-    {
-     "ingredient": "SINETE",
-     "quantity": 1.0
-    }
-   ],
-   "markupPct": null,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "POTE NINHO COM MORANGO",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "ingredient": "BISCOITO MAIZENA",
-     "quantity": 30.0
-    },
-    {
-     "ingredient": "RECHEIOS CASEIROS",
-     "quantity": 60.0
-    },
-    {
-     "subSheet": "GELEIA DE MORANGO",
-     "quantity": 35.0
-    },
-    {
-     "ingredient": "CHANTILLY",
-     "quantity": 8.0
-    },
-    {
-     "ingredient": "CREME LEITE NINHO",
-     "quantity": 2.0
-    },
-    {
-     "ingredient": "COPO QUADRADO 150ML",
-     "quantity": 1.0
-    }
-   ],
-   "markupPct": null,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "POTE CHEESECAKE",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "ingredient": "BISCOITO MAIZENA",
-     "quantity": 30.0
-    },
-    {
-     "subSheet": "RECHEIO DE CREAM.",
-     "quantity": 70.0
-    },
-    {
-     "subSheet": "GELEIA DE FRUTAS VERMELHAS",
-     "quantity": 50.0
-    },
-    {
-     "ingredient": "COPO QUADRADO 150ML",
-     "quantity": 1.0
-    }
-   ],
-   "markupPct": 122.0,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "POTE ABACAXI",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "ingredient": "RECHEIOS CASEIROS",
-     "quantity": 60.0
-    },
-    {
-     "ingredient": "CHANTILLY",
-     "quantity": 8.0
-    },
-    {
-     "ingredient": "CREME LEITE NINHO",
-     "quantity": 2.0
-    },
-    {
-     "ingredient": "COPO QUADRADO 150ML",
-     "quantity": 1.0
-    },
-    {
-     "subSheet": "GELEIA ABACAXI",
-     "quantity": 80.0
-    }
-   ],
-   "markupPct": 100.0,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "POTE DE MARACUJÁ",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "ingredient": "OREO TRITURADO",
-     "quantity": 25.0
-    },
-    {
-     "subSheet": "RECHEIO DE MARACUJÁ",
-     "quantity": 80.0
-    },
-    {
-     "ingredient": "GRANULE",
-     "quantity": 5.0
-    },
-    {
-     "ingredient": "RECHEIOS CASEIROS",
-     "quantity": 60.0
-    },
-    {
-     "ingredient": "COPO QUADRADO 150ML",
-     "quantity": 1.0
-    }
-   ],
-   "markupPct": 200.0,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "BANOFFE",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "ingredient": "BISCOITO MAIZENA",
-     "quantity": 15.0
-    },
-    {
-     "ingredient": "Doce de Leite",
-     "quantity": 60.0
-    },
-    {
-     "subSheet": "BANANA CARAM.",
-     "quantity": 75.0
-    },
-    {
-     "ingredient": "CHANTILLY",
-     "quantity": 8.0
-    },
-    {
-     "ingredient": "CREME LEITE NINHO",
-     "quantity": 2.0
-    },
-    {
-     "ingredient": "COPO QUADRADO 150ML",
-     "quantity": 1.0
-    }
-   ],
-   "markupPct": null,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "BARRA 150G",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "ingredient": "CHOCOLATE",
-     "quantity": 70.0
-    },
-    {
-     "ingredient": "RECHEIOS CASEIROS",
-     "quantity": 35.0
-    },
-    {
-     "ingredient": "EMBALAGEM JANGO/150",
-     "quantity": 1.0
-    }
-   ],
-   "markupPct": null,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "BARRA 300G",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "ingredient": "CHOCOLATE",
-     "quantity": 0.0
-    }
-   ],
-   "markupPct": null,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "GUIRLANDA DE BROWNIE 25CM",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "subSheet": "MASSA BROWNIE",
-     "quantity": 730.0
-    },
-    {
-     "ingredient": "Doce de Leite",
-     "quantity": 300.0
-    },
-    {
-     "ingredient": "TOPPING CARO",
-     "quantity": 1.66
-    },
-    {
-     "ingredient": "EMBALAGEM NATAL 25CM",
-     "quantity": 1.0
-    },
-    {
-     "ingredient": "BASE 25CM",
-     "quantity": 1.0
-    },
-    {
-     "ingredient": "LAÇO",
-     "quantity": 1.0
-    }
-   ],
-   "markupPct": null,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "GUIRLANDA DE BROWNIE 10CM",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "subSheet": "MASSA BROWNIE",
-     "quantity": 150.0
-    },
-    {
-     "ingredient": "RECHEIOS CASEIROS",
-     "quantity": 70.0
-    },
-    {
-     "ingredient": "TOPPING CARO",
-     "quantity": 0.2
-    },
-    {
-     "ingredient": "EMBALAGEM NATAL 10CM",
-     "quantity": 1.0
-    },
-    {
-     "ingredient": "BASE 10CM",
-     "quantity": 1.0
-    },
-    {
-     "ingredient": "LAÇO",
-     "quantity": 1.0
-    }
-   ],
-   "markupPct": 122.0,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "GUIRLANDA DE BROWNIE RED 25CM",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "subSheet": "MASSA BROWNIE RED",
-     "quantity": 730.0
-    },
-    {
-     "subSheet": "RECHEIO DE CREAM.",
-     "quantity": 300.0
-    },
-    {
-     "ingredient": "TOPPING CARO",
-     "quantity": 2.0
-    },
-    {
-     "ingredient": "EMBALAGEM NATAL 25CM",
-     "quantity": 1.0
-    },
-    {
-     "ingredient": "BASE 10CM",
-     "quantity": 1.0
-    },
-    {
-     "ingredient": "LAÇO",
-     "quantity": 1.0
-    }
-   ],
-   "markupPct": null,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "BROWNIE BOX NOZES",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "subSheet": "RECHEIO NOZES",
-     "quantity": 700.0
-    },
-    {
-     "ingredient": "Doce de Leite",
-     "quantity": 200.0
-    },
-    {
-     "subSheet": "MASSA BROWNIE",
-     "quantity": 350.0
-    },
-    {
-     "ingredient": "CAIXA ACRILICA 15X15",
-     "quantity": 1.0
-    }
-   ],
-   "markupPct": null,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "BROWNIE TAÇA UVA",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "ingredient": "CHANTILLY",
-     "quantity": 160.0
-    },
-    {
-     "subSheet": "MASSA BROWNIE",
-     "quantity": 220.0
-    },
-    {
-     "ingredient": "UVA",
-     "quantity": 220.0
-    },
-    {
-     "ingredient": "RECHEIOS CASEIROS",
-     "quantity": 500.0
-    },
-    {
-     "ingredient": "TAÇA ACRILICA 1,25L",
-     "quantity": 1.0
-    }
-   ],
-   "markupPct": null,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "TAÇA RED",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "subSheet": "MASSA BROWNIE RED",
-     "quantity": 450.0
-    },
-    {
-     "subSheet": "RECHEIO DE CREAM.",
-     "quantity": 260.0
-    },
-    {
-     "subSheet": "GELEIA DE FRUTAS VERMELHAS",
-     "quantity": 200.0
-    },
-    {
-     "ingredient": "CHANTILLY",
-     "quantity": 250.0
-    },
-    {
-     "ingredient": "TAÇA ACRILICA 1,25L",
-     "quantity": 1.0
-    }
-   ],
-   "markupPct": null,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "MINI BOLO RED",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "subSheet": "MASSA BROWNIE RED",
-     "quantity": 340.0
-    },
-    {
-     "subSheet": "RECHEIO DE CREAM.",
-     "quantity": 260.0
-    },
-    {
-     "ingredient": "BASE 10CM",
-     "quantity": 1.0
-    },
-    {
-     "ingredient": "TOPPING CARO",
-     "quantity": 0.33
-    },
-    {
-     "ingredient": "EMBALAGEM NATAL 10CM",
-     "quantity": 1.0
-    }
-   ],
-   "markupPct": null,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "MINI BOLO",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "subSheet": "Massa Bolo 2 camadas 9cm",
-     "quantity": 1.0
-    },
-    {
-     "ingredient": "RECHEIOS CASEIROS",
-     "quantity": 260.0
-    },
-    {
-     "ingredient": "BASE 10CM",
-     "quantity": 1.0
-    },
-    {
-     "ingredient": "TOPPING CARO",
-     "quantity": 0.33
-    },
-    {
-     "ingredient": "EMBALAGEM NATAL 10CM",
-     "quantity": 1.0
-    }
-   ],
-   "markupPct": null,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "MINI ARVORE NATAL",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "ingredient": "CHOCOLATE",
-     "quantity": 12.0
-    },
-    {
-     "ingredient": "RECHEIOS CASEIROS",
-     "quantity": 7.0
-    }
-   ],
-   "markupPct": null,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "CAIXA 8 MINI ARVORE",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "subSheet": "MINI ARVORE NATAL",
-     "quantity": 8.0
-    },
-    {
-     "ingredient": "CAIXA ACRILICA REDONDA",
-     "quantity": 1.0
-    }
-   ],
-   "markupPct": 123.0,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "ARVORE NATAL",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "ingredient": "CHOCOLATE",
-     "quantity": 30.0
-    },
-    {
-     "ingredient": "RECHEIOS CASEIROS",
-     "quantity": 30.0
-    }
-   ],
-   "markupPct": null,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "CAIXA 2 ARVORES NATAL",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "subSheet": "ARVORE NATAL",
-     "quantity": 2.0
-    },
-    {
-     "ingredient": "EMBALAGEM 2 ARVORES",
-     "quantity": 1.0
-    }
-   ],
-   "markupPct": null,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "Cone Natal",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "ingredient": "CONE",
-     "quantity": 1.0
-    },
-    {
-     "ingredient": "EMBALAGEM 1 CONE",
-     "quantity": 1.0
-    }
-   ],
-   "markupPct": null,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "PANETONE POTE NINHO COM NUTELLA",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "ingredient": "POTE VIDRO 240ML",
-     "quantity": 1.0
-    },
-    {
-     "ingredient": "PANETONE",
-     "quantity": 65.0
-    },
-    {
-     "ingredient": "RECHEIOS CASEIROS",
-     "quantity": 100.0
-    },
-    {
-     "ingredient": "NUTELLA",
-     "quantity": 25.0
-    },
-    {
-     "ingredient": "EMBALAGEM NATAL 10CM",
-     "quantity": 1.0
-    }
-   ],
-   "markupPct": null,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "PANETONE POTE NOZES",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "ingredient": "POTE VIDRO 240ML",
-     "quantity": 1.0
-    },
-    {
-     "ingredient": "PANETONE",
-     "quantity": 65.0
-    },
-    {
-     "subSheet": "RECHEIO NOZES",
-     "quantity": 130.0
-    },
-    {
-     "ingredient": "EMBALAGEM NATAL 10CM",
-     "quantity": 1.0
-    }
-   ],
-   "markupPct": null,
-   "totalWeightG": 1.0
-  },
-  {
-   "kind": "produto",
-   "name": "PANETONE PISTACHE",
-   "yieldQty": 1.0,
-   "yieldUnit": "unidades",
-   "lines": [
-    {
-     "ingredient": "POTE VIDRO 240ML",
-     "quantity": 1.0
-    },
-    {
-     "ingredient": "PANETONE",
-     "quantity": 50.0
-    },
-    {
-     "subSheet": "GELEIA DE FRUTAS VERMELHAS",
-     "quantity": 35.0
-    },
-    {
-     "ingredient": "PISTACHE CREM.",
-     "quantity": 85.0
-    },
-    {
-     "ingredient": "EMBALAGEM NATAL 10CM",
-     "quantity": 1.0
-    }
-   ],
-   "markupPct": null,
-   "totalWeightG": 1.0
-  }
- ]
+  ]
 }

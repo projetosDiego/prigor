@@ -44,7 +44,7 @@ const ORDER_INCLUDE = {
   transactions: { where: { type: 'receita' as const, category: 'Vendas' }, select: { id: true, status: true }, take: 1 },
   deliveryAddress: { select: { label: true, address: true, number: true, complement: true, neighborhood: true, city: true, state: true, zipCode: true } },
   items: {
-    include: { product: { select: { name: true, barCode: true, internalCode: true, sku: true, unit: true } } },
+    include: { product: { select: { name: true, barCode: true, internalCode: true, sku: true, unit: true, cost: true } } },
     orderBy: { id: 'asc' as const },
   },
 };
@@ -110,7 +110,7 @@ export async function listOrders(
     prisma.order.count({ where }),
   ]);
 
-  const data = rows.map((row: OrderRow) => toOrderDTO(row, { withAddress: true }));
+  const data = rows.map((row: OrderRow) => toOrderDTO(row, { withAddress: true, withMargin: isManagement(session) }));
   if (isManagement(session) && data.length) {
     const docs = await orderDocuments(data.map((o) => o.id));
     for (const order of data) {
@@ -165,7 +165,7 @@ export async function getOrder(session: SessionPayload, id: string): Promise<Ord
     throw notFound('Pedido');
   }
 
-  return toOrderDTO(row, { withAddress: true });
+  return toOrderDTO(row, { withAddress: true, withMargin: isManagement(session) });
 }
 
 interface PricingContext {
@@ -173,6 +173,7 @@ interface PricingContext {
     salePrice: string;
     wholesalePrice: string;
     minWholesaleQty: string;
+    cost: string;
     commissionPct: string | null;
     active: boolean;
   }>;
@@ -237,6 +238,7 @@ async function loadPricingContext(
       salePrice: String(row.salePrice),
       wholesalePrice: String(row.wholesalePrice),
       minWholesaleQty: String(row.minWholesaleQty),
+      cost: String(row.cost ?? 0),
       commissionPct: row.commissionPct === null ? null : String(row.commissionPct),
       active: row.active,
     } as never);
@@ -384,6 +386,7 @@ export async function createOrder(
             unitPrice: item.unitPrice.toFixed(2),
             discountItem: item.discountItem.toFixed(2),
             subtotal: item.subtotal.toFixed(2),
+            unitCost: context.products.get(item.productId)?.cost ?? null,
           })),
         },
       },
@@ -435,7 +438,7 @@ export async function createOrder(
     return tx.order.findUniqueOrThrow({ where: { id: order.id }, include: ORDER_INCLUDE });
   });
 
-  return toOrderDTO(created, { withAddress: true });
+  return toOrderDTO(created, { withAddress: true, withMargin: isManagement(session) });
 }
 
 export async function updateOrder(
@@ -570,6 +573,12 @@ export async function updateOrder(
     });
 
     if (itemsProvided) {
+      // Mantém o custo já registrado dos produtos que continuam no pedido; só produto novo usa o custo atual.
+      const previousCosts = new Map(
+        (await tx.orderItem.findMany({ where: { orderId: id }, select: { productId: true, unitCost: true } })).map(
+          (r: { productId: string; unitCost: unknown }) => [r.productId, r.unitCost == null ? null : String(r.unitCost)] as const,
+        ),
+      );
       await tx.orderItem.deleteMany({ where: { orderId: id } });
       await tx.orderItem.createMany({
         data: calculated.items.map((item) => ({
@@ -579,6 +588,7 @@ export async function updateOrder(
           unitPrice: item.unitPrice.toFixed(2),
           discountItem: item.discountItem.toFixed(2),
           subtotal: item.subtotal.toFixed(2),
+          unitCost: previousCosts.get(item.productId) ?? context.products.get(item.productId)?.cost ?? null,
         })),
       });
     }
@@ -652,7 +662,7 @@ export async function updateOrder(
     return tx.order.findUniqueOrThrow({ where: { id }, include: ORDER_INCLUDE });
   });
 
-  return toOrderDTO(updated, { withAddress: true });
+  return toOrderDTO(updated, { withAddress: true, withMargin: isManagement(session) });
 }
 
 /** Recarrega o saldo atual dos produtos no contexto em memória. */
@@ -736,5 +746,5 @@ export async function cancelOrder(session: SessionPayload, id: string): Promise<
     return tx.order.findUniqueOrThrow({ where: { id }, include: ORDER_INCLUDE });
   });
 
-  return toOrderDTO(cancelled, { withAddress: true });
+  return toOrderDTO(cancelled, { withAddress: true, withMargin: isManagement(session) });
 }

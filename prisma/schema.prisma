@@ -605,6 +605,8 @@ model OrderItem {
   unitPrice    Decimal @map("preco_unitario") @db.Decimal(12, 2)
   discountItem Decimal @default(0) @map("desconto_item") @db.Decimal(12, 2)
   subtotal     Decimal @default(0) @map("subtotal") @db.Decimal(12, 2)
+  /// Custo unitário do produto na data do pedido (para margem real). Nulo em pedidos antigos.
+  unitCost     Decimal? @map("custo_unitario") @db.Decimal(12, 4)
 
   @@index([orderId])
   @@index([productId])
@@ -843,9 +845,25 @@ model Boleto {
   issuerId String? @map("empresa_id")
   issuer   Issuer? @relation(fields: [issuerId], references: [id], onDelete: Restrict)
 
+  reminders CollectionReminder[]
+
   @@index([orderId])
   @@index([status, dueDate])
   @@map("boletos")
+}
+
+/// Lembrete de cobrança já enviado (um por boleto e etapa — impede repetir).
+model CollectionReminder {
+  id        String   @id @default(uuid())
+  boletoId  String   @map("boleto_id")
+  boleto    Boleto   @relation(fields: [boletoId], references: [id], onDelete: Cascade)
+  /// antes2 | vencimento | atraso3 | atraso7
+  kind      String   @map("etapa")
+  toEmail   String   @map("email")
+  sentAt    DateTime @default(now()) @map("enviado_em")
+
+  @@unique([boletoId, kind])
+  @@map("cobranca_lembretes")
 }
 
 model Invoice {
@@ -976,6 +994,8 @@ model PricingSettings {
   ifoodFeePct      Decimal  @default(0) @map("taxa_ifood_pct") @db.Decimal(5, 2)
   cardFeePct       Decimal  @default(0) @map("taxa_cartao_pct") @db.Decimal(5, 2)
   taxPct           Decimal  @default(0) @map("imposto_pct") @db.Decimal(5, 2)
+  /// Comissão paga ao revendedor/representante (canal revenda), em %.
+  resellerCommissionPct Decimal @default(0) @map("comissao_revenda_pct") @db.Decimal(5, 2)
   targetMarginPct  Decimal  @default(40) @map("margem_alvo_pct") @db.Decimal(5, 2)
   /// Quantos meses fechados entram na média de faturamento (rateio do custo fixo).
   revenueMonths    Int      @default(3) @map("meses_media_receita")
@@ -1041,6 +1061,8 @@ model PricingSheet {
   lossPct      Decimal  @default(0) @map("perda_pct") @db.Decimal(5, 2)
   markupPct    Decimal  @default(100) @map("markup_pct") @db.Decimal(8, 2)
   totalWeightG Decimal  @default(0) @map("peso_total_g") @db.Decimal(14, 3)
+  /// Preço realmente praticado (balcão). Se vazio, usa o preço do produto vinculado.
+  actualPrice  Decimal? @map("preco_praticado") @db.Decimal(12, 2)
   notes        String?  @map("observacoes")
   productId    String?  @map("produto_id")
   product      Product? @relation(fields: [productId], references: [id], onDelete: SetNull)

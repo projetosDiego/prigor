@@ -14,9 +14,14 @@ import { prisma } from '../db';
 import { badRequest, conflict, notFound } from '../http/errors';
 import {
   averageRevenue,
+  breakEvenRevenue,
+  channelMargin,
   computePricing,
   fixedRatePct,
   markupForTargetMargin,
+  priceForTargetMargin,
+  roundUpToStep,
+  type ChannelMargin,
   type PricingModelInput,
   type SheetResult,
 } from '../domain/precificacao';
@@ -41,6 +46,7 @@ export interface PricingSettingsDTO {
   ifoodFeePct: number;
   cardFeePct: number;
   taxPct: number;
+  resellerCommissionPct: number;
   targetMarginPct: number;
   revenueMonths: number;
   revenueOverride: number | null;
@@ -107,6 +113,17 @@ export interface SheetDTO {
   productId: string | null;
   productName: string | null;
   productPrice: number | null;
+  /** Preço praticado informado na ficha (balcão). */
+  actualPrice: number | null;
+  /** Preço em uso: praticado → preço do produto → sugerido. */
+  effectivePrice: number;
+  priceSource: 'praticado' | 'produto' | 'sugerido';
+  channels: { balcao: ChannelMargin; ifood: ChannelMargin; revenda: ChannelMargin };
+  /** Menor preço (múltiplo de R$ 0,05) que entrega a margem alvo no balcão. */
+  targetPrice: number;
+  /** Preço sugerido pelo markup, arredondado para cima (R$ 0,05). */
+  suggestedRounded: number;
+  status: 'ok' | 'baixa' | 'prejuizo' | 'sem_custo';
   active: boolean;
   lines: SheetLineDTO[];
   directCost: number;
@@ -140,6 +157,19 @@ export interface PricingBundleDTO {
   resources: ResourceDTO[];
   ingredients: IngredientDTO[];
   sheets: SheetDTO[];
+  summary: PricingSummaryDTO;
+}
+
+export interface PricingSummaryDTO {
+  products: number;
+  /** Margem média (balcão) ponderada igualmente entre os produtos com preço. */
+  avgMarginPct: number;
+  belowTarget: number;
+  loss: number;
+  /** Faturamento mensal de equilíbrio com a margem média atual. */
+  breakEvenRevenue: number;
+  /** Dias de uso médio dos preços dos insumos (desde a última atualização). */
+  staleIngredients: number;
 }
 
 // ─── Configuração ────────────────────────────────────────────────────────────
@@ -158,6 +188,7 @@ function settingsDTO(r: Awaited<ReturnType<typeof getSettingsRow>>): PricingSett
     ifoodFeePct: num(r.ifoodFeePct),
     cardFeePct: num(r.cardFeePct),
     taxPct: num(r.taxPct),
+    resellerCommissionPct: num(r.resellerCommissionPct),
     targetMarginPct: num(r.targetMarginPct),
     revenueMonths: r.revenueMonths,
     revenueOverride: r.revenueOverride == null ? null : num(r.revenueOverride),
@@ -194,9 +225,72 @@ async function revenueInfo(settings: PricingSettingsDTO, now = new Date()): Prom
   return { months, average, source: average > 0 ? 'pedidos' : 'nenhuma', used: average };
 }
 
+
+// ─── Margens por canal ───────────────────────────────────────────────────────
+
+function pricingExtras(
+  s: { kind: string; actualPrice: Prisma.Decimal | null; product: { salePrice: Prisma.Decimal } | null },
+  r: SheetResult,
+  settings: PricingSettingsDTO,
+) {
+  const balcaoFee = settings.cardFeePct + settings.taxPct;
+  const ifoodFee = settings.ifoodFeePct;
+  const resellerFee = settings.taxPct + settings.resellerCommissionPct;
+  const actual = s.actualPrice != null ? num(s.actualPrice) : null;
+  const productPrice = s.product ? num(s.product.salePrice) : null;
+  let effectivePrice = r.suggestedPrice;
+  let priceSource: SheetDTO['priceSource'] = 'sugerido';
+  if (actual && actual > 0) {
+    effectivePrice = actual;
+    priceSource = 'praticado';
+  } else if (productPrice && productPrice > 0) {
+    effectivePrice = productPrice;
+    priceSource = 'produto';
+  }
+  const balcao = channelMargin(effectivePrice, r.costPerUnit, balcaoFee);
+  const status: SheetDTO['status'] =
+    r.costPerUnit <= 0 ? 'sem_custo' : balcao.mc < 0 ? 'prejuizo' : balcao.mcPct * 100 < settings.targetMarginPct ? 'baixa' : 'ok';
+  return {
+    actualPrice: actual,
+    effectivePrice,
+    priceSource,
+    channels: {
+      balcao,
+      ifood: channelMargin(effectivePrice, r.costPerUnit, ifoodFee),
+      revenda: channelMargin(effectivePrice, r.costPerUnit, resellerFee),
+    },
+    targetPrice: priceForTargetMargin(r.costPerUnit, settings.targetMarginPct, balcaoFee),
+    suggestedRounded: roundUpToStep(r.suggestedPrice),
+    status,
+  };
+}
+
+function buildSummary(
+  sheets: SheetDTO[],
+  ingredients: IngredientDTO[],
+  settings: PricingSettingsDTO,
+  fixedTotal: number,
+): PricingSummaryDTO {
+  const products = sheets.filter((s) => s.kind === 'produto' && s.active);
+  const priced = products.filter((s) => s.status !== 'sem_custo' && s.effectivePrice > 0);
+  const avg = priced.length ? priced.reduce((a, s) => a + s.channels.balcao.mcPct, 0) / priced.length : 0;
+  const limit = Date.now() - 60 * 24 * 3600 * 1000;
+  return {
+    products: products.length,
+    avgMarginPct: avg * 100,
+    belowTarget: priced.filter((s) => s.status === 'baixa').length,
+    loss: priced.filter((s) => s.status === 'prejuizo').length,
+    breakEvenRevenue: breakEvenRevenue(fixedTotal, avg),
+    staleIngredients: ingredients.filter(
+      (i) => i.active && i.usedIn > 0 && (!i.priceUpdatedAt || new Date(`${i.priceUpdatedAt}T00:00:00Z`).getTime() < limit),
+    ).length,
+  };
+}
+
 // ─── Leitura consolidada ─────────────────────────────────────────────────────
 
-export async function getPricingBundle(): Promise<PricingBundleDTO> {
+/** `priceOverrides`: simulação — id do insumo → novo preço de compra (nada é gravado). */
+export async function getPricingBundle(priceOverrides: Record<string, number> = {}): Promise<PricingBundleDTO> {
   const settingsRow = await getSettingsRow();
   const settings = settingsDTO(settingsRow);
 
@@ -232,7 +326,7 @@ export async function getPricingBundle(): Promise<PricingBundleDTO> {
       name: i.name,
       unit: i.unit,
       purchaseQty: num(i.purchaseQty),
-      purchasePrice: num(i.purchasePrice),
+      purchasePrice: priceOverrides[i.id] ?? num(i.purchasePrice),
       lossPct: num(i.lossPct),
     })),
     resources: resourceRows.map((r) => ({
@@ -310,6 +404,7 @@ export async function getPricingBundle(): Promise<PricingBundleDTO> {
       productId: s.productId,
       productName: s.product?.name ?? null,
       productPrice: s.product ? num(s.product.salePrice) : null,
+      ...pricingExtras(s, r, settings),
       active: s.active,
       lines: s.lines.map((l, idx) => {
         const lr = r.lines[idx];
@@ -344,7 +439,8 @@ export async function getPricingBundle(): Promise<PricingBundleDTO> {
     };
   });
 
-  return { settings, fixedCosts, fixedTotal, revenue, fixedRatePct: rate, resources, ingredients, sheets };
+  const summary = buildSummary(sheets, ingredients, settings, fixedTotal);
+  return { settings, fixedCosts, fixedTotal, revenue, fixedRatePct: rate, resources, ingredients, sheets, summary };
 }
 
 // ─── Custos fixos ────────────────────────────────────────────────────────────
@@ -545,6 +641,7 @@ export async function duplicateSheet(id: string) {
       lossPct: src.lossPct,
       markupPct: src.markupPct,
       totalWeightG: src.totalWeightG,
+      actualPrice: src.actualPrice,
       notes: src.notes,
       lines: {
         create: src.lines.map((l) => ({
@@ -567,13 +664,16 @@ export async function applySheetPrice(id: string, price?: number) {
   if (!sheet) throw notFound('Ficha');
   if (sheet.kind !== 'produto') throw badRequest('Só fichas de produto têm preço de venda.');
   if (!sheet.productId) throw badRequest('Vincule a ficha a um produto antes de aplicar o preço.');
-  const finalPrice = Math.round((price ?? sheet.suggestedPrice) * 100) / 100;
+  const finalPrice = Math.round((price ?? sheet.targetPrice ?? sheet.suggestedPrice) * 100) / 100;
   if (!(finalPrice > 0)) throw badRequest('O preço calculado é zero. Preencha a ficha antes de aplicar.');
-  const product = await prisma.product.update({
-    where: { id: sheet.productId },
-    data: { salePrice: finalPrice, cost: Math.round(sheet.costPerUnit * 100) / 100 },
-    select: { id: true, name: true, salePrice: true, cost: true },
-  });
+  const [product] = await prisma.$transaction([
+    prisma.product.update({
+      where: { id: sheet.productId },
+      data: { salePrice: finalPrice, cost: Math.round(sheet.costPerUnit * 100) / 100 },
+      select: { id: true, name: true, salePrice: true, cost: true },
+    }),
+    prisma.pricingSheet.update({ where: { id }, data: { actualPrice: finalPrice } }),
+  ]);
   return { productId: product.id, name: product.name, salePrice: num(product.salePrice), cost: num(product.cost) };
 }
 
@@ -637,6 +737,7 @@ export async function importPricing(input: PricingImportInput, replaceFixedCosts
           lossPct: s.lossPct,
           markupPct: s.markupPct ?? 100,
           totalWeightG: s.totalWeightG ?? 0,
+          ...(s.actualPrice ? { actualPrice: s.actualPrice } : {}),
         };
         const row = await tx.pricingSheet.upsert({
           where: { kind_name: { kind: s.kind, name: s.name } },
@@ -675,4 +776,63 @@ export async function importPricing(input: PricingImportInput, replaceFixedCosts
     sheets: input.sheets.length,
     warnings,
   };
+}
+
+// ─── Vínculo com o cadastro de produtos ──────────────────────────────────────
+
+const norm = (s: string) =>
+  s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+/** Liga fichas de produto sem vínculo ao produto cadastrado de mesmo nome (sem acento/caixa). */
+export async function autoLinkProducts(): Promise<{ linked: Array<{ sheet: string; product: string }>; unmatched: string[] }> {
+  const [sheets, products, taken] = await Promise.all([
+    prisma.pricingSheet.findMany({ where: { kind: 'produto', productId: null }, select: { id: true, name: true } }),
+    prisma.product.findMany({ where: { active: true }, select: { id: true, name: true } }),
+    prisma.pricingSheet.findMany({ where: { productId: { not: null } }, select: { productId: true } }),
+  ]);
+  const used = new Set(taken.map((x) => x.productId));
+  const byName = new Map<string, { id: string; name: string }>();
+  for (const p of products) if (!used.has(p.id) && !byName.has(norm(p.name))) byName.set(norm(p.name), p);
+  const linked: Array<{ sheet: string; product: string }> = [];
+  const unmatched: string[] = [];
+  for (const s of sheets) {
+    const p = byName.get(norm(s.name));
+    if (!p) {
+      unmatched.push(s.name);
+      continue;
+    }
+    byName.delete(norm(s.name));
+    await prisma.pricingSheet.update({ where: { id: s.id }, data: { productId: p.id } });
+    linked.push({ sheet: s.name, product: p.name });
+  }
+  return { linked, unmatched };
+}
+
+/** Simula o impacto de um novo preço de compra de insumo nas fichas de produto. */
+export async function simulateIngredientPrice(
+  ingredientId: string,
+  newPurchasePrice: number,
+): Promise<Array<{ sheetId: string; name: string; costBefore: number; costAfter: number; marginBefore: number; marginAfter: number }>> {
+  const before = await getPricingBundle();
+  const ing = before.ingredients.find((i) => i.id === ingredientId);
+  if (!ing) throw notFound('Insumo');
+  const after = await getPricingBundle({ [ingredientId]: newPurchasePrice });
+  const afterById = new Map(after.sheets.map((s) => [s.id, s]));
+  return before.sheets
+    .filter((s) => s.kind === 'produto')
+    .map((s) => ({ s, a: afterById.get(s.id)! }))
+    .filter(({ s, a }) => Math.abs(a.costPerUnit - s.costPerUnit) > 1e-9)
+    .map(({ s, a }) => ({
+      sheetId: s.id,
+      name: s.name,
+      costBefore: s.costPerUnit,
+      costAfter: a.costPerUnit,
+      marginBefore: s.channels.balcao.mcPct,
+      marginAfter: a.channels.balcao.mcPct,
+    }));
 }

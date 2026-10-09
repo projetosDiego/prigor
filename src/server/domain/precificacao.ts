@@ -224,3 +224,37 @@ export function averageRevenue(monthlyTotals: number[]): number {
   const valid = monthlyTotals.filter((v) => v > 0);
   return valid.length === 0 ? 0 : valid.reduce((a, b) => a + b, 0) / valid.length;
 }
+
+/** Arredonda para cima ao múltiplo de `step` (padrão R$ 0,05). */
+export function roundUpToStep(value: number, step = 0.05): number {
+  if (!(value > 0) || !(step > 0)) return 0;
+  const cents = Math.round(value * 100 - 1e-9);
+  const stepCents = Math.round(step * 100);
+  return (Math.ceil(cents / stepCents) * stepCents) / 100;
+}
+
+export interface ChannelMargin {
+  price: number;
+  /** Margem de contribuição em R$ por unidade. */
+  mc: number;
+  /** Margem de contribuição sobre o preço (0–1). */
+  mcPct: number;
+}
+
+/** Margem de um canal: preço − custo − taxas (% do preço). */
+export function channelMargin(price: number, costPerUnit: number, feePct: number): ChannelMargin {
+  const p = n(price);
+  const mc = p - n(costPerUnit) - (n(feePct) / 100) * p;
+  return { price: p, mc, mcPct: p > 0 ? mc / p : 0 };
+}
+
+/** Menor preço que entrega a margem alvo (% do preço) no canal, já arredondado para cima. */
+export function priceForTargetMargin(costPerUnit: number, targetMarginPct: number, feePct: number): number {
+  const divisor = 1 - n(feePct) / 100 - n(targetMarginPct) / 100;
+  return divisor > 0 ? roundUpToStep(n(costPerUnit) / divisor) : 0;
+}
+
+/** Faturamento mensal de equilíbrio: custos fixos ÷ margem de contribuição média. */
+export function breakEvenRevenue(fixedTotal: number, avgMcPct: number): number {
+  return avgMcPct > 0 ? n(fixedTotal) / avgMcPct : 0;
+}

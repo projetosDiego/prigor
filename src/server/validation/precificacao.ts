@@ -33,6 +33,7 @@ export const pricingSettingsSchema = z.object({
   ifoodFeePct: numeric('Taxa iFood', { max: 99 }),
   cardFeePct: numeric('Taxa de cartão', { max: 99 }),
   taxPct: numeric('Imposto', { max: 99 }),
+  resellerCommissionPct: numeric('Comissão da revenda', { max: 99 }).default(0),
   targetMarginPct: numeric('Margem alvo', { max: 95 }),
   revenueMonths: numeric('Meses da média', { min: 1, max: 12 }),
   revenueOverride: z
@@ -103,6 +104,18 @@ export const pricingSheetSchema = z.object({
   lossPct: numeric('Perda', { max: 99 }).default(0),
   markupPct: numeric('Markup', { max: 10000 }).default(100),
   totalWeightG: numeric('Peso total (g)').default(0),
+  actualPrice: z
+    .union([z.number(), z.string(), z.null()])
+    .optional()
+    .transform((v, ctx) => {
+      if (v === null || v === undefined || v === '') return null;
+      const parsed = typeof v === 'number' ? v : Number(String(v).replace(',', '.'));
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        ctx.addIssue({ code: 'custom', message: 'Preço praticado inválido.' });
+        return z.NEVER;
+      }
+      return parsed === 0 ? null : parsed;
+    }),
   notes: optionalText(2000),
   productId: z.string().uuid().nullish(),
   active: z.boolean().default(true),
@@ -149,6 +162,7 @@ export const pricingImportSchema = z.object({
         lossPct: numeric('Perda', { max: 99 }).default(0),
         markupPct: numeric('Markup', { max: 10000 }).nullish(),
         totalWeightG: numeric('Peso').nullish(),
+        actualPrice: numeric('Preço praticado').nullish(),
         lines: z
           .array(
             z.object({

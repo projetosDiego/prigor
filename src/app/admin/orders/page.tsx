@@ -551,6 +551,16 @@ export default function OrdersPage() {
 
   const comissaoFinal = subtotal > 0 ? Math.max(0, totalComissao * (totalGeral / subtotal)) : 0;
 
+  // Margem estimada do pedido em edição (custo atual do cadastro do produto).
+  const custoPedido = itensTemp.reduce((sum, item) => {
+    const prod = produtos.find((p) => p.id === item.productId);
+    return sum + (prod?.cost ?? 0) * item.quantity;
+  }, 0);
+  const semCustoPedido = itensTemp.some((item) => !((produtos.find((p) => p.id === item.productId)?.cost ?? 0) > 0));
+  const vendaLiquida = Math.max(0, subtotal - discountTotal);
+  const lucroPedido = vendaLiquida - custoPedido - comissaoFinal;
+  const lucroPct = vendaLiquida > 0 ? lucroPedido / vendaLiquida : 0;
+
   const clientesFiltrados = (clienteBusca.trim()
     ? clientes.filter((c) => {
         const q = clienteBusca.toLowerCase();
@@ -1542,6 +1552,14 @@ export default function OrdersPage() {
                       </td>
                       <td className="py-4 px-5 text-right font-black text-stone-850">
                         {ped.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        {ped.margin && ped.status !== 'cancelado' && (
+                          <div
+                            className={`text-[10px] font-bold ${ped.margin.profitPct < 0.15 ? 'text-red-600' : 'text-emerald-600'}`}
+                            title={ped.margin.incomplete ? 'Algum item está sem custo cadastrado' : 'Lucro = venda líquida − custo − comissão'}
+                          >
+                            lucro {ped.margin.profit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} ({(ped.margin.profitPct * 100).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}%){ped.margin.incomplete ? '*' : ''}
+                          </div>
+                        )}
                       </td>
                       <td className="py-4 px-5 text-center">
                       <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
@@ -2374,6 +2392,14 @@ export default function OrdersPage() {
                     <span>Subtotal Itens:</span>
                     <span>{subtotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
                   </div>
+                  {itensTemp.length > 0 && (
+                    <div className={`flex justify-between items-center pt-2 text-xs font-bold ${lucroPct < 0.15 ? 'text-red-700' : 'text-emerald-800'}`} title="Venda líquida − custo dos produtos − comissão">
+                      <span>Lucro estimado{semCustoPedido ? ' (há item sem custo)' : ''}:</span>
+                      <span>
+                        {lucroPedido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} ({(lucroPct * 100).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}%)
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center pt-2">
                     <span className="text-xs font-extrabold uppercase tracking-wide text-amber-850">Total Geral:</span>
                     <span className="text-lg font-black text-amber-950">

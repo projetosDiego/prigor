@@ -18,6 +18,10 @@ import {
   UserRound,
   CheckCircle2,
   AlertTriangle,
+  Download,
+  Link2,
+  LayoutDashboard,
+  TrendingDown,
 } from 'lucide-react';
 
 import { responseErrorMessage } from '@/lib/errors';
@@ -31,7 +35,7 @@ import type {
   SheetDTO,
 } from '@/server/services/precificacao';
 
-type Tab = 'fichas' | 'insumos' | 'recursos' | 'custos';
+type Tab = 'painel' | 'fichas' | 'insumos' | 'recursos' | 'custos';
 type Kind = 'produto' | 'massa' | 'recheio';
 
 const brl = (v: number, digits = 2) =>
@@ -101,7 +105,7 @@ export default function PricingPage() {
   const { toast } = useToast();
   const [data, setData] = useState<PricingBundleDTO | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>('fichas');
+  const [tab, setTab] = useState<Tab>('painel');
 
   const load = useCallback(async () => {
     try {
@@ -138,7 +142,13 @@ export default function PricingPage() {
             Insumos, fichas técnicas e preço de venda com custo fixo rateado pela receita real.
           </p>
         </div>
-        <ImportButton onDone={load} />
+        <div className="flex flex-wrap gap-2">
+          <LinkProductsButton onDone={load} />
+          <button className={btnGhost} onClick={() => exportCsv(data)}>
+            <Download className="h-4 w-4" /> Exportar CSV
+          </button>
+          <ImportButton onDone={load} />
+        </div>
       </header>
 
       <Summary data={data} />
@@ -153,7 +163,8 @@ export default function PricingPage() {
       <nav className="flex flex-wrap gap-2 border-b border-stone-200 pb-2">
         {(
           [
-            ['fichas', 'Fichas & Preços'],
+            ['painel', 'Painel'],
+            ['fichas', 'Produtos & Fichas'],
             ['insumos', 'Insumos'],
             ['recursos', 'Equipamentos & Mão de obra'],
             ['custos', 'Custos fixos & Parâmetros'],
@@ -171,6 +182,7 @@ export default function PricingPage() {
         ))}
       </nav>
 
+      {tab === 'painel' && <DashboardTab data={data} reload={load} />}
       {tab === 'fichas' && <SheetsTab data={data} reload={load} />}
       {tab === 'insumos' && <IngredientsTab data={data} reload={load} />}
       {tab === 'recursos' && <ResourcesTab data={data} reload={load} />}
@@ -182,29 +194,230 @@ export default function PricingPage() {
 // ─── Resumo ──────────────────────────────────────────────────────────────────
 
 function Summary({ data }: { data: PricingBundleDTO }) {
-  const produtos = data.sheets.filter((s) => s.kind === 'produto' && s.active);
-  const avgMc = produtos.length ? produtos.reduce((s, p) => s + p.contributionMarginPct, 0) / produtos.length : 0;
-  const below = produtos.filter((p) => p.contributionMarginPct < data.settings.targetMarginPct / 100).length;
+  const sm = data.summary;
   const cards = [
-    { label: 'Produtos precificados', value: String(produtos.length), sub: `${data.ingredients.length} insumos` },
-    { label: 'Custo fixo mensal', value: brl(data.fixedTotal, 0), sub: `${data.fixedRatePct.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% da receita` },
+    { label: 'Produtos', value: String(sm.products), sub: `${data.ingredients.length} insumos cadastrados` },
     {
-      label: 'Receita média usada',
-      value: brl(data.revenue.used, 0),
-      sub: data.revenue.source === 'manual' ? 'valor manual' : data.revenue.source === 'pedidos' ? `média dos últimos ${data.settings.revenueMonths} meses` : 'sem pedidos — custo fixo não rateado',
+      label: 'Margem média (balcão)',
+      value: `${sm.avgMarginPct.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`,
+      sub: `meta ${data.settings.targetMarginPct}% · ${sm.belowTarget} abaixo${sm.loss ? ` · ${sm.loss} no prejuízo` : ''}`,
+      warn: sm.loss > 0,
     },
-    { label: 'Margem média (contribuição)', value: pct(avgMc), sub: `${below} abaixo da meta de ${data.settings.targetMarginPct}%` },
+    {
+      label: 'Custo fixo mensal',
+      value: brl(data.fixedTotal, 0),
+      sub: `${data.fixedRatePct.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% da receita de ${brl(data.revenue.used, 0)}`,
+    },
+    {
+      label: 'Ponto de equilíbrio',
+      value: sm.breakEvenRevenue > 0 ? brl(sm.breakEvenRevenue, 0) : '—',
+      sub: sm.breakEvenRevenue > 0 && data.revenue.used > 0 ? `${Math.round((data.revenue.used / sm.breakEvenRevenue) * 100)}% do equilíbrio atingido` : 'faturamento mensal mínimo',
+    },
   ];
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       {cards.map((c) => (
-        <div key={c.label} className="rounded-xl border border-stone-200 bg-white p-4">
+        <div key={c.label} className={`rounded-xl border bg-white p-4 ${c.warn ? 'border-red-300' : 'border-stone-200'}`}>
           <div className="text-[11px] font-bold uppercase tracking-wide text-stone-500">{c.label}</div>
           <div className="mt-1 text-2xl font-black text-stone-900">{c.value}</div>
           <div className="text-xs text-stone-500">{c.sub}</div>
         </div>
       ))}
     </div>
+  );
+}
+
+function exportCsv(data: PricingBundleDTO) {
+  const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
+  const num = (v: number) => v.toFixed(2).replace('.', ',');
+  const rows = [
+    ['Produto', 'Custo/un', 'Preço em uso', 'Origem do preço', 'Margem balcão %', 'Margem iFood %', 'Margem revenda %', 'Preço p/ meta'],
+    ...data.sheets
+      .filter((s) => s.kind === 'produto')
+      .map((s) => [
+        s.name,
+        num(s.costPerUnit),
+        num(s.effectivePrice),
+        s.priceSource,
+        num(s.channels.balcao.mcPct * 100),
+        num(s.channels.ifood.mcPct * 100),
+        num(s.channels.revenda.mcPct * 100),
+        num(s.targetPrice),
+      ]),
+  ];
+  const csv = '\ufeff' + rows.map((r) => r.map(esc).join(';')).join('\r\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'precificacao-produtos.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function LinkProductsButton({ onDone }: { onDone: () => Promise<void> }) {
+  const { toast } = useToast();
+  const [busy, setBusy] = useState(false);
+  async function run() {
+    setBusy(true);
+    try {
+      const r = await api<{ linked: unknown[]; unmatched: string[] }>('/api/pricing/link-products', 'POST', {});
+      toast(
+        `${r.linked.length} ficha(s) ligada(s) ao cadastro.` + (r.unmatched.length ? ` Sem correspondência: ${r.unmatched.slice(0, 4).join(', ')}${r.unmatched.length > 4 ? '…' : ''}.` : ''),
+        r.unmatched.length ? 'info' : 'success',
+      );
+      await onDone();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Erro ao vincular.', 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <button className={btnGhost} disabled={busy} onClick={() => void run()} title="Liga cada ficha ao produto cadastrado de mesmo nome">
+      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />} Vincular produtos
+    </button>
+  );
+}
+
+// ─── Painel ──────────────────────────────────────────────────────────────────
+
+function MarginBar({ value, target }: { value: number; target: number }) {
+  const scale = 0.7;
+  const w = Math.max(0, Math.min(1, value / scale)) * 100;
+  const tpos = Math.min(1, target / scale) * 100;
+  const color = value < 0 ? 'bg-red-600' : value < target ? 'bg-amber-500' : 'bg-emerald-500';
+  return (
+    <div className="relative h-3 w-full rounded-full bg-stone-100">
+      <div className={`h-3 rounded-full ${color}`} style={{ width: `${w}%` }} />
+      <div className="absolute top-[-2px] h-4 w-0.5 bg-stone-700" style={{ left: `${tpos}%` }} title={`Meta ${pct(target)}`} />
+    </div>
+  );
+}
+
+function DashboardTab({ data, reload }: { data: PricingBundleDTO; reload: () => Promise<void> }) {
+  const { toast, confirm } = useToast();
+  const target = data.settings.targetMarginPct / 100;
+  const products = data.sheets.filter((s) => s.kind === 'produto' && s.active && s.status !== 'sem_custo');
+  const toFix = products.filter((s) => s.status === 'baixa' || s.status === 'prejuizo').sort((a, b) => a.channels.balcao.mcPct - b.channels.balcao.mcPct);
+  const bars = [...products].sort((a, b) => a.channels.balcao.mcPct - b.channels.balcao.mcPct);
+  const semCusto = data.sheets.filter((s) => s.kind === 'produto' && s.active && s.status === 'sem_custo');
+
+  async function apply(s: SheetDTO) {
+    if (!s.productId) return toast('Vincule a ficha a um produto (botão "Vincular produtos" ou editar ficha).', 'error');
+    const ok = await confirm({
+      title: 'Aplicar preço',
+      message: `Gravar ${brl(s.targetPrice)} como preço de "${s.productName}"? (hoje: ${brl(s.effectivePrice)})`,
+      confirmLabel: 'Aplicar',
+    });
+    if (!ok) return;
+    try {
+      await api(`/api/pricing/sheets/${s.id}/apply-price`, 'POST', { price: s.targetPrice });
+      toast('Preço aplicado no produto.', 'success');
+      await reload();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Erro ao aplicar.', 'error');
+    }
+  }
+
+  return (
+    <section className="space-y-5">
+      <Summary data={data} />
+
+      {(data.summary.staleIngredients > 0 || semCusto.length > 0 || data.revenue.source === 'nenhuma') && (
+        <div className="space-y-1 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <div className="flex items-center gap-2 font-bold">
+            <AlertTriangle className="h-4 w-4" /> Pontos de atenção
+          </div>
+          {data.summary.staleIngredients > 0 && (
+            <div>{data.summary.staleIngredients} insumo(s) em uso com preço de mais de 60 dias — confira na aba Insumos.</div>
+          )}
+          {semCusto.length > 0 && <div>{semCusto.length} produto(s) sem custo calculado (ficha vazia): {semCusto.slice(0, 5).map((s) => s.name).join(', ')}.</div>}
+          {data.revenue.source === 'nenhuma' && <div>Sem pedidos nos últimos meses: o custo fixo não está sendo rateado. Informe a receita manual em Custos & Parâmetros.</div>}
+        </div>
+      )}
+
+      <div className="rounded-xl border border-stone-200 bg-white">
+        <div className="flex items-center gap-2 border-b border-stone-200 px-4 py-3">
+          <TrendingDown className="h-4 w-4 text-red-500" />
+          <h2 className="text-sm font-black uppercase tracking-wide text-stone-700">Preços para ajustar ({toFix.length})</h2>
+        </div>
+        {toFix.length === 0 ? (
+          <div className="px-4 py-6 text-center text-sm text-emerald-700">Todos os produtos estão na margem alvo de {data.settings.targetMarginPct}%.</div>
+        ) : (
+          <div className="divide-y divide-stone-100">
+            {toFix.map((s) => (
+              <div key={s.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                <div className="min-w-[10rem] flex-1">
+                  <div className="font-semibold text-stone-900">{s.name}</div>
+                  <div className="text-xs text-stone-500">
+                    custo {brl(s.costPerUnit)} · margem <span className={s.status === 'prejuizo' ? 'font-bold text-red-600' : 'font-bold text-amber-600'}>{pct(s.channels.balcao.mcPct)}</span>
+                  </div>
+                </div>
+                <div className="text-right text-sm">
+                  <div className="text-stone-400 line-through">{brl(s.effectivePrice)}</div>
+                  <div className="font-black text-emerald-700">{brl(s.targetPrice)}</div>
+                </div>
+                <button className={btnGhost} onClick={() => void apply(s)} disabled={!s.productId} title={s.productId ? 'Gravar no cadastro do produto' : 'Sem produto vinculado'}>
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600" /> Aplicar
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-stone-200 bg-white">
+        <div className="flex items-center gap-2 border-b border-stone-200 px-4 py-3">
+          <LayoutDashboard className="h-4 w-4 text-amber-600" />
+          <h2 className="text-sm font-black uppercase tracking-wide text-stone-700">Margem por produto e canal</h2>
+          <span className="ml-auto text-[11px] text-stone-400">traço = meta {data.settings.targetMarginPct}%</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-left text-[11px] font-bold uppercase tracking-wide text-stone-500">
+              <tr>
+                <th className="px-4 py-2">Produto</th>
+                <th className="px-3 py-2 text-right">Preço</th>
+                <th className="w-48 px-3 py-2">Balcão</th>
+                <th className="px-3 py-2 text-right">iFood</th>
+                <th className="px-3 py-2 text-right">Revenda</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-stone-100">
+              {bars.map((s) => (
+                <tr key={s.id}>
+                  <td className="px-4 py-2 font-semibold text-stone-900">{s.name}</td>
+                  <td className="px-3 py-2 text-right text-stone-700">
+                    {brl(s.effectivePrice)}
+                    <div className="text-[10px] text-stone-400">{s.priceSource}</div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1">
+                        <MarginBar value={s.channels.balcao.mcPct} target={target} />
+                      </div>
+                      <span className={`w-12 text-right text-xs font-bold ${s.channels.balcao.mcPct < target ? 'text-red-600' : 'text-emerald-600'}`}>{pct(s.channels.balcao.mcPct)}</span>
+                    </div>
+                  </td>
+                  <td className={`px-3 py-2 text-right text-xs font-bold ${s.channels.ifood.mcPct < 0 ? 'text-red-600' : s.channels.ifood.mcPct < target ? 'text-amber-600' : 'text-stone-700'}`}>{pct(s.channels.ifood.mcPct)}</td>
+                  <td className={`px-3 py-2 text-right text-xs font-bold ${s.channels.revenda.mcPct < 0 ? 'text-red-600' : s.channels.revenda.mcPct < target ? 'text-amber-600' : 'text-stone-700'}`}>{pct(s.channels.revenda.mcPct)}</td>
+                </tr>
+              ))}
+              {bars.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-stone-400">
+                    Nenhum produto precificado ainda.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <p className="border-t border-stone-100 px-4 py-2 text-[11px] text-stone-400">
+          Margem de contribuição = preço − custo de fabricação (com custo fixo rateado) − taxas do canal. Balcão: cartão + imposto; iFood: taxa iFood; revenda: imposto + comissão.
+        </p>
+      </div>
+    </section>
   );
 }
 
@@ -262,12 +475,12 @@ function SheetsTab({ data, reload }: { data: PricingBundleDTO; reload: () => Pro
     if (!s.productId) return toast('Vincule a ficha a um produto (editar ficha) para aplicar o preço.', 'error');
     const ok = await confirm({
       title: 'Aplicar preço',
-      message: `Gravar ${brl(s.suggestedPrice)} como preço de venda de "${s.productName}"? (hoje: ${brl(s.productPrice ?? 0)})`,
+      message: `Gravar ${brl(s.targetPrice)} (margem alvo) como preço de venda de "${s.productName}"? (hoje: ${brl(s.productPrice ?? 0)})`,
       confirmLabel: 'Aplicar',
     });
     if (!ok) return;
     try {
-      await api(`/api/pricing/sheets/${s.id}/apply-price`, 'POST', {});
+      await api(`/api/pricing/sheets/${s.id}/apply-price`, 'POST', { price: s.targetPrice });
       toast('Preço aplicado no produto.', 'success');
       await reload();
     } catch (e) {
@@ -325,10 +538,11 @@ function SheetsTab({ data, reload }: { data: PricingBundleDTO; reload: () => Pro
               <th className="px-3 py-2 text-right">Custo/un</th>
               {kind === 'produto' ? (
                 <>
-                  <th className="px-3 py-2 text-right">Preço sugerido</th>
+                  <th className="px-3 py-2 text-right">Preço em uso</th>
+                  <th className="px-3 py-2 text-right">Balcão</th>
                   <th className="px-3 py-2 text-right">iFood</th>
-                  <th className="px-3 py-2 text-right">Preço atual</th>
-                  <th className="px-3 py-2 text-right">Margem</th>
+                  <th className="px-3 py-2 text-right">Revenda</th>
+                  <th className="px-3 py-2 text-right">Preço p/ meta</th>
                 </>
               ) : (
                 <th className="px-3 py-2 text-right">Custo por {kind === 'massa' || kind === 'recheio' ? 'unid. de uso' : 'un'}</th>
@@ -338,9 +552,7 @@ function SheetsTab({ data, reload }: { data: PricingBundleDTO; reload: () => Pro
           </thead>
           <tbody className="divide-y divide-stone-100">
             {rows.map((s) => {
-              const margin = s.contributionMarginPct;
-              const low = s.kind === 'produto' && margin < target;
-              const priceGap = s.productPrice != null && s.suggestedPrice > 0 ? s.productPrice - s.suggestedPrice : null;
+              const low = s.kind === 'produto' && s.status === 'baixa';
               return (
                 <tr key={s.id} className="hover:bg-stone-50">
                   <td className="px-3 py-2 font-semibold text-stone-900">
@@ -355,16 +567,14 @@ function SheetsTab({ data, reload }: { data: PricingBundleDTO; reload: () => Pro
                   <td className="px-3 py-2 text-right">{brl(s.kind === 'produto' ? s.costPerUnit : s.unitCost, s.kind === 'produto' ? 2 : 4)}</td>
                   {s.kind === 'produto' ? (
                     <>
-                      <td className="px-3 py-2 text-right font-bold text-amber-700">{brl(s.suggestedPrice)}</td>
-                      <td className="px-3 py-2 text-right text-stone-600">{brl(s.ifoodPrice)}</td>
-                      <td className="px-3 py-2 text-right">
-                        {s.productPrice != null ? (
-                          <span className={priceGap != null && priceGap < -0.005 ? 'font-bold text-red-600' : 'text-stone-700'}>{brl(s.productPrice)}</span>
-                        ) : (
-                          <span className="text-stone-300">—</span>
-                        )}
+                      <td className="px-3 py-2 text-right font-semibold text-stone-800">
+                        {brl(s.effectivePrice)}
+                        <div className="text-[10px] font-normal text-stone-400">{s.priceSource}</div>
                       </td>
-                      <td className={`px-3 py-2 text-right font-bold ${low ? 'text-red-600' : 'text-emerald-600'}`}>{pct(margin)}</td>
+                      <td className={`px-3 py-2 text-right font-bold ${s.status === 'prejuizo' ? 'text-red-600' : low ? 'text-amber-600' : 'text-emerald-600'}`}>{pct(s.channels.balcao.mcPct)}</td>
+                      <td className={`px-3 py-2 text-right text-xs font-bold ${s.channels.ifood.mcPct < target ? 'text-amber-600' : 'text-stone-700'}`}>{pct(s.channels.ifood.mcPct)}</td>
+                      <td className={`px-3 py-2 text-right text-xs font-bold ${s.channels.revenda.mcPct < target ? 'text-amber-600' : 'text-stone-700'}`}>{pct(s.channels.revenda.mcPct)}</td>
+                      <td className="px-3 py-2 text-right font-bold text-amber-700">{brl(s.targetPrice)}</td>
                     </>
                   ) : (
                     <td className="px-3 py-2 text-right text-stone-600">
@@ -374,7 +584,7 @@ function SheetsTab({ data, reload }: { data: PricingBundleDTO; reload: () => Pro
                   )}
                   <td className="whitespace-nowrap px-3 py-2 text-right">
                     {s.kind === 'produto' && s.productId && (
-                      <button title="Aplicar preço sugerido no produto" onClick={() => void apply(s)} className="rounded p-1.5 text-emerald-600 hover:bg-emerald-50">
+                      <button title="Aplicar preço da margem alvo no produto" onClick={() => void apply(s)} className="rounded p-1.5 text-emerald-600 hover:bg-emerald-50">
                         <CheckCircle2 className="h-4 w-4" />
                       </button>
                     )}
@@ -448,6 +658,7 @@ function SheetEditor({
     lossPct: String(sheet?.lossPct ?? 0),
     markupPct: String(sheet?.markupPct ?? 100),
     totalWeightG: String(sheet?.totalWeightG ?? 0),
+    actualPrice: sheet?.actualPrice ? String(sheet.actualPrice) : '',
     notes: sheet?.notes ?? '',
     productId: sheet?.productId ?? '',
     active: sheet?.active ?? true,
@@ -515,7 +726,7 @@ function SheetEditor({
   const markupTarget = markupForTargetMargin(data.settings.targetMarginPct, feePct);
 
   const options = useMemo(() => {
-    const subs = data.sheets.filter((s) => s.kind !== 'produto' && s.id !== sheet?.id);
+    const subs = data.sheets.filter((s) => s.id !== sheet?.id);
     return {
       ing: data.ingredients.filter((i) => i.active),
       res: data.resources.filter((r) => r.active),
@@ -545,6 +756,7 @@ function SheetEditor({
         lossPct: toNum(f.lossPct),
         markupPct: toNum(f.markupPct),
         totalWeightG: toNum(f.totalWeightG),
+        actualPrice: f.actualPrice.trim() ? toNum(f.actualPrice) : null,
         notes: f.notes.trim() || null,
         productId: f.productId || null,
         active: f.active,
@@ -642,7 +854,7 @@ function SheetEditor({
                           </option>
                         ))}
                       </optgroup>
-                      <optgroup label="Massas e recheios">
+                      <optgroup label="Massas, recheios e produtos prontos">
                         {options.subs.map((s) => (
                           <option key={s.id} value={`s:${s.id}`}>
                             {s.name}
@@ -693,8 +905,18 @@ function SheetEditor({
                   </button>
                 </div>
               </Field>
-              <Row k="Preço sugerido" v={brl(live?.suggestedPrice ?? 0)} strong accent />
+              <Row k="Preço sugerido (markup)" v={brl(live?.suggestedPrice ?? 0)} strong accent />
               <Row k="Preço iFood" v={brl(live?.ifoodPrice ?? 0)} />
+              <Field label="Preço praticado (R$)" hint="Quanto você realmente cobra no balcão. Vazio = usa o preço do produto vinculado.">
+                <input className={inputCls} inputMode="decimal" value={f.actualPrice} onChange={(e) => setF({ ...f, actualPrice: e.target.value })} />
+              </Field>
+              {toNum(f.actualPrice) > 0 && (
+                <Row
+                  k="Margem no preço praticado"
+                  v={pct((toNum(f.actualPrice) * (1 - feePct / 100) - (live?.costPerUnit ?? 0)) / toNum(f.actualPrice))}
+                  warn={(toNum(f.actualPrice) * (1 - feePct / 100) - (live?.costPerUnit ?? 0)) / toNum(f.actualPrice) < data.settings.targetMarginPct / 100}
+                />
+              )}
               {toNum(f.totalWeightG) > 0 && <Row k="Preço por kg" v={brl(live?.pricePerKg ?? 0)} />}
               <Row k="Margem de contribuição" v={`${brl(live?.contributionMargin ?? 0)} (${pct(mc)})`} warn={mc < data.settings.targetMarginPct / 100} />
               <Field label="Produto vinculado" hint="Permite aplicar o preço no catálogo">
@@ -745,6 +967,7 @@ function IngredientsTab({ data, reload }: { data: PricingBundleDTO; reload: () =
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
   const [editing, setEditing] = useState<IngredientDTO | 'new' | null>(null);
+  const [simulating, setSimulating] = useState<IngredientDTO | null>(null);
   // Data de referência fixa na montagem (ler o relógio no render quebra a regra de pureza do React).
   const [now] = useState(() => Date.now());
 
@@ -814,6 +1037,9 @@ function IngredientsTab({ data, reload }: { data: PricingBundleDTO; reload: () =
                   </td>
                   <td className="px-3 py-2 text-right text-stone-500">{i.usedIn}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-right">
+                    <button onClick={() => setSimulating(i)} className="rounded p-1.5 text-amber-600 hover:bg-amber-50" title="Simular novo preço de compra" disabled={i.usedIn === 0}>
+                      <Calculator className="h-4 w-4" />
+                    </button>
                     <button onClick={() => setEditing(i)} className="rounded p-1.5 text-stone-600 hover:bg-stone-100" title="Editar">
                       <Pencil className="h-4 w-4" />
                     </button>
@@ -835,6 +1061,7 @@ function IngredientsTab({ data, reload }: { data: PricingBundleDTO; reload: () =
         </table>
       </div>
       <p className="text-xs text-stone-400">Preços com mais de 90 dias aparecem em vermelho: vale conferir no fornecedor.</p>
+      {simulating && <SimulateModal ingredient={simulating} onClose={() => setSimulating(null)} />}
       {editing && (
         <IngredientModal
           item={editing === 'new' ? null : editing}
@@ -846,6 +1073,66 @@ function IngredientsTab({ data, reload }: { data: PricingBundleDTO; reload: () =
         />
       )}
     </section>
+  );
+}
+
+function SimulateModal({ ingredient, onClose }: { ingredient: IngredientDTO; onClose: () => void }) {
+  const { toast } = useToast();
+  const [price, setPrice] = useState(String(ingredient.purchasePrice));
+  const [busy, setBusy] = useState(false);
+  const [rows, setRows] = useState<Array<{ sheetId: string; name: string; costBefore: number; costAfter: number; marginBefore: number; marginAfter: number }> | null>(null);
+  async function run() {
+    setBusy(true);
+    try {
+      setRows(await api(`/api/pricing/ingredients/${ingredient.id}/simulate`, 'POST', { purchasePrice: toNum(price) }));
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Erro na simulação.', 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Modal title={`Simular: ${ingredient.name}`} onClose={onClose}>
+      <p className="mb-3 text-sm text-stone-500">
+        Hoje: {brl(ingredient.purchasePrice)} / {dec(ingredient.purchaseQty)} {ingredient.unit}. Informe o novo preço de compra para ver o efeito nos produtos (nada é gravado).
+      </p>
+      <div className="flex gap-2">
+        <input className={inputCls} inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />
+        <button className={btnPrimary} disabled={busy} onClick={() => void run()}>
+          {busy && <Loader2 className="h-4 w-4 animate-spin" />} Simular
+        </button>
+      </div>
+      {rows && (
+        <div className="mt-4 max-h-80 overflow-y-auto rounded-lg border border-stone-200">
+          {rows.length === 0 ? (
+            <div className="p-4 text-center text-sm text-stone-400">Nenhum produto muda de custo.</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-stone-50 text-left text-[11px] font-bold uppercase text-stone-500">
+                <tr>
+                  <th className="px-3 py-2">Produto</th>
+                  <th className="px-3 py-2 text-right">Custo</th>
+                  <th className="px-3 py-2 text-right">Margem</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-stone-100">
+                {rows.map((r) => (
+                  <tr key={r.sheetId}>
+                    <td className="px-3 py-2 font-semibold">{r.name}</td>
+                    <td className="px-3 py-2 text-right">
+                      {brl(r.costBefore)} → <strong>{brl(r.costAfter)}</strong>
+                    </td>
+                    <td className={`px-3 py-2 text-right font-bold ${r.marginAfter < r.marginBefore ? 'text-red-600' : 'text-emerald-600'}`}>
+                      {pct(r.marginBefore)} → {pct(r.marginAfter)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </Modal>
   );
 }
 
@@ -1123,6 +1410,7 @@ function CostsTab({ data, reload }: { data: PricingBundleDTO; reload: () => Prom
     ifoodFeePct: String(data.settings.ifoodFeePct),
     cardFeePct: String(data.settings.cardFeePct),
     taxPct: String(data.settings.taxPct),
+    resellerCommissionPct: String(data.settings.resellerCommissionPct),
     targetMarginPct: String(data.settings.targetMarginPct),
     revenueMonths: String(data.settings.revenueMonths),
     revenueOverride: data.settings.revenueOverride ? String(data.settings.revenueOverride) : '',
@@ -1142,6 +1430,7 @@ function CostsTab({ data, reload }: { data: PricingBundleDTO; reload: () => Prom
         ifoodFeePct: toNum(s.ifoodFeePct),
         cardFeePct: toNum(s.cardFeePct),
         taxPct: toNum(s.taxPct),
+        resellerCommissionPct: toNum(s.resellerCommissionPct),
         targetMarginPct: toNum(s.targetMarginPct),
         revenueMonths: toNum(s.revenueMonths),
         revenueOverride: s.revenueOverride.trim() ? toNum(s.revenueOverride) : null,
@@ -1238,6 +1527,7 @@ function CostsTab({ data, reload }: { data: PricingBundleDTO; reload: () => Prom
           <Field label="Margem alvo (%)"><input className={inputCls} inputMode="decimal" value={s.targetMarginPct} onChange={set('targetMarginPct')} /></Field>
           <Field label="Taxa de cartão (%)"><input className={inputCls} inputMode="decimal" value={s.cardFeePct} onChange={set('cardFeePct')} /></Field>
           <Field label="Imposto (%)"><input className={inputCls} inputMode="decimal" value={s.taxPct} onChange={set('taxPct')} /></Field>
+          <Field label="Comissão da revenda (%)"><input className={inputCls} inputMode="decimal" value={s.resellerCommissionPct} onChange={set('resellerCommissionPct')} /></Field>
           <Field label="Taxa iFood (%)"><input className={inputCls} inputMode="decimal" value={s.ifoodFeePct} onChange={set('ifoodFeePct')} /></Field>
           <Field label="Meses na média da receita"><input className={inputCls} inputMode="numeric" value={s.revenueMonths} onChange={set('revenueMonths')} /></Field>
           <div className="col-span-2">
