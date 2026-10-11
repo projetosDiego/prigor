@@ -439,12 +439,20 @@ export default function AdminDashboardPage() {
                   <Package className="h-5 w-5 text-purple-700" />
                   <h3 className="text-sm font-extrabold text-stone-900">Doces Campeões de Venda (Mês)</h3>
                 </div>
+                <div className="flex items-center gap-3">
+                <Link
+                  href="/admin/reports/units"
+                  className="text-xs font-bold text-purple-800 hover:underline flex items-center gap-1"
+                >
+                  Unidades (7x5/5x5) <ArrowRight className="h-3 w-3" />
+                </Link>
                 <Link
                   href="/admin/reports/products-abc"
                   className="text-xs font-bold text-purple-800 hover:underline flex items-center gap-1"
                 >
                   Curva ABC <ArrowRight className="h-3 w-3" />
                 </Link>
+                </div>
               </div>
 
               {erpData.topProducts.length === 0 ? (

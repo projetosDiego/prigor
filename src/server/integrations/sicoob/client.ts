@@ -20,10 +20,12 @@ const URLS = {
   production: {
     token: 'https://auth.sicoob.com.br/auth/realms/cooperado/protocol/openid-connect/token',
     cobranca: 'https://api.sicoob.com.br/cobranca-bancaria/v3',
+    pix: 'https://api.sicoob.com.br/pix/api/v2',
   },
   sandbox: {
     token: null,
     cobranca: 'https://sandbox.sicoob.com.br/sicoob/sandbox/cobranca-bancaria/v3',
+    pix: 'https://sandbox.sicoob.com.br/sicoob/sandbox/pix/api/v2',
   },
 } as const;
 
@@ -36,6 +38,12 @@ export const SICOOB_SCOPES = [
   'webhooks_consulta',
   'webhooks_alteracao',
 ].join(' ');
+
+/**
+ * Escopo para consultar Pix recebidos. Precisa estar habilitado no aplicativo do portal de
+ * desenvolvedores (API Pix). Sem ele o banco recusa — e o sistema avisa em vez de quebrar.
+ */
+export const SICOOB_PIX_SCOPES = ['cob.read', 'pix.read'].join(' ');
 
 export class SicoobNotConfiguredError extends Error {
   constructor(missing: string[]) {
@@ -77,7 +85,7 @@ function certificate(scope = ''): { pfx: Buffer; passphrase: string } {
   return { pfx: buffer, passphrase: e.SICOOB_CERT_PASSWORD };
 }
 
-async function accessToken(scope = ''): Promise<string> {
+async function accessToken(scope = '', scopes: string = SICOOB_SCOPES): Promise<string> {
   const e = integrationEnv(scope);
   if (!e.SICOOB_CLIENT_ID) throw new SicoobNotConfiguredError(['Client ID (SICOOB_CLIENT_ID)']);
 
@@ -86,14 +94,15 @@ async function accessToken(scope = ''): Promise<string> {
     return e.SICOOB_SANDBOX_TOKEN;
   }
 
-  const cached = tokenCache.get(scope);
+  const cacheKey = `${scope}::${scopes}`;
+  const cached = tokenCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now() + 60_000) return cached.value;
 
   const { pfx, passphrase } = certificate(scope);
   const form = new URLSearchParams({
     grant_type: 'client_credentials',
     client_id: e.SICOOB_CLIENT_ID,
-    scope: SICOOB_SCOPES,
+    scope: scopes,
   }).toString();
 
   const res = await httpRequest<{ access_token?: string; expires_in?: number }>({
@@ -109,7 +118,7 @@ async function accessToken(scope = ''): Promise<string> {
     throw new SicoobApiError('Sicoob recusou a autenticação (token).', res.status, res.body);
   }
 
-  tokenCache.set(scope, {
+  tokenCache.set(cacheKey, {
     value: res.body.access_token,
     expiresAt: Date.now() + (res.body.expires_in ?? 300) * 1000,
   });
@@ -146,9 +155,36 @@ export async function sicoobCobranca<T = unknown>(
     throw err;
   }
 
-  if (res.status === 401) tokenCache.delete(scope); // força renovar na próxima
+  if (res.status === 401) tokenCache.delete(`${scope}::${SICOOB_SCOPES}`); // força renovar na próxima
   if (res.status < 200 || res.status >= 300) {
     throw new SicoobApiError(`Sicoob respondeu ${res.status} em ${method} ${path}.`, res.status, res.body);
+  }
+  return res;
+}
+
+/** Chamada autenticada à API Pix (consulta de Pix recebidos). */
+export async function sicoobPix<T = unknown>(path: string, scopeArg?: string | null): Promise<HttpResponse<T>> {
+  const scope = normalizeScope(scopeArg);
+  const e = integrationEnv(scope);
+  const base = URLS[e.SICOOB_ENV].pix;
+  const token = await accessToken(scope, SICOOB_PIX_SCOPES);
+  const tls = e.SICOOB_ENV === 'production' ? certificate(scope) : {};
+
+  let res: HttpResponse<T>;
+  try {
+    res = await httpRequest<T>({
+      method: 'GET',
+      url: `${base}${path}`,
+      headers: { Authorization: `Bearer ${token}`, client_id: e.SICOOB_CLIENT_ID },
+      ...tls,
+    });
+  } catch (err) {
+    if (err instanceof IntegrationHttpError) throw new SicoobApiError(err.message, 0, null);
+    throw err;
+  }
+  if (res.status === 401 || res.status === 403) tokenCache.delete(`${scope}::${SICOOB_PIX_SCOPES}`);
+  if (res.status < 200 || res.status >= 300) {
+    throw new SicoobApiError(`Sicoob respondeu ${res.status} em GET ${path}.`, res.status, res.body);
   }
   return res;
 }

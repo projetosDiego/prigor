@@ -2,6 +2,8 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { FavStar, useFavorites } from '@/components/shared/favorites';
+import { CompositionEditor } from '@/components/products/CompositionEditor';
 import { 
   Package, 
   Plus, 
@@ -33,6 +35,7 @@ type LinhaReceita = Omit<RecipeLineDTO, 'id' | 'observation'> & {
 
 
 export default function ProductsPage() {
+  const { isFav, toggle: toggleFav, sortFavFirst } = useFavorites();
   const [produtos, setProdutos] = useState<ProductDTO[]>([]);
   const [insumosList, setInsumosList] = useState<ProductDTO[]>([]); // Para montar as fichas técnicas
   const [loading, setLoading] = useState(true);
@@ -282,13 +285,14 @@ export default function ProductsPage() {
   };
 
   // Filtros
-  const filteredProdutos = produtos.filter(prod => {
+  const filteredProdutosRaw = produtos.filter(prod => {
     const matchesSearch = prod.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (prod.sku && prod.sku.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (prod.barCode && prod.barCode.includes(searchQuery));
     const matchesCategory = !categoryFilter || prod.category === categoryFilter;
     return matchesSearch && matchesCategory;
   });
+  const filteredProdutos = sortFavFirst(filteredProdutosRaw, (p) => ({ kind: 'produto', id: p.id }));
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -403,7 +407,10 @@ export default function ProductsPage() {
                     <tr key={prod.id} onClick={() => handleOpenEditModal(prod)} className="cursor-pointer hover:bg-stone-50/50">
                       <td className="py-4 px-6">
                         {prod.sku && <span className="text-[10px] text-stone-400 font-bold block mb-0.5">{prod.sku}</span>}
-                        <span className="text-stone-850 font-bold text-sm block">{prod.name}</span>
+                        <span className="text-stone-850 font-bold text-sm flex items-center gap-1">
+                          <FavStar active={isFav('produto', prod.id)} onToggle={() => void toggleFav('produto', prod.id)} className="-ml-1" />
+                          {prod.name}
+                        </span>
                       </td>
                       <td className="py-4 px-6 text-stone-500">{prod.category || '—'}</td>
                       <td className="py-4 px-6 text-right text-stone-500">
@@ -678,6 +685,10 @@ export default function ProductsPage() {
                   <div className="w-11 h-6 bg-stone-300 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-stone-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
                 </label>
               </div>
+
+              {modalMode === 'edit' && selectedId && (
+                <CompositionEditor productId={selectedId} products={produtos.filter((x) => x.id !== selectedId).map((x) => ({ id: x.id, name: x.name }))} />
+              )}
 
               {/* Ficha Técnica / Receitas */}
               <div className="rounded-xl border border-stone-200 p-4 space-y-3 bg-stone-50/30">

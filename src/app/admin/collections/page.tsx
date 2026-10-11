@@ -6,6 +6,8 @@ import { BellRing, Copy, Loader2, Mail, MessageCircle, RefreshCw } from 'lucide-
 import { responseErrorMessage } from '@/lib/errors';
 import { useToast } from '@/components/shared/Toast';
 import type { CollectionRowDTO, CollectionsDTO } from '@/server/services/collections';
+import type { BoletoSyncItem } from '@/server/services/boletos';
+import { PixPanel } from './pix-panel';
 
 type Filter = 'todos' | 'atrasado' | 'hoje' | 'proximo' | 'futuro';
 
@@ -32,6 +34,8 @@ export default function CollectionsPage() {
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState<'sync' | 'remind' | null>(null);
   const [filter, setFilter] = useState<Filter>('atrasado');
+  const [view, setView] = useState<'receber' | 'pix'>('receber');
+  const [syncResult, setSyncResult] = useState<{ checked: number; paid: BoletoSyncItem[]; writtenOff: BoletoSyncItem[]; errors: number } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -59,10 +63,18 @@ export default function CollectionsPage() {
       });
       if (!res.ok) throw new Error(await responseErrorMessage(res, 'Não foi possível executar.'));
       const r = (await res.json()) as {
-        boletos: { checked?: number; paid?: number; writtenOff?: number; errors?: unknown[]; skipped?: string };
+        boletos: { checked?: number; paid?: number; writtenOff?: number; paidItems?: BoletoSyncItem[]; writtenOffItems?: BoletoSyncItem[]; errors?: unknown[]; skipped?: string };
         reminders: { sent: number; skippedNoEmail: number; failed: number };
       };
       if (action === 'sync') {
+        if (!r.boletos.skipped) {
+          setSyncResult({
+            checked: r.boletos.checked ?? 0,
+            paid: r.boletos.paidItems ?? [],
+            writtenOff: r.boletos.writtenOffItems ?? [],
+            errors: r.boletos.errors?.length ?? 0,
+          });
+        }
         toast(
           r.boletos.skipped
             ? `Banco não consultado: ${r.boletos.skipped}`
@@ -135,6 +147,73 @@ export default function CollectionsPage() {
         </div>
       </header>
 
+      {syncResult && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-black text-emerald-900">
+                {syncResult.paid.length > 0
+                  ? `${syncResult.paid.length} boleto(s) quitado(s) agora — total ${brl(syncResult.paid.reduce((a, b) => a + (b.paidValue ?? b.value), 0))}`
+                  : 'Nenhum boleto novo quitado nesta conferência'}
+              </h2>
+              <p className="text-xs text-emerald-800">
+                {syncResult.checked} boleto(s) conferido(s) no banco
+                {syncResult.writtenOff.length > 0 ? ` · ${syncResult.writtenOff.length} baixado(s) no banco` : ''}
+                {syncResult.errors > 0 ? ` · ${syncResult.errors} com erro` : ''}.
+              </p>
+            </div>
+            <button className="text-xs font-bold text-emerald-800 hover:underline" onClick={() => setSyncResult(null)}>
+              Fechar
+            </button>
+          </div>
+          {syncResult.paid.length > 0 && (
+            <div className="mt-3 overflow-hidden rounded-lg border border-emerald-200 bg-white">
+              <table className="w-full text-sm">
+                <thead className="bg-emerald-50 text-left text-[11px] font-bold uppercase tracking-wide text-emerald-800">
+                  <tr>
+                    <th className="px-3 py-1.5">Cliente</th>
+                    <th className="px-3 py-1.5">Pedido</th>
+                    <th className="px-3 py-1.5">Pago em</th>
+                    <th className="px-3 py-1.5 text-right">Valor pago</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100">
+                  {syncResult.paid.map((b) => (
+                    <tr key={b.boletoId}>
+                      <td className="px-3 py-1.5 font-semibold text-stone-900">{b.customer}</td>
+                      <td className="px-3 py-1.5 text-stone-600">#{b.orderNumero}</td>
+                      <td className="px-3 py-1.5 text-stone-600">{b.paidAt ? br(b.paidAt) : '—'}</td>
+                      <td className="px-3 py-1.5 text-right font-bold text-emerald-700">{brl(b.paidValue ?? b.value)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      <nav className="flex gap-2 border-b border-stone-200 pb-2">
+        {(
+          [
+            ['receber', 'A receber'],
+            ['pix', 'Pix recebidos'],
+          ] as const
+        ).map(([k, label]) => (
+          <button
+            key={k}
+            onClick={() => setView(k)}
+            className={`rounded-lg px-4 py-2 text-sm font-bold transition ${view === k ? 'bg-amber-600 text-white' : 'text-stone-600 hover:bg-stone-100'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      {view === 'pix' ? (
+        <PixPanel onChanged={load} />
+      ) : (
+      <>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {cards.map((c) => (
           <button
@@ -213,6 +292,8 @@ export default function CollectionsPage() {
           </tbody>
         </table>
       </div>
+      </>
+      )}
     </div>
   );
 }

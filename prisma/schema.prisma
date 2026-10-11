@@ -497,6 +497,9 @@ model Product {
   ingredients    RecipeIngredient[] @relation("ProductFinal")
   usedInRecipes  RecipeIngredient[] @relation("Ingredient")
   orderItems     OrderItem[]
+  /// Composição para relatórios (ex.: display com 12 = 12 x Brownie 7x5).
+  components     ProductComponent[] @relation("ProductParent")
+  usedAsComponent ProductComponent[] @relation("ProductChild")
   stockMovements StockMovement[]
   pricingSheets  PricingSheet[]
 
@@ -1093,4 +1096,52 @@ model PricingSheetLine {
 
   @@index([sheetId])
   @@map("precificacao_fichas_itens")
+}
+
+/// Favoritos da precificação (ficha, insumo, recurso, custo fixo ou produto) — aparecem primeiro nas listas.
+model Favorite {
+  id        String   @id @default(uuid())
+  /// ficha | insumo | recurso | custo_fixo | produto
+  kind      String   @map("tipo")
+  refId     String   @map("ref_id")
+  createdAt DateTime @default(now()) @map("criado_em")
+
+  @@unique([kind, refId])
+  @@map("favoritos")
+}
+
+/// Composição de um produto em outros (display com 12 = 12 x Brownie 7x5), só para relatórios de unidades.
+model ProductComponent {
+  id          String  @id @default(uuid())
+  productId   String  @map("produto_id")
+  product     Product @relation("ProductParent", fields: [productId], references: [id], onDelete: Cascade)
+  componentId String  @map("componente_id")
+  component   Product @relation("ProductChild", fields: [componentId], references: [id], onDelete: Cascade)
+  quantity    Decimal @map("quantidade") @db.Decimal(12, 3)
+
+  @@unique([productId, componentId])
+  @@index([componentId])
+  @@map("produto_componentes")
+}
+
+/// Pix recebido na conta (da API do banco ou de extrato importado) para sugerir baixa de títulos.
+model PixReceived {
+  id            String   @id @default(uuid())
+  /// endToEndId do Pix ou, em extrato importado, um hash de data+valor+nome.
+  externalId    String   @unique @map("id_externo")
+  value         Decimal  @map("valor") @db.Decimal(12, 2)
+  receivedAt    DateTime @map("recebido_em")
+  payerName     String?  @map("pagador_nome")
+  payerDocument String?  @map("pagador_documento")
+  description   String?  @map("descricao")
+  /// sicoob | extrato
+  source        String   @default("extrato") @map("origem")
+  /// novo | conciliado | ignorado
+  status        String   @default("novo") @map("status")
+  transactionId String?  @map("lancamento_id")
+  settledAt     DateTime? @map("conciliado_em")
+  createdAt     DateTime @default(now()) @map("criado_em")
+
+  @@index([status, receivedAt])
+  @@map("pix_recebidos")
 }

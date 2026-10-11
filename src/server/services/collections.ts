@@ -193,8 +193,19 @@ export async function runCollections(options: { sendEmails?: boolean; syncBank?:
     },
   });
 
+  // Pedido já pago por outro caminho (Pix, dinheiro) não recebe lembrete, mesmo com boleto ainda registrado.
+  const stillOwing = new Set(
+    (
+      await prisma.financialTransaction.findMany({
+        where: { orderId: { in: open.map((b) => b.order.id) }, type: 'receita', status: { in: ['pendente', 'atrasado'] } },
+        select: { orderId: true },
+      })
+    ).map((t) => t.orderId),
+  );
+
   for (const b of open) {
     if (b.order.status === 'cancelado') continue;
+    if (!stillOwing.has(b.order.id)) continue;
     const dueIso = dateOnly(b.dueDate)!;
     const kind = nextReminder(daysLate(dueIso, today), new Set(b.reminders.map((r) => r.kind)));
     if (!kind) continue;

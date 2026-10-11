@@ -387,10 +387,24 @@ export async function refreshBoleto(session: SessionPayload, boletoId: string): 
   return toDTO(updated ?? boleto);
 }
 
+export interface BoletoSyncItem {
+  boletoId: string;
+  seuNumero: string;
+  orderNumero: number;
+  customer: string;
+  value: number;
+  paidValue: number | null;
+  /** AAAA-MM-DD (data do pagamento informada pelo banco). */
+  paidAt: string | null;
+}
+
 export interface BoletoSyncSummary {
   checked: number;
   paid: number;
   writtenOff: number;
+  /** Boletos que acabaram de ser dados como pagos nesta conferência. */
+  paidItems: BoletoSyncItem[];
+  writtenOffItems: BoletoSyncItem[];
   errors: Array<{ seuNumero: string; message: string }>;
 }
 
@@ -400,15 +414,39 @@ export async function syncOpenBoletos(limit = 300): Promise<BoletoSyncSummary> {
     where: { status: 'registrado', nossoNumero: { not: null } },
     orderBy: { dueDate: 'asc' },
     take: limit,
-    select: { id: true, orderId: true, issuerId: true, status: true, nossoNumero: true, seuNumero: true },
+    select: {
+      id: true,
+      orderId: true,
+      issuerId: true,
+      status: true,
+      nossoNumero: true,
+      seuNumero: true,
+      order: { select: { numero: true, customer: { select: { tradeName: true } } } },
+    },
   });
-  const summary: BoletoSyncSummary = { checked: 0, paid: 0, writtenOff: 0, errors: [] };
+  const summary: BoletoSyncSummary = { checked: 0, paid: 0, writtenOff: 0, paidItems: [], writtenOffItems: [], errors: [] };
   for (const boleto of open) {
     summary.checked += 1;
     try {
       const updated = await syncBoletoWithBank(boleto, null);
-      if (updated?.status === 'pago') summary.paid += 1;
-      else if (updated?.status === 'baixado') summary.writtenOff += 1;
+      if (updated) {
+        const item: BoletoSyncItem = {
+          boletoId: boleto.id,
+          seuNumero: boleto.seuNumero,
+          orderNumero: boleto.order.numero,
+          customer: boleto.order.customer.tradeName,
+          value: Number(updated.value),
+          paidValue: updated.paidValue != null ? Number(updated.paidValue) : null,
+          paidAt: updated.paidAt ? updated.paidAt.toISOString().slice(0, 10) : null,
+        };
+        if (updated.status === 'pago') {
+          summary.paid += 1;
+          summary.paidItems.push(item);
+        } else if (updated.status === 'baixado') {
+          summary.writtenOff += 1;
+          summary.writtenOffItems.push(item);
+        }
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logger.warn('Falha ao conferir boleto na rotina diária', { seuNumero: boleto.seuNumero, message });

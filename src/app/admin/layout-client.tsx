@@ -30,6 +30,7 @@ import {
   BellRing,
   Plus,
   CalendarDays,
+  Layers,
   UserX,
   PieChart,
   Menu,
@@ -291,6 +292,26 @@ export default function AdminLayoutClient({ children, session }: AdminLayoutClie
             >
               <CalendarDays className="h-4 w-4 text-amber-400" />
               <span>Relatório de Vendas</span>
+            </Link>
+            <Link 
+              href="/admin/reports/units" 
+              onClick={() => setIsMobileMenuOpen(false)}
+              className={`flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                isActive('/admin/reports/units') ? 'bg-amber-600 text-white shadow-xs' : 'hover:bg-stone-800 hover:text-white text-stone-300'
+              }`}
+            >
+              <Layers className="h-4 w-4 text-amber-400" />
+              <span>Unidades Vendidas</span>
+            </Link>
+            <Link 
+              href="/admin/reports/projection" 
+              onClick={() => setIsMobileMenuOpen(false)}
+              className={`flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                isActive('/admin/reports/projection') ? 'bg-amber-600 text-white shadow-xs' : 'hover:bg-stone-800 hover:text-white text-stone-300'
+              }`}
+            >
+              <TrendingUp className="h-4 w-4 text-amber-400" />
+              <span>Projeção por Vendedor</span>
             </Link>
             <Link 
               href="/admin/reports/customers" 

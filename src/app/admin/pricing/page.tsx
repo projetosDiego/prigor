@@ -26,6 +26,7 @@ import {
 
 import { responseErrorMessage } from '@/lib/errors';
 import { useToast } from '@/components/shared/Toast';
+import { FavStar, useFavorites } from '@/components/shared/favorites';
 import { channelMargin, computePricing, priceForTargetMargin, suggestedPrice } from '@/server/domain/precificacao';
 import type {
   CatalogProductDTO,
@@ -38,6 +39,11 @@ import type {
 
 type Tab = 'painel' | 'fichas' | 'insumos' | 'recursos' | 'custos';
 type Kind = 'produto' | 'massa' | 'recheio';
+type Fav = ReturnType<typeof useFavorites>;
+
+/** Produto ligado ao cadastro compartilha o favorito com a tela de Produtos; as demais fichas usam o próprio id. */
+const favOf = (s: SheetDTO): { kind: 'produto' | 'ficha'; id: string } =>
+  s.kind === 'produto' && s.productId ? { kind: 'produto', id: s.productId } : { kind: 'ficha', id: s.id };
 
 const brl = (v: number, digits = 2) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -108,6 +114,7 @@ export default function PricingPage() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('painel');
   const [drawer, setDrawer] = useState<OpenTarget>(null);
+  const fav = useFavorites();
   const [pendingOpen, setPendingOpen] = useState<string | null>(null);
   const handledQuery = React.useRef(false);
 
@@ -222,11 +229,11 @@ export default function PricingPage() {
         ))}
       </nav>
 
-      {tab === 'painel' && <DashboardTab data={data} reload={load} onOpen={setDrawer} />}
-      {tab === 'fichas' && <SheetsTab data={data} reload={load} onOpen={setDrawer} onCreateFromProduct={createFromProduct} />}
-      {tab === 'insumos' && <IngredientsTab data={data} reload={load} />}
-      {tab === 'recursos' && <ResourcesTab data={data} reload={load} />}
-      {tab === 'custos' && <CostsTab data={data} reload={load} />}
+      {tab === 'painel' && <DashboardTab data={data} reload={load} onOpen={setDrawer} fav={fav} />}
+      {tab === 'fichas' && <SheetsTab data={data} reload={load} onOpen={setDrawer} onCreateFromProduct={createFromProduct} fav={fav} />}
+      {tab === 'insumos' && <IngredientsTab data={data} reload={load} fav={fav} />}
+      {tab === 'recursos' && <ResourcesTab data={data} reload={load} fav={fav} />}
+      {tab === 'custos' && <CostsTab data={data} reload={load} fav={fav} />}
 
       {drawer && (
         <SheetDrawer
@@ -369,12 +376,16 @@ function MarginBar({ value, target }: { value: number; target: number }) {
   );
 }
 
-function DashboardTab({ data, reload, onOpen }: { data: PricingBundleDTO; reload: () => Promise<void>; onOpen: (t: OpenTarget) => void }) {
+function DashboardTab({ data, reload, onOpen, fav }: { data: PricingBundleDTO; reload: () => Promise<void>; onOpen: (t: OpenTarget) => void; fav: Fav }) {
   const { toast, confirm } = useToast();
   const target = data.settings.targetMarginPct / 100;
   const products = data.sheets.filter((s) => s.kind === 'produto' && s.active && s.status !== 'sem_custo');
-  const toFix = products.filter((s) => s.status === 'baixa' || s.status === 'prejuizo').sort((a, b) => a.channels.balcao.mcPct - b.channels.balcao.mcPct);
-  const bars = [...products].sort((a, b) => a.channels.balcao.mcPct - b.channels.balcao.mcPct);
+  const toFix = fav.sortFavFirst(
+    products.filter((s) => s.status === 'baixa' || s.status === 'prejuizo').sort((a, b) => a.channels.balcao.mcPct - b.channels.balcao.mcPct),
+    favOf,
+  );
+  const bars = fav.sortFavFirst([...products].sort((a, b) => a.channels.balcao.mcPct - b.channels.balcao.mcPct), favOf);
+  const favorites = bars.filter((s) => fav.isFav(favOf(s).kind, favOf(s).id));
   const semCusto = data.sheets.filter((s) => s.kind === 'produto' && s.active && s.status === 'sem_custo');
 
   async function apply(s: SheetDTO) {
@@ -397,6 +408,26 @@ function DashboardTab({ data, reload, onOpen }: { data: PricingBundleDTO; reload
   return (
     <section className="space-y-5">
       <Summary data={data} />
+
+      {favorites.length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-black uppercase tracking-wide text-amber-800">
+            <FavStar active onToggle={() => undefined} className="pointer-events-none" /> Favoritos
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {favorites.map((s) => (
+              <button key={s.id} onClick={() => onOpen(s)} className="rounded-lg border border-amber-200 bg-white p-3 text-left transition hover:shadow-sm">
+                <div className="truncate text-sm font-bold text-stone-900">{s.name}</div>
+                <div className="mt-1 flex items-baseline justify-between">
+                  <span className="text-xs text-stone-500">{brl(s.effectivePrice)}</span>
+                  <span className={`text-sm font-black ${s.channels.balcao.mcPct < data.settings.targetMarginPct / 100 ? 'text-amber-600' : 'text-emerald-600'}`}>{pct(s.channels.balcao.mcPct)}</span>
+                </div>
+                <div className="text-[11px] text-stone-400">custo {brl(s.costPerUnit)} · meta {brl(s.targetPrice)}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {(data.summary.staleIngredients > 0 || semCusto.length > 0 || data.revenue.source === 'nenhuma') && (
         <div className="space-y-1 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
@@ -423,7 +454,10 @@ function DashboardTab({ data, reload, onOpen }: { data: PricingBundleDTO; reload
             {toFix.map((s) => (
               <div key={s.id} className="flex cursor-pointer flex-wrap items-center gap-3 px-4 py-3 hover:bg-stone-50" onClick={() => onOpen(s)}>
                 <div className="min-w-[10rem] flex-1">
-                  <div className="font-semibold text-stone-900">{s.name}</div>
+                  <div className="flex items-center gap-1 font-semibold text-stone-900">
+                    <FavStar active={fav.isFav(favOf(s).kind, favOf(s).id)} onToggle={() => void fav.toggle(favOf(s).kind, favOf(s).id)} className="-ml-1" />
+                    {s.name}
+                  </div>
                   <div className="text-xs text-stone-500">
                     custo {brl(s.costPerUnit)} · margem <span className={s.status === 'prejuizo' ? 'font-bold text-red-600' : 'font-bold text-amber-600'}>{pct(s.channels.balcao.mcPct)}</span>
                   </div>
@@ -461,7 +495,12 @@ function DashboardTab({ data, reload, onOpen }: { data: PricingBundleDTO; reload
             <tbody className="divide-y divide-stone-100">
               {bars.map((s) => (
                 <tr key={s.id} className="cursor-pointer hover:bg-stone-50" onClick={() => onOpen(s)}>
-                  <td className="px-4 py-2 font-semibold text-stone-900">{s.name}</td>
+                  <td className="px-4 py-2 font-semibold text-stone-900">
+                    <span className="flex items-center gap-1">
+                      <FavStar active={fav.isFav(favOf(s).kind, favOf(s).id)} onToggle={() => void fav.toggle(favOf(s).kind, favOf(s).id)} className="-ml-1" />
+                      {s.name}
+                    </span>
+                  </td>
                   <td className="px-3 py-2 text-right text-stone-700">
                     {brl(s.effectivePrice)}
                     <div className="text-[10px] text-stone-400">{s.priceSource}</div>
@@ -549,11 +588,13 @@ function SheetsTab({
   reload,
   onOpen,
   onCreateFromProduct,
+  fav,
 }: {
   data: PricingBundleDTO;
   reload: () => Promise<void>;
   onOpen: (t: OpenTarget) => void;
   onCreateFromProduct: (productId: string) => Promise<void>;
+  fav: Fav;
 }) {
   const { toast, confirm } = useToast();
   const [kind, setKind] = useState<Kind>('produto');
@@ -572,7 +613,7 @@ function SheetsTab({
         .map((s) => ({ type: 'sheet' as const, key: s.id, name: s.name, sheet: s })),
       ...catalogNoSheet.map((p) => ({ type: 'catalog' as const, key: `p-${p.id}`, name: p.name, product: p })),
     ];
-    return all
+    const list = all
       .filter((r) => r.name.toLowerCase().includes(needle))
       .filter((r) => {
         if (filter === 'sem_ficha') return r.type === 'catalog';
@@ -580,11 +621,12 @@ function SheetsTab({
         return true;
       })
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-  }, [data.sheets, catalogNoSheet, q, filter]);
+    return fav.sortFavFirst(list, (r) => (r.type === 'sheet' ? favOf(r.sheet) : { kind: 'produto' as const, id: r.product.id }));
+  }, [data.sheets, catalogNoSheet, q, filter, fav]);
 
   const subRows = useMemo(
-    () => data.sheets.filter((s) => s.kind === kind && s.name.toLowerCase().includes(q.toLowerCase())),
-    [data.sheets, kind, q],
+    () => fav.sortFavFirst(data.sheets.filter((s) => s.kind === kind && s.name.toLowerCase().includes(q.toLowerCase())), favOf),
+    [data.sheets, kind, q, fav],
   );
 
   async function apply(s: SheetDTO) {
@@ -703,6 +745,7 @@ function SheetsTab({
                   return (
                     <tr key={r.key} className="cursor-pointer bg-amber-50/40 hover:bg-amber-50" onClick={() => void onCreateFromProduct(p.id)}>
                       <td className="px-3 py-2 font-semibold text-stone-900">
+                        <FavStar active={fav.isFav('produto', p.id)} onToggle={() => void fav.toggle('produto', p.id)} className="-ml-1 mr-0.5 align-middle" />
                         {p.name}
                         <span className="ml-2 rounded bg-amber-100 px-1.5 text-[10px] font-bold text-amber-800">sem ficha</span>
                         <div className="text-[11px] font-normal text-stone-400">
@@ -731,6 +774,7 @@ function SheetsTab({
                 return (
                   <tr key={r.key} className="cursor-pointer hover:bg-stone-50" onClick={() => onOpen(s)}>
                     <td className="px-3 py-2 font-semibold text-stone-900">
+                      <FavStar active={fav.isFav(favOf(s).kind, favOf(s).id)} onToggle={() => void fav.toggle(favOf(s).kind, favOf(s).id)} className="-ml-1 mr-0.5 align-middle" />
                       {s.name}
                       {s.warnings.length > 0 && <AlertTriangle className="ml-1 inline h-3.5 w-3.5 text-red-500" />}
                       {s.productName && <div className="text-[11px] font-normal text-stone-400">↔ {s.productName}</div>}
@@ -790,6 +834,7 @@ function SheetsTab({
               {subRows.map((s) => (
                 <tr key={s.id} className="cursor-pointer hover:bg-stone-50" onClick={() => onOpen(s)}>
                   <td className="px-3 py-2 font-semibold text-stone-900">
+                    <FavStar active={fav.isFav(favOf(s).kind, favOf(s).id)} onToggle={() => void fav.toggle(favOf(s).kind, favOf(s).id)} className="-ml-1 mr-0.5 align-middle" />
                     {s.name}
                     {s.warnings.length > 0 && <AlertTriangle className="ml-1 inline h-3.5 w-3.5 text-red-500" />}
                     {!s.active && <span className="ml-2 rounded bg-stone-200 px-1.5 text-[10px] text-stone-600">inativa</span>}
@@ -1356,7 +1401,7 @@ function Row({ k, v, strong, accent, warn }: { k: string; v: string; strong?: bo
 
 // ─── Insumos ─────────────────────────────────────────────────────────────────
 
-function IngredientsTab({ data, reload }: { data: PricingBundleDTO; reload: () => Promise<void> }) {
+function IngredientsTab({ data, reload, fav }: { data: PricingBundleDTO; reload: () => Promise<void>; fav: Fav }) {
   const { toast, confirm } = useToast();
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
@@ -1365,8 +1410,9 @@ function IngredientsTab({ data, reload }: { data: PricingBundleDTO; reload: () =
   // Data de referência fixa na montagem (ler o relógio no render quebra a regra de pureza do React).
   const [now] = useState(() => Date.now());
 
-  const rows = data.ingredients.filter(
-    (i) => i.name.toLowerCase().includes(q.toLowerCase()) && (!cat || i.category === cat),
+  const rows = fav.sortFavFirst(
+    data.ingredients.filter((i) => i.name.toLowerCase().includes(q.toLowerCase()) && (!cat || i.category === cat)),
+    (i) => ({ kind: 'insumo', id: i.id }),
   );
 
   async function remove(i: IngredientDTO) {
@@ -1419,7 +1465,10 @@ function IngredientsTab({ data, reload }: { data: PricingBundleDTO; reload: () =
               const old = i.priceUpdatedAt ? (now - new Date(i.priceUpdatedAt).getTime()) / 86_400_000 > 90 : true;
               return (
                 <tr key={i.id} className="cursor-pointer hover:bg-stone-50" onClick={() => setEditing(i)}>
-                  <td className="px-3 py-2 font-semibold text-stone-900">{i.name}</td>
+                  <td className="px-3 py-2 font-semibold text-stone-900">
+                    <FavStar active={fav.isFav('insumo', i.id)} onToggle={() => void fav.toggle('insumo', i.id)} className="-ml-1 mr-0.5 align-middle" />
+                    {i.name}
+                  </td>
                   <td className="px-3 py-2 text-stone-600">{CATEGORIES[i.category] ?? i.category}</td>
                   <td className="px-3 py-2 text-right text-stone-700">
                     {brl(i.purchasePrice)} / {dec(i.purchaseQty)} {i.unit}
@@ -1625,7 +1674,7 @@ function IngredientModal({ item, onClose, onSaved }: { item: IngredientDTO | nul
 
 // ─── Equipamentos & Mão de obra ──────────────────────────────────────────────
 
-function ResourcesTab({ data, reload }: { data: PricingBundleDTO; reload: () => Promise<void> }) {
+function ResourcesTab({ data, reload, fav }: { data: PricingBundleDTO; reload: () => Promise<void>; fav: Fav }) {
   const { toast, confirm } = useToast();
   const [editing, setEditing] = useState<ResourceDTO | 'new' | null>(null);
 
@@ -1650,7 +1699,7 @@ function ResourcesTab({ data, reload }: { data: PricingBundleDTO; reload: () => 
         </button>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {data.resources.map((r) => {
+        {fav.sortFavFirst(data.resources, (x) => ({ kind: 'recurso', id: x.id })).map((r) => {
           const Icon = r.kind === 'eletrico' ? Zap : r.kind === 'gas' ? Flame : UserRound;
           const detail =
             r.kind === 'eletrico'
@@ -1664,7 +1713,10 @@ function ResourcesTab({ data, reload }: { data: PricingBundleDTO; reload: () => 
                 <div className="flex items-center gap-2">
                   <Icon className="h-4 w-4 text-amber-600" />
                   <div>
-                    <div className="font-bold text-stone-900">{r.name}</div>
+                    <div className="flex items-center gap-1 font-bold text-stone-900">
+                      <FavStar active={fav.isFav('recurso', r.id)} onToggle={() => void fav.toggle('recurso', r.id)} className="-ml-1" />
+                      {r.name}
+                    </div>
                     <div className="text-xs text-stone-500">
                       {RES_LABEL[r.kind]} · {detail}
                     </div>
@@ -1793,7 +1845,7 @@ function ResourceModal({ item, onClose, onSaved }: { item: ResourceDTO | null; o
 
 // ─── Custos fixos & parâmetros ───────────────────────────────────────────────
 
-function CostsTab({ data, reload }: { data: PricingBundleDTO; reload: () => Promise<void> }) {
+function CostsTab({ data, reload, fav }: { data: PricingBundleDTO; reload: () => Promise<void>; fav: Fav }) {
   const { toast, confirm } = useToast();
   const [s, setS] = useState({
     energyKwhPrice: String(data.settings.energyKwhPrice),
@@ -1863,9 +1915,12 @@ function CostsTab({ data, reload }: { data: PricingBundleDTO; reload: () => Prom
           </button>
         </div>
         <ul className="divide-y divide-stone-100">
-          {data.fixedCosts.map((c) => (
+          {fav.sortFavFirst(data.fixedCosts, (x) => ({ kind: 'custo_fixo', id: x.id })).map((c) => (
             <li key={c.id} onClick={() => setEditing(c)} className={`flex cursor-pointer items-center justify-between rounded px-1 py-2 text-sm hover:bg-stone-50 ${c.active ? '' : 'opacity-40'}`}>
-              <span className="text-stone-800">{c.name}</span>
+              <span className="flex items-center gap-1 text-stone-800">
+                <FavStar active={fav.isFav('custo_fixo', c.id)} onToggle={() => void fav.toggle('custo_fixo', c.id)} />
+                {c.name}
+              </span>
               <span className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                 <strong>{brl(c.monthlyAmount)}</strong>
                 <button onClick={() => setEditing(c)} className="rounded p-1.5 text-stone-600 hover:bg-stone-100">
