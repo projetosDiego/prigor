@@ -10,6 +10,6 @@ type Context = { params: Promise<{ id: string }> };
 export const POST = route<Context>('financeiro.baixar', async (request, { params }) => {
   await requireManager();
   const { id } = await params;
-  const { paymentDate } = parseQuery(request, settleTransactionSchema);
-  return ok(await settleTransaction(id, paymentDate));
+  const { paymentDate, accountId } = parseQuery(request, settleTransactionSchema);
+  return ok(await settleTransaction(id, paymentDate, accountId));
 });

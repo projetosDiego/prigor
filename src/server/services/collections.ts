@@ -9,12 +9,16 @@ import { bucketOf, daysLate, nextReminder, type CollectionBucket, type ReminderK
 import { orderDocsUrl } from './order-docs';
 import { syncOpenBoletos, type BoletoSyncSummary } from './boletos';
 import { sendMail } from './email';
+import { creditBalances } from './credits';
 import { dateOnly, num } from './serializers';
 
 export interface CollectionRowDTO {
   transactionId: string;
   orderId: string;
   numero: number;
+  customerId: string;
+  /** Crédito disponível do cliente (Pix a mais / devolução). */
+  credit: number;
   customer: string;
   phone: string | null;
   email: string | null;
@@ -74,6 +78,7 @@ export async function listCollections(today = todayBr()): Promise<CollectionsDTO
           id: true,
           numero: true,
           status: true,
+          customerId: true,
           customer: { select: { tradeName: true, phone: true, mobile: true, email: true } },
           seller: { select: { name: true } },
           boletos: {
@@ -85,6 +90,7 @@ export async function listCollections(today = todayBr()): Promise<CollectionsDTO
     },
   });
 
+  const credits = await creditBalances([...new Set(rows.flatMap((r) => (r.order ? [r.order.customerId] : [])))]);
   const order: ReminderKind[] = ['antes2', 'vencimento', 'atraso3', 'atraso7'];
   const out: CollectionRowDTO[] = [];
   const totals = { atrasado: 0, hoje: 0, proximo: 0, futuro: 0 };
@@ -104,6 +110,8 @@ export async function listCollections(today = todayBr()): Promise<CollectionsDTO
       transactionId: r.id,
       orderId: r.order.id,
       numero: r.order.numero,
+      customerId: r.order.customerId,
+      credit: credits.get(r.order.customerId) ?? 0,
       customer: c.tradeName,
       phone: (c.mobile || c.phone || '').replace(/\D/g, '') || null,
       email: c.email,

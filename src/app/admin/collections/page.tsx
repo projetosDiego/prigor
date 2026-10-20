@@ -29,13 +29,39 @@ function dueBadge(r: CollectionRowDTO) {
 }
 
 export default function CollectionsPage() {
-  const { toast } = useToast();
+  const { toast, confirm } = useToast();
   const [data, setData] = useState<CollectionsDTO | null>(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState<'sync' | 'remind' | null>(null);
   const [filter, setFilter] = useState<Filter>('atrasado');
+  const [applying, setApplying] = useState<string | null>(null);
   const [view, setView] = useState<'receber' | 'pix'>('receber');
   const [syncResult, setSyncResult] = useState<{ checked: number; paid: BoletoSyncItem[]; writtenOff: BoletoSyncItem[]; errors: number } | null>(null);
+
+  async function applyCreditTo(r: CollectionRowDTO) {
+    const amount = Math.min(r.credit, r.value);
+    const ok = await confirm({
+      title: 'Abater crédito do cliente',
+      message: `${r.customer} tem ${brl(r.credit)} de crédito. Abater ${brl(amount)} do pedido #${r.numero}${amount < r.value ? ' (baixa parcial)' : ''}?`,
+      confirmLabel: 'Abater',
+    });
+    if (!ok) return;
+    setApplying(r.transactionId);
+    try {
+      const res = await fetch('/api/credits/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerId: r.customerId, transactionId: r.transactionId, amount }),
+      });
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Não foi possível abater o crédito.'));
+      toast('Crédito abatido.', 'success');
+      await load();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Erro ao abater.', 'error');
+    } finally {
+      setApplying(null);
+    }
+  }
 
   const load = useCallback(async () => {
     try {
@@ -251,6 +277,7 @@ export default function CollectionsPage() {
                 <td className="px-4 py-2 font-semibold text-stone-900">
                   {r.customer}
                   {r.seller && <div className="text-[11px] font-normal text-stone-400">vendedor: {r.seller}</div>}
+                  {r.credit > 0 && <div className="text-[11px] font-bold text-sky-700">crédito disponível: {brl(r.credit)}</div>}
                 </td>
                 <td className="px-3 py-2 text-stone-700">
                   #{r.numero}
@@ -264,6 +291,11 @@ export default function CollectionsPage() {
                   {r.lastReminder ? REMINDER_LABEL[r.lastReminder] : r.hasBoleto ? (r.email ? 'aguardando' : 'sem e-mail') : '—'}
                 </td>
                 <td className="whitespace-nowrap px-3 py-2 text-right">
+                  {r.credit > 0 && (
+                    <button className="mr-1 rounded-lg border border-sky-600 px-3 py-1.5 text-xs font-bold text-sky-700 hover:bg-sky-50 disabled:opacity-50" disabled={applying !== null} onClick={() => void applyCreditTo(r)}>
+                      {applying === r.transactionId ? '…' : 'Abater crédito'}
+                    </button>
+                  )}
                   {r.phone ? (
                     <a
                       className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"

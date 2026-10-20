@@ -315,6 +315,8 @@ model Customer {
   leadsConverted Lead[]     @relation("ConvertedCustomer")
   activities     Activity[]
   orders         Order[]
+  credits        CustomerCredit[]
+  returns        OrderReturn[]
 
   /// CNPJ que fatura este cliente por padrão (NF e boleto); pode trocar no pedido.
   defaultIssuerId String? @map("empresa_padrao_id")
@@ -585,6 +587,7 @@ model Order {
   stockMovements StockMovement[]
   boletos        Boleto[]
   invoices       Invoice[]
+  returns        OrderReturn[]
 
   /// CNPJ que faturou o pedido (definido na 1ª emissão de NF/boleto).
   issuerId String? @map("empresa_id")
@@ -635,13 +638,30 @@ model FinancialTransaction {
   notes   String?           @map("observacoes")
   boletos Boleto[]
 
+  /// Conta/banco onde o dinheiro entrou ou saiu (vazio = conta padrão).
+  accountId   String?            @map("conta_id")
+  account     FinancialAccount?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  supplierId  String?            @map("fornecedor_id")
+  supplier    Supplier?          @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  purchaseId  String?            @map("compra_id")
+  purchase    Purchase?          @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  recurringId String?            @map("recorrente_id")
+  recurring   RecurringExpense?  @relation(fields: [recurringId], references: [id], onDelete: SetNull)
+  /// Mês de competência (AAAA-MM) das despesas recorrentes: evita gerar duas vezes.
+  competence  String?            @map("competencia")
+  /// "2/3" quando a despesa foi parcelada.
+  installment String?            @map("parcela")
+
   createdAt DateTime @default(now()) @map("criado_em")
   updatedAt DateTime @updatedAt @map("atualizado_em")
 
+  @@unique([recurringId, competence])
   @@index([type, status])
   @@index([dueDate])
   @@index([orderId])
   @@index([category])
+  @@index([accountId])
+  @@index([purchaseId])
   @@map("lancamentos")
 }
 
@@ -1144,4 +1164,149 @@ model PixReceived {
 
   @@index([status, receivedAt])
   @@map("pix_recebidos")
+}
+
+/// Crédito do cliente: sobra de Pix ou devolução. Abatido depois em títulos em aberto.
+model CustomerCredit {
+  id             String   @id @default(uuid())
+  customerId     String   @map("cliente_id")
+  customer       Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  originalAmount Decimal  @map("valor_original") @db.Decimal(12, 2)
+  /// Quanto ainda não foi abatido.
+  remaining      Decimal  @map("saldo") @db.Decimal(12, 2)
+  /// pix | devolucao | manual
+  source         String   @map("origem")
+  note           String?  @map("observacao")
+  createdAt      DateTime @default(now()) @map("criado_em")
+  returns        OrderReturn[]
+
+  @@index([customerId])
+  @@map("creditos_cliente")
+}
+
+/// Troca ou devolução parcial de um item do pedido (ex.: 2 brownies de um display com 12).
+model OrderReturn {
+  id         String   @id @default(uuid())
+  orderId    String   @map("pedido_id")
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customerId String   @map("cliente_id")
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  orderItemId String? @map("item_id")
+  productId  String   @map("produto_id")
+  /// Produto-base devolvido (ex.: Brownie 7x5) quando o item é um kit; senão o próprio produto.
+  baseProductId String? @map("produto_base_id")
+  /// troca (repomos o produto, sem mexer no financeiro) | devolucao (gera crédito)
+  kind       String   @map("tipo")
+  /// Unidades devolvidas na medida do produto-base.
+  units      Decimal  @map("unidades") @db.Decimal(12, 3)
+  /// Fração do item devolvida (units / unidades por item).
+  itemQty    Decimal  @map("qtd_item") @db.Decimal(12, 4)
+  /// Valor de venda das unidades (preço pago pelo cliente).
+  value      Decimal  @map("valor") @db.Decimal(12, 2)
+  /// Custo das unidades perdidas.
+  cost       Decimal  @map("custo") @db.Decimal(12, 2)
+  reason     String?  @map("motivo")
+  creditId   String?  @map("credito_id")
+  credit     CustomerCredit? @relation(fields: [creditId], references: [id], onDelete: SetNull)
+  createdById String? @map("criado_por")
+  createdAt  DateTime @default(now()) @map("criado_em")
+
+  @@index([orderId])
+  @@index([customerId])
+  @@index([createdAt])
+  @@map("pedido_devolucoes")
+}
+
+// ─── Caixa, compras e despesas ──────────────────────────────────────────────
+
+/// Conta onde o dinheiro está (banco, caixa em dinheiro...). O saldo parte do saldo informado na data.
+model FinancialAccount {
+  id             String   @id @default(uuid())
+  name           String   @map("nome")
+  /// banco | dinheiro | outro
+  kind           String   @default("banco") @map("tipo")
+  openingBalance Decimal  @default(0) @map("saldo_inicial") @db.Decimal(14, 2)
+  openingDate    DateTime @default(now()) @map("data_saldo") @db.Date
+  /// Recebe os lançamentos pagos sem conta definida (Pix, boleto...).
+  isDefault      Boolean  @default(false) @map("padrao")
+  active         Boolean  @default(true) @map("ativa")
+  createdAt      DateTime @default(now()) @map("criado_em")
+
+  transactions FinancialTransaction[]
+  purchases    Purchase[]
+  recurring    RecurringExpense[]
+
+  @@map("contas_financeiras")
+}
+
+model Supplier {
+  id        String   @id @default(uuid())
+  name      String   @map("nome")
+  document  String?  @map("documento")
+  phone     String?  @map("telefone")
+  notes     String?  @map("observacoes")
+  active    Boolean  @default(true) @map("ativo")
+  createdAt DateTime @default(now()) @map("criado_em")
+
+  transactions FinancialTransaction[]
+  purchases    Purchase[]
+  recurring    RecurringExpense[]
+
+  @@map("fornecedores")
+}
+
+/// Compra de insumos/embalagens/equipamentos. Gera as despesas (à vista ou parceladas).
+model Purchase {
+  id          String    @id @default(uuid())
+  supplierId  String?   @map("fornecedor_id")
+  supplier    Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  accountId   String?   @map("conta_id")
+  account     FinancialAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  date        DateTime  @map("data") @db.Date
+  document    String?   @map("documento")
+  category    String    @default("Ingredientes") @map("categoria")
+  total       Decimal   @map("total") @db.Decimal(14, 2)
+  installments Int      @default(1) @map("parcelas")
+  notes       String?   @map("observacoes")
+  createdAt   DateTime  @default(now()) @map("criado_em")
+
+  items        PurchaseItem[]
+  transactions FinancialTransaction[]
+
+  @@index([date])
+  @@index([supplierId])
+  @@map("compras")
+}
+
+model PurchaseItem {
+  id          String   @id @default(uuid())
+  purchaseId  String   @map("compra_id")
+  purchase    Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  description String   @map("descricao")
+  quantity    Decimal  @map("quantidade") @db.Decimal(14, 3)
+  unit        String?  @map("unidade")
+  unitPrice   Decimal  @map("preco_unitario") @db.Decimal(14, 4)
+  total       Decimal  @map("total") @db.Decimal(14, 2)
+
+  @@index([purchaseId])
+  @@map("compra_itens")
+}
+
+/// Despesa que se repete todo mês (aluguel, internet, salários). Gera o lançamento do mês sob demanda.
+model RecurringExpense {
+  id          String   @id @default(uuid())
+  description String   @map("descricao")
+  category    String   @map("categoria")
+  value       Decimal  @map("valor") @db.Decimal(12, 2)
+  dayOfMonth  Int      @map("dia_vencimento")
+  supplierId  String?  @map("fornecedor_id")
+  supplier    Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  accountId   String?  @map("conta_id")
+  account     FinancialAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  active      Boolean  @default(true) @map("ativa")
+  createdAt   DateTime @default(now()) @map("criado_em")
+
+  transactions FinancialTransaction[]
+
+  @@map("despesas_recorrentes")
 }

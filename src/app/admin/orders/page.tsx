@@ -24,9 +24,11 @@ import {
   Phone,
   AlertCircle,
   Landmark,
-  FileDown
+  FileDown,
+  RotateCcw,
 } from 'lucide-react';
 import OrderBillingModal from '@/components/admin/OrderBillingModal';
+import ReturnModal from '@/components/orders/ReturnModal';
 import { saveResponseAsFile } from '@/lib/download';
 import { responseErrorMessage } from '@/lib/errors';
 import { useToast } from '@/components/shared/Toast';
@@ -166,6 +168,7 @@ export default function OrdersPage() {
   const { toast, confirm } = useToast();
   const [pedidos, setPedidos] = useState<OrderDTO[]>([]);
   const [clientes, setClientes] = useState<CustomerDTO[]>([]);
+  const [emAberto, setEmAberto] = useState<Record<string, { titles: { orderId: string; numero: number; value: number; dueDate: string | null; overdue: boolean }[]; credit: number }>>({});
   const [produtos, setProdutos] = useState<ProductDTO[]>([]);
   const [vendedores, setVendedores] = useState<SellerDTO[]>([]);
   const [formasPagamento, setFormasPagamento] = useState<{ id: string; name: string; netDays: number | null }[]>([]);
@@ -189,6 +192,7 @@ export default function OrdersPage() {
   const [selectedPedido, setSelectedPedido] = useState<OrderDTO | null>(null);
   const [historyOrder, setHistoryOrder] = useState<OrderDTO | null>(null);
   const [billingOrder, setBillingOrder] = useState<OrderDTO | null>(null);
+  const [returnOrder, setReturnOrder] = useState<{ id: string; numero: number } | null>(null);
   const [historyEvents, setHistoryEvents] = useState<OrderEvent[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
@@ -299,6 +303,16 @@ export default function OrdersPage() {
       setClientes(clis.data);
       setProdutos(prods.data);
       setVendedores(sells.data ?? []);
+
+      try {
+        const resAb = await fetch('/api/customers/open-balances');
+        if (resAb.ok) {
+          const ab = (await resAb.json()) as { data?: typeof emAberto };
+          setEmAberto(ab.data ?? {});
+        }
+      } catch {
+        /* aviso de valores em aberto é acessório */
+      }
 
       try {
         const resPg = await fetch('/api/payment-methods');
@@ -1426,7 +1440,7 @@ export default function OrdersPage() {
             </div>
           )}
           {selectedOrderIds.length > 0 && (
-            <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-xs animate-fadeIn">
+            <div className="sticky top-[4.25rem] z-20 p-3.5 bg-amber-50 border border-amber-200 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-md animate-fadeIn">
               <div className="flex items-center gap-2">
                 <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-700 text-white text-xs font-black">
                   {selectedOrderIds.length}
@@ -1531,6 +1545,26 @@ export default function OrdersPage() {
                       </td>
                       <td className="py-4 px-5 text-stone-850 font-bold text-sm group-hover:text-amber-950 transition-colors">
                         <span className="hover:underline">{ped.customerName}</span>
+                        {(() => {
+                          const ab = emAberto[ped.customerId];
+                          if (!ab) return null;
+                          const others = ab.titles.filter((t) => t.orderId !== ped.id);
+                          const total = others.reduce((sum, t) => sum + t.value, 0);
+                          const late = others.filter((t) => t.overdue).reduce((sum, t) => sum + t.value, 0);
+                          if (others.length === 0 && ab.credit <= 0) return null;
+                          const money = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                          return (
+                            <div className="mt-1 space-y-0.5 text-[11px] font-semibold leading-tight">
+                              {others.length > 0 && (
+                                <div className={late > 0 ? 'text-red-700' : 'text-amber-700'}>
+                                  {late > 0 ? '⚠ ' : ''}Cliente já deve {money(total)} em {others.length} pedido{others.length > 1 ? 's' : ''} ({others.slice(0, 4).map((t) => `#${t.numero}`).join(', ')}{others.length > 4 ? '…' : ''})
+                                  {late > 0 ? ` · ${money(late)} vencido` : ''}
+                                </div>
+                              )}
+                              {ab.credit > 0 && <div className="text-sky-700">Tem {money(ab.credit)} de crédito</div>}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="py-4 px-5 text-stone-500">{ped.sellerName || '—'}</td>
                       <td className="py-4 px-5 text-stone-400">{formatarData(ped.orderDate)}</td>
@@ -1684,6 +1718,13 @@ export default function OrdersPage() {
                           title="Histórico do pedido"
                         >
                           <History className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => setReturnOrder({ id: ped.id, numero: ped.numero })}
+                          className="p-1.5 border border-stone-200 rounded-lg hover:bg-rose-50 text-rose-600 transition-all cursor-pointer"
+                          title="Troca / devolução parcial"
+                        >
+                          <RotateCcw className="h-4 w-4" />
                         </button>
                         <button
                           onClick={() => setBillingOrder(ped)}
@@ -2495,6 +2536,7 @@ export default function OrdersPage() {
         </div>
       )}
 
+      {returnOrder && <ReturnModal orderId={returnOrder.id} numero={returnOrder.numero} onClose={() => setReturnOrder(null)} />}
       {billingOrder && (
         <OrderBillingModal
           order={{

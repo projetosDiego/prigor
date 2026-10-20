@@ -447,6 +447,18 @@ export default function AdminDashboardPage() {
                   Unidades (7x5/5x5) <ArrowRight className="h-3 w-3" />
                 </Link>
                 <Link
+                  href="/admin/reports/returns"
+                  className="text-xs font-bold text-purple-800 hover:underline flex items-center gap-1"
+                >
+                  Trocas do mês <ArrowRight className="h-3 w-3" />
+                </Link>
+                <Link
+                  href="/admin/reports/customer-profit"
+                  className="text-xs font-bold text-purple-800 hover:underline flex items-center gap-1"
+                >
+                  Clientes que compensam <ArrowRight className="h-3 w-3" />
+                </Link>
+                <Link
                   href="/admin/reports/products-abc"
                   className="text-xs font-bold text-purple-800 hover:underline flex items-center gap-1"
                 >

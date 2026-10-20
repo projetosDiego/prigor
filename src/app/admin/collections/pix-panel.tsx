@@ -5,6 +5,7 @@ import { CheckCircle2, FileUp, Landmark, Loader2, X } from 'lucide-react';
 
 import { responseErrorMessage } from '@/lib/errors';
 import { useToast } from '@/components/shared/Toast';
+import { PixAllocateModal } from './pix-allocate-modal';
 import type { PixListDTO, PixRowDTO } from '@/server/services/pix';
 
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -37,6 +38,7 @@ export function PixPanel({ onChanged }: { onChanged: () => Promise<void> }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [text, setText] = useState('');
+  const [allocating, setAllocating] = useState<{ row: PixRowDTO; customerId: string | null } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -59,9 +61,10 @@ export function PixPanel({ onChanged }: { onChanged: () => Promise<void> }) {
   async function fetchBank() {
     setBusy('bank');
     try {
-      const r = await post<{ fetched: number; withName: number; imported: number; duplicates: number }>('/api/pix/fetch', { days: 7 });
+      const r = await post<{ fetched: number; withName: number; imported: number; duplicates: number; perCompany: Array<{ name: string; fetched: number; imported: number; error: string | null }> }>('/api/pix/fetch', { days: 7 });
+      for (const c of r.perCompany) if (c.error) toast(`${c.name}: ${c.error}`, 'error');
       toast(
-        `${r.fetched} Pix nos últimos 7 dias · ${r.imported} novo(s)${r.imported > 0 && r.withName === 0 ? ' · o banco não informou o nome de quem pagou (sugestão só pelo valor)' : ''}.`,
+        `${r.fetched} Pix nos últimos 7 dias (${r.perCompany.filter((c) => !c.error).length} conta(s)) · ${r.imported} novo(s)${r.imported > 0 && r.withName === 0 ? ' · o banco não informou o nome de quem pagou (sugestão só pelo valor)' : ''}.`,
         r.imported > 0 && r.withName === 0 ? 'info' : 'success',
       );
       await load();
@@ -177,6 +180,11 @@ export function PixPanel({ onChanged }: { onChanged: () => Promise<void> }) {
                 </button>
               </div>
 
+              <div className="mt-3">
+                <button className="text-xs font-bold text-amber-700 hover:underline" disabled={busy !== null} onClick={() => setAllocating({ row, customerId: null })}>
+                  Outro cliente / dividir entre pedidos / valor diferente…
+                </button>
+              </div>
               {row.suggestions.length === 0 ? (
                 <p className="mt-3 rounded-lg bg-stone-50 p-3 text-xs text-stone-500">Nenhum título em aberto combina com este Pix. Se for de um cliente, dê baixa pelo Financeiro.</p>
               ) : (
@@ -198,6 +206,11 @@ export function PixPanel({ onChanged }: { onChanged: () => Promise<void> }) {
                           </div>
                           <div className="text-[11px] text-stone-400">{s.reasons.join(' · ')}</div>
                         </div>
+                        {!s.canSettle && (
+                          <button className="rounded-lg border border-emerald-600 px-3 py-2 text-sm font-bold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50" disabled={busy !== null} onClick={() => setAllocating({ row, customerId: s.customerId })}>
+                            Dar baixa parcial
+                          </button>
+                        )}
                         {s.canSettle && (
                           <button
                             className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
@@ -215,6 +228,10 @@ export function PixPanel({ onChanged }: { onChanged: () => Promise<void> }) {
             </div>
           ))}
         </div>
+      )}
+
+      {allocating && (
+        <PixAllocateModal row={allocating.row} openTitles={data.openTitles} initialCustomerId={allocating.customerId} onClose={() => setAllocating(null)} onDone={async () => { await Promise.all([load(), onChanged()]); }} />
       )}
 
       {showImport && (

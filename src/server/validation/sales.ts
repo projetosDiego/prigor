@@ -297,4 +297,5 @@ export const transactionListQuerySchema = z.object({
 
 export const settleTransactionSchema = z.object({
   paymentDate: optionalIsoDate('Data de pagamento'),
+  accountId: z.string().uuid().optional(),
 });

@@ -124,7 +124,7 @@ export async function updateTransaction(id: string, input: TransactionUpdate): P
 }
 
 /** Baixa de pagamento. */
-export async function settleTransaction(id: string, paymentDate: Date | null): Promise<TransactionDTO> {
+export async function settleTransaction(id: string, paymentDate: Date | null, accountId?: string | null): Promise<TransactionDTO> {
   const existing = await loadTransaction(id);
 
   if (existing.status === 'pago') {
@@ -136,7 +136,7 @@ export async function settleTransaction(id: string, paymentDate: Date | null): P
 
   const updated = await prisma.financialTransaction.update({
     where: { id },
-    data: { status: 'pago', paymentDate: paymentDate ?? today() },
+    data: { status: 'pago', paymentDate: paymentDate ?? today(), ...(accountId ? { accountId } : {}) },
     include: TRANSACTION_INCLUDE,
   });
 
