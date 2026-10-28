@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import OrderBillingModal from '@/components/admin/OrderBillingModal';
 import ReturnModal from '@/components/orders/ReturnModal';
+import { SellerMultiSelect } from '@/components/shared/SellerMultiSelect';
 import { saveResponseAsFile } from '@/lib/download';
 import { responseErrorMessage } from '@/lib/errors';
 import { useToast } from '@/components/shared/Toast';
@@ -164,6 +165,24 @@ function hojeLocal(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// Carrega todos os pedidos, 200 por página (limite da API), até o fim.
+async function fetchAllOrders(): Promise<OrderDTO[] | null> {
+  const out: OrderDTO[] = [];
+  let page = 1;
+  let totalPages = 1;
+  do {
+    const res = await fetch(`/api/orders?pageSize=200&page=${page}`);
+    if (!res.ok) return page === 1 ? null : out;
+    const d = (await res.json()) as Paginated<OrderDTO>;
+    out.push(...d.data);
+    totalPages = d.totalPages;
+    page += 1;
+  } while (page <= totalPages && page <= 100);
+  return out;
+}
+
+const ORDERS_PER_PAGE = 30;
+
 export default function OrdersPage() {
   const { toast, confirm } = useToast();
   const [pedidos, setPedidos] = useState<OrderDTO[]>([]);
@@ -178,7 +197,7 @@ export default function OrdersPage() {
   
   // Filtros
   const [statusFilter, setStatusFilter] = useState('');
-  const [sellerFilter, setSellerFilter] = useState('');
+  const [excludedSellers, setExcludedSellers] = useState<string[]>([]);
   const [codigoVendedor, setCodigoVendedor] = useState('');
   const [pedidosVendedor, setPedidosVendedor] = useState<OrderDTO[]>([]);
   const [deliveryDateFilter, setDeliveryDateFilter] = useState('');
@@ -265,8 +284,8 @@ export default function OrdersPage() {
   // Recarrega só os pedidos, sem o "carregando" da tela inteira.
   const refreshOrders = useCallback(async () => {
     try {
-      const res = await fetch('/api/orders?pageSize=200');
-      if (res.ok) setPedidos(((await res.json()) as Paginated<OrderDTO>).data);
+      const all = await fetchAllOrders();
+      if (all) setPedidos(all);
     } catch {
       /* silencioso: a lista atual continua válida */
     }
@@ -300,6 +319,7 @@ export default function OrdersPage() {
       ]);
 
       setPedidos(peds.data);
+      if (peds.totalPages > 1) void fetchAllOrders().then((all) => all && setPedidos(all));
       setClientes(clis.data);
       setProdutos(prods.data);
       setVendedores(sells.data ?? []);
@@ -1027,13 +1047,59 @@ export default function OrdersPage() {
     };
   }, [vendedorPorCodigo]);
 
+  // A lista inicial traz só os 200 pedidos mais recentes. Quando há busca por
+  // texto ou filtro de data, consulta o servidor e junta com o que já está carregado,
+  // para achar pedidos de meses anteriores.
+  const [extraPedidos, setExtraPedidos] = useState<OrderDTO[]>([]);
+  useEffect(() => {
+    const termo = filtroTexto.trim().replace('#', '');
+    const temBusca = termo.length >= 2;
+    if (!temBusca && !dateFrom && !dateTo && !deliveryDateFilter) {
+      setExtraPedidos([]);
+      return;
+    }
+    let cancel = false;
+    const t = setTimeout(() => {
+      void (async () => {
+        try {
+          const qs = new URLSearchParams({ pageSize: '200' });
+          if (temBusca) qs.set('search', termo);
+          if (dateFrom) qs.set('from', dateFrom);
+          if (dateTo) qs.set('to', dateTo);
+          if (deliveryDateFilter) {
+            qs.set('deliveryFrom', deliveryDateFilter);
+            qs.set('deliveryTo', deliveryDateFilter);
+          }
+          const res = await fetch(`/api/orders?${qs.toString()}`);
+          if (!res.ok) return;
+          const d = (await res.json()) as Paginated<OrderDTO>;
+          if (!cancel) setExtraPedidos(d.data);
+        } catch {
+          /* sem rede: segue só com a lista carregada */
+        }
+      })();
+    }, 350);
+    return () => {
+      cancel = true;
+      clearTimeout(t);
+    };
+  }, [filtroTexto, dateFrom, dateTo, deliveryDateFilter, pedidos]);
+
+  const pedidosTodos = useMemo(() => {
+    if (extraPedidos.length === 0) return pedidos;
+    const map = new Map<string, OrderDTO>();
+    for (const p of extraPedidos) map.set(p.id, p);
+    for (const p of pedidos) map.set(p.id, p); // lista carregada (mais atual) prevalece
+    return Array.from(map.values()).sort((a, b) => b.numero - a.numero);
+  }, [pedidos, extraPedidos]);
+
   const buscaPorCodigo = codigoVendedor.trim() !== '';
-  const baseLista = buscaPorCodigo ? pedidosVendedor : pedidos;
+  const baseLista = buscaPorCodigo ? pedidosVendedor : pedidosTodos;
 
   // Filtros aplicados localmente
   const filteredPedidos = baseLista.filter(p => {
     const matchesStatus = !statusFilter || p.status === statusFilter;
-    const matchesSeller = !sellerFilter || (sellerFilter === 'none' ? !p.sellerId : p.sellerId === sellerFilter);
+    const matchesSeller = !excludedSellers.includes(p.sellerId || 'none');
     const date = p.orderDate?.slice(0, 10) ?? '';
     const matchesFrom = !dateFrom || date >= dateFrom;
     const matchesTo = !dateTo || date <= dateTo;
@@ -1055,6 +1121,14 @@ export default function OrdersPage() {
   if (buscaPorCodigo) {
     filteredPedidos.sort((a, b) => (b.orderDate ?? '').localeCompare(a.orderDate ?? '') || b.numero - a.numero);
   }
+
+  const [pagina, setPagina] = useState(1);
+  const totalPaginas = Math.max(1, Math.ceil(filteredPedidos.length / ORDERS_PER_PAGE));
+  const paginaAtual = Math.min(pagina, totalPaginas);
+  const pedidosPagina = filteredPedidos.slice((paginaAtual - 1) * ORDERS_PER_PAGE, paginaAtual * ORDERS_PER_PAGE);
+  useEffect(() => {
+    setPagina(1);
+  }, [filtroTexto, statusFilter, dateFrom, dateTo, deliveryDateFilter, excludedSellers, codigoVendedor]);
 
   const toggleSelectOrder = (id: string) => {
     setSelectedOrderIds((prev) =>
@@ -1118,6 +1192,66 @@ export default function OrdersPage() {
     await refreshOrders();
     toast(`${done} pedido(s) ${label}.`, 'success');
     if (failed.length) toast(`Não consegui atualizar: ${failed.map((n) => `#${n}`).join(', ')}.`, 'error');
+  };
+
+  // Baixa coletiva: recebe de uma vez o título em aberto de cada pedido selecionado.
+  const aReceberSelecionados = pedidosTodos.filter(
+    (p) => selectedOrderIds.includes(p.id) && p.receivableId && (p.paymentStatus === 'pendente' || p.paymentStatus === 'atrasado'),
+  );
+  const [receivingAll, setReceivingAll] = useState(false);
+  const handleReceberTodos = async () => {
+    if (aReceberSelecionados.length === 0) {
+      toast('Nenhum dos pedidos selecionados tem valor em aberto.', 'error');
+      return;
+    }
+    const totalAbertos = aReceberSelecionados.reduce((acc, p) => acc + (Number(p.total) || 0), 0);
+    const ok = await confirm({
+      title: 'Receber todos',
+      message: `Dar baixa em ${aReceberSelecionados.length} pedido(s), total ${totalAbertos.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}, com data de hoje?`,
+      confirmLabel: 'Receber todos',
+      cancelLabel: 'Voltar',
+    });
+    if (!ok) return;
+    setReceivingAll(true);
+    let done = 0;
+    const failed: number[] = [];
+    for (const p of aReceberSelecionados) {
+      try {
+        const res = await fetch(`/api/financial/transactions/${p.receivableId}/settle`, { method: 'POST' });
+        if (res.ok) done += 1;
+        else failed.push(p.numero);
+      } catch {
+        failed.push(p.numero);
+      }
+    }
+    setReceivingAll(false);
+    await refreshOrders();
+    if (done > 0) toast(`${done} pedido(s) recebidos e baixados no financeiro.`, 'success');
+    if (failed.length > 0) toast(`Não foi possível baixar: #${failed.join(', #')}.`, 'error');
+    if (failed.length === 0) setSelectedOrderIds([]);
+  };
+
+  // PDF simples de conferência só com os pedidos marcados.
+  const [checklistBusy, setChecklistBusy] = useState(false);
+  const handleChecklistPdf = async () => {
+    if (selectedOrderIds.length === 0) return;
+    setChecklistBusy(true);
+    try {
+      const res = await fetch('/api/orders/checklist-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedOrderIds, date: deliveryDateFilter || new Date().toISOString().slice(0, 10) }),
+      });
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao gerar o PDF de conferência.'));
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Erro ao gerar o PDF de conferência.', 'error');
+    } finally {
+      setChecklistBusy(false);
+    }
   };
 
   const handleBatchPrint = async (customIds?: string[]) => {
@@ -1258,19 +1392,11 @@ export default function OrdersPage() {
           {/* Filtrar por Vendedor */}
           <div className="sm:col-span-1 lg:col-span-2">
             <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">Vendedor</label>
-            <select 
-              value={sellerFilter}
-              onChange={(e) => setSellerFilter(e.target.value)}
-              className="w-full rounded-lg border border-stone-200 text-xs px-3 py-2 bg-stone-50/50 focus:outline-none focus:bg-white focus:border-amber-400 font-medium"
-            >
-              <option value="">Todos Vendedores</option>
-              <option value="none">Sem Vendedor</option>
-              {vendedores.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name}
-                </option>
-              ))}
-            </select>
+            <SellerMultiSelect
+              options={[{ id: 'none', name: 'Sem vendedor' }, ...vendedores.map((v) => ({ id: v.id, name: v.name }))]}
+              excluded={excludedSellers}
+              onChange={setExcludedSellers}
+            />
           </div>
 
           {/* Buscar por código do vendedor */}
@@ -1479,6 +1605,26 @@ export default function OrdersPage() {
                 </button>
                 <button
                   type="button"
+                  onClick={handleReceberTodos}
+                  disabled={receivingAll || aReceberSelecionados.length === 0}
+                  className="px-3 py-1.5 rounded-lg border border-emerald-300 bg-white hover:bg-emerald-50 text-emerald-800 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                  title="Dá baixa no financeiro de todos os pedidos selecionados que estão em aberto"
+                >
+                  {receivingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <DollarSign className="h-4 w-4" />}
+                  Receber todos ({aReceberSelecionados.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={handleChecklistPdf}
+                  disabled={checklistBusy}
+                  className="px-3 py-1.5 rounded-lg border border-stone-300 bg-white hover:bg-stone-50 text-stone-800 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                  title="Gera o PDF simples de conferência só com os pedidos marcados"
+                >
+                  {checklistBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+                  PDF de conferência
+                </button>
+                <button
+                  type="button"
                   onClick={() => handleBatchPrint()}
                   disabled={batchPrinting}
                   className="px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50"
@@ -1525,7 +1671,7 @@ export default function OrdersPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100 font-semibold text-stone-700">
-                  {filteredPedidos.map((ped) => (
+                  {pedidosPagina.map((ped) => (
                     <tr 
                       key={ped.id} 
                       onClick={() => handleOpenEditModal(ped)}
@@ -1763,6 +1909,45 @@ export default function OrdersPage() {
               </tbody>
             </table>
           </div>
+          {totalPaginas > 1 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-stone-100 px-4 py-3 text-xs font-bold text-stone-600">
+              <span>
+                {(paginaAtual - 1) * ORDERS_PER_PAGE + 1}–{Math.min(paginaAtual * ORDERS_PER_PAGE, filteredPedidos.length)} de {filteredPedidos.length} pedidos
+              </span>
+              <div className="flex flex-wrap items-center gap-1">
+                <button
+                  type="button"
+                  disabled={paginaAtual === 1}
+                  onClick={() => setPagina(paginaAtual - 1)}
+                  className="rounded-lg border border-stone-200 px-2.5 py-1 disabled:opacity-40 hover:bg-stone-50"
+                >
+                  Anterior
+                </button>
+                {Array.from({ length: totalPaginas }, (_, i) => i + 1)
+                  .filter((n) => n === 1 || n === totalPaginas || Math.abs(n - paginaAtual) <= 2)
+                  .map((n, idx, arr) => (
+                    <React.Fragment key={n}>
+                      {idx > 0 && n - arr[idx - 1] > 1 && <span className="px-1 text-stone-400">…</span>}
+                      <button
+                        type="button"
+                        onClick={() => setPagina(n)}
+                        className={`rounded-lg border px-2.5 py-1 ${n === paginaAtual ? 'border-amber-600 bg-amber-600 text-white' : 'border-stone-200 hover:bg-stone-50'}`}
+                      >
+                        {n}
+                      </button>
+                    </React.Fragment>
+                  ))}
+                <button
+                  type="button"
+                  disabled={paginaAtual === totalPaginas}
+                  onClick={() => setPagina(paginaAtual + 1)}
+                  className="rounded-lg border border-stone-200 px-2.5 py-1 disabled:opacity-40 hover:bg-stone-50"
+                >
+                  Próxima
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
       )}

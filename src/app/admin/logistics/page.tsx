@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { responseErrorMessage } from '@/lib/errors';
 import { useToast } from '@/components/shared/Toast';
+import { SellerMultiSelect } from '@/components/shared/SellerMultiSelect';
 import type { OrderDTO, Paginated } from '@/lib/api-types';
 
 /** Monta o logradouro completo para exibir e para montar o link do Maps. */
@@ -83,7 +84,9 @@ export default function LogisticsPage() {
   // Modo de visualização: 'roteiro' ou 'checklist'
   const [activeTab, setActiveTab] = useState<'roteiro' | 'checklist'>('roteiro');
   const [generatingPdf, setGeneratingPdf] = useState(false);
-  const [sellerFilter, setSellerFilter] = useState('');
+  const [excludedSellers, setExcludedSellers] = useState<string[]>([]);
+  // Pedidos agendados que NÃO vão sair nesta carga (guardado por data neste aparelho)
+  const [skippedIds, setSkippedIds] = useState<string[]>([]);
 
   // Pedidos selecionados para a rota de entrega
   const [selectedPedidoIds, setSelectedPedidoIds] = useState<string[]>([]);
@@ -108,7 +111,25 @@ export default function LogisticsPage() {
     } catch {
       setCheckedOrderIds([]);
     }
+    try {
+      const skipped = localStorage.getItem(`prigor_logistics_skipped_${selectedDate}`);
+      setSkippedIds(skipped ? (JSON.parse(skipped) as string[]) : []);
+    } catch {
+      setSkippedIds([]);
+    }
   }, [selectedDate]);
+
+  const updateSkipped = (updater: (prev: string[]) => string[]) => {
+    setSkippedIds((prev) => {
+      const next = updater(prev);
+      try {
+        localStorage.setItem(`prigor_logistics_skipped_${selectedDate}`, JSON.stringify(next));
+      } catch {
+        /* ignora */
+      }
+      return next;
+    });
+  };
 
   const toggleCheckOrder = (id: string) => {
     setCheckedOrderIds((prev) => {
@@ -345,22 +366,21 @@ export default function LogisticsPage() {
     ).entries()
   ).map(([id, name]) => ({ id, name }));
 
-  const pedidosFiltradosPorVendedor = pedidos.filter((p) => {
-    if (!sellerFilter) return true;
-    if (sellerFilter === 'none') return !p.sellerId;
-    return p.sellerId === sellerFilter;
-  });
-
-  const pedidosPendentesFiltrados = pedidosPendentes.filter((p) => {
-    if (!sellerFilter) return true;
-    if (sellerFilter === 'none') return !p.sellerId;
-    return p.sellerId === sellerFilter;
-  });
+  const sellerOptions = [
+    { id: 'none', name: 'Sem vendedor / direto' },
+    ...uniqueSellers.filter((s) => s.id !== 'none'),
+  ];
+  const sellerFiltered = excludedSellers.some((id) => sellerOptions.some((o) => o.id === id));
+  const pedidosFiltradosPorVendedor = pedidos.filter((p) => !excludedSellers.includes(p.sellerId || 'none'));
+  const pedidosPendentesFiltrados = pedidosPendentes.filter((p) => !excludedSellers.includes(p.sellerId || 'none'));
 
   // Base do checklist: se o usuário selecionou pedidos específicos para a rota, usa eles; senão, usa os pedidos filtrados da data
-  const pedidosChecklist = selectedPedidoIds.length > 0
+  const pedidosBaseChecklist = selectedPedidoIds.length > 0
     ? pedidosFiltradosPorVendedor.filter((p) => selectedPedidoIds.includes(p.id))
     : pedidosFiltradosPorVendedor;
+  // Pedidos que o usuário tirou da carga do dia ficam fora da conferência, das contagens e do PDF
+  const pedidosChecklist = pedidosBaseChecklist.filter((p) => !skippedIds.includes(p.id));
+  const pedidosForaDaCarga = pedidosBaseChecklist.filter((p) => skippedIds.includes(p.id));
 
   const totalPedidosChecklist = pedidosChecklist.length;
   const totalVolumesChecklist = pedidosChecklist.reduce((acc, p) => acc + totalVolumes(p), 0);
@@ -457,19 +477,7 @@ export default function LogisticsPage() {
             <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">
               Filtrar por Vendedor
             </label>
-            <select
-              value={sellerFilter}
-              onChange={(e) => setSellerFilter(e.target.value)}
-              className="w-full rounded-lg border border-stone-200 text-xs px-3 py-2 bg-stone-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500 font-semibold text-stone-900"
-            >
-              <option value="">Todos os Vendedores</option>
-              <option value="none">Sem Vendedor / Direto</option>
-              {uniqueSellers.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+            <SellerMultiSelect options={sellerOptions} excluded={excludedSellers} onChange={setExcludedSellers} />
           </div>
 
           <button 
@@ -497,7 +505,7 @@ export default function LogisticsPage() {
             ) : (
               <>
                 <Printer className="h-4 w-4" />
-                <span>Gerar Arquivo (PDF)</span>
+                <span>Gerar Arquivo (PDF · {pedidosChecklist.length})</span>
               </>
             )}
           </button>
@@ -618,7 +626,7 @@ export default function LogisticsPage() {
 
               {pedidosFiltradosPorVendedor.length === 0 ? (
                 <div className="text-center py-12 text-stone-400 text-xs italic font-semibold">
-                  Nenhum pedido agendado para entrega em {formatarData(selectedDate)}{sellerFilter ? ' com este vendedor' : ''}.
+                  Nenhum pedido agendado para entrega em {formatarData(selectedDate)}{sellerFiltered ? ' para os vendedores selecionados' : ''}.
                 </div>
               ) : (
                 <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
@@ -1194,6 +1202,17 @@ export default function LogisticsPage() {
                             </span>
                           </div>
 
+                          {!isEntregue && (
+                            <button
+                              type="button"
+                              onClick={() => updateSkipped((prev) => [...prev, p.id])}
+                              className="shrink-0 px-2.5 py-1 rounded-lg border border-stone-300 bg-white hover:bg-red-50 hover:border-red-300 hover:text-red-700 text-stone-600 text-[11px] font-bold cursor-pointer transition-all"
+                              title="Este pedido não vai sair hoje: tira da conferência e do PDF"
+                            >
+                              Não vai hoje
+                            </button>
+                          )}
+
                           {/* Ação de status de entrega individual no checklist */}
                           <div className="shrink-0">
                             {isEntregue ? (
@@ -1268,6 +1287,40 @@ export default function LogisticsPage() {
                     </div>
                   );
                 })}
+              </div>
+            )}
+
+            {/* Pedidos agendados que não vão nesta carga */}
+            {pedidosForaDaCarga.length > 0 && (
+              <div className="rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-4">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-black uppercase tracking-wide text-stone-600">
+                    Fora da carga de hoje ({pedidosForaDaCarga.length}) — não entram na conferência nem no PDF
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => updateSkipped(() => [])}
+                    className="text-xs font-bold text-amber-700 hover:underline cursor-pointer"
+                  >
+                    Voltar todos para a carga
+                  </button>
+                </div>
+                <ul className="divide-y divide-stone-200">
+                  {pedidosForaDaCarga.map((p) => (
+                    <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-1.5 text-xs">
+                      <span className="font-semibold text-stone-700">
+                        #{p.numero} · {p.customerName} <span className="font-normal text-stone-400">({bairroDoPedido(p)})</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => updateSkipped((prev) => prev.filter((id) => id !== p.id))}
+                        className="rounded-lg border border-stone-300 bg-white px-2.5 py-1 font-bold text-stone-700 hover:bg-amber-50 cursor-pointer"
+                      >
+                        Voltar para a carga
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
 
