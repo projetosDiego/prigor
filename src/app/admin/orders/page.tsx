@@ -1136,13 +1136,15 @@ export default function OrdersPage() {
     );
   };
 
-  const isAllSelected = filteredPedidos.length > 0 && filteredPedidos.every((p) => selectedOrderIds.includes(p.id));
+  // O checkbox do cabeçalho marca só os pedidos da página que está na tela.
+  const isAllSelected = pedidosPagina.length > 0 && pedidosPagina.every((p) => selectedOrderIds.includes(p.id));
 
   const toggleSelectAll = () => {
+    const ids = pedidosPagina.map((p) => p.id);
     if (isAllSelected) {
-      setSelectedOrderIds([]);
+      setSelectedOrderIds((prev) => prev.filter((id) => !ids.includes(id)));
     } else {
-      setSelectedOrderIds(filteredPedidos.map((p) => p.id));
+      setSelectedOrderIds((prev) => Array.from(new Set([...prev, ...ids])));
     }
   };
 
@@ -1207,7 +1209,7 @@ export default function OrdersPage() {
     const totalAbertos = aReceberSelecionados.reduce((acc, p) => acc + (Number(p.total) || 0), 0);
     const ok = await confirm({
       title: 'Receber todos',
-      message: `Dar baixa em ${aReceberSelecionados.length} pedido(s), total ${totalAbertos.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}, com data de hoje?`,
+      message: `${aReceberSelecionados.some((p) => !pedidosPagina.some((x) => x.id === p.id)) ? 'ATENÇÃO: há pedidos selecionados fora desta página. ' : ''}Dar baixa em ${aReceberSelecionados.length} pedido(s), total ${totalAbertos.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}, com data de hoje?`,
       confirmLabel: 'Receber todos',
       cancelLabel: 'Voltar',
     });
@@ -1251,6 +1253,67 @@ export default function OrdersPage() {
       toast(err instanceof Error ? err.message : 'Erro ao gerar o PDF de conferência.', 'error');
     } finally {
       setChecklistBusy(false);
+    }
+  };
+
+  // Desfazer recebimentos recentes (estorno em lote).
+  const [undoOpen, setUndoOpen] = useState(false);
+  const [undoHours, setUndoHours] = useState(6);
+  const [undoRows, setUndoRows] = useState<
+    { transactionId: string; orderId: string; numero: number; customerName: string; value: number; paidAt: string }[]
+  >([]);
+  const [undoSel, setUndoSel] = useState<string[]>([]);
+  const [undoBusy, setUndoBusy] = useState(false);
+  useEffect(() => {
+    if (!undoOpen) return;
+    let cancel = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/financial/settlements/recent?hours=${undoHours}`);
+        if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao buscar baixas recentes.'));
+        const d = (await res.json()) as { data: typeof undoRows };
+        if (!cancel) {
+          setUndoRows(d.data);
+          setUndoSel([]);
+        }
+      } catch (err) {
+        toast(err instanceof Error ? err.message : 'Erro ao buscar baixas recentes.', 'error');
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [undoOpen, undoHours]);
+
+  const handleUndoSettlements = async () => {
+    if (undoSel.length === 0) return;
+    const ok = await confirm({
+      title: 'Estornar baixas',
+      message: `Estornar a baixa de ${undoSel.length} pedido(s)? Eles voltam para "pendente".`,
+      confirmLabel: 'Estornar',
+      cancelLabel: 'Voltar',
+      danger: true,
+    });
+    if (!ok) return;
+    setUndoBusy(true);
+    try {
+      const res = await fetch('/api/financial/settlements/reverse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: undoSel }),
+      });
+      if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao estornar.'));
+      const r = (await res.json()) as { done: number; failed: string[] };
+      toast(`${r.done} baixa(s) estornada(s).`, 'success');
+      if (r.failed.length) toast(`${r.failed.length} não puderam ser estornadas.`, 'error');
+      setUndoRows((rows) => rows.filter((x) => !undoSel.includes(x.transactionId) || r.failed.includes(x.transactionId)));
+      setUndoSel([]);
+      await refreshOrders();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Erro ao estornar.', 'error');
+    } finally {
+      setUndoBusy(false);
     }
   };
 
@@ -1309,14 +1372,92 @@ export default function OrdersPage() {
           </h2>
           <p className="text-xs text-stone-500 font-medium">Controle de faturamento, faturamento futuro e rotas de comissão</p>
         </div>
-        <button 
-          onClick={handleOpenCreateModal}
-          className="rounded-lg bg-amber-700 px-4 py-2 text-white font-bold text-xs hover:bg-amber-800 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
-        >
-          <Plus className="h-4 w-4" />
-          Novo Pedido
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setUndoOpen(true)}
+            className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-stone-700 font-bold text-xs hover:bg-stone-50 transition-all flex items-center gap-1.5 cursor-pointer"
+            title="Lista as baixas feitas nas últimas horas para estornar"
+          >
+            <RotateCcw className="h-4 w-4" />
+            Desfazer recebimentos
+          </button>
+          <button 
+            onClick={handleOpenCreateModal}
+            className="rounded-lg bg-amber-700 px-4 py-2 text-white font-bold text-xs hover:bg-amber-800 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+          >
+            <Plus className="h-4 w-4" />
+            Novo Pedido
+          </button>
+        </div>
       </div>
+
+      {undoOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 p-3" onClick={() => setUndoOpen(false)}>
+          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-200 p-4">
+              <h3 className="text-sm font-black text-stone-900">Desfazer recebimentos</h3>
+              <label className="flex items-center gap-2 text-xs font-bold text-stone-600">
+                Últimas
+                <select value={undoHours} onChange={(e) => setUndoHours(Number(e.target.value))} className="rounded-lg border border-stone-200 px-2 py-1 text-xs">
+                  {[1, 3, 6, 12, 24, 72].map((h) => (
+                    <option key={h} value={h}>{h} h</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="flex items-center justify-between gap-2 border-b border-stone-100 px-4 py-2 text-xs font-bold">
+              <span className="text-stone-500">{undoRows.length} baixa(s) · {undoSel.length} marcada(s)</span>
+              <span className="flex gap-3">
+                <button type="button" className="text-amber-700 hover:underline" onClick={() => setUndoSel(undoRows.map((r) => r.transactionId))}>Marcar todas</button>
+                <button type="button" className="text-stone-500 hover:underline" onClick={() => setUndoSel([])}>Limpar</button>
+                <button
+                  type="button"
+                  className="text-stone-500 hover:underline"
+                  onClick={() => {
+                    const ids = new Set(pedidosPagina.map((p) => p.id));
+                    setUndoSel(undoRows.filter((r) => !ids.has(r.orderId)).map((r) => r.transactionId));
+                  }}
+                  title="Marca todas, menos os pedidos que estão na página atual da lista"
+                >
+                  Marcar todas menos desta página
+                </button>
+              </span>
+            </div>
+            <ul className="flex-1 divide-y divide-stone-100 overflow-y-auto">
+              {undoRows.length === 0 && <li className="p-6 text-center text-xs font-semibold text-stone-400">Nenhuma baixa de pedido nesse período.</li>}
+              {undoRows.map((r) => (
+                <li key={r.transactionId}>
+                  <label className="flex cursor-pointer items-center gap-3 px-4 py-2 text-xs hover:bg-amber-50/50">
+                    <input
+                      type="checkbox"
+                      checked={undoSel.includes(r.transactionId)}
+                      onChange={() => setUndoSel((prev) => (prev.includes(r.transactionId) ? prev.filter((x) => x !== r.transactionId) : [...prev, r.transactionId]))}
+                      className="h-4 w-4 rounded border-stone-300 text-amber-700"
+                    />
+                    <span className="w-14 font-black text-stone-800">#{r.numero}</span>
+                    <span className="flex-1 truncate font-semibold text-stone-700">{r.customerName}</span>
+                    <span className="font-bold text-stone-900">{r.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                    <span className="w-24 text-right text-stone-400">{new Date(r.paidAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+            <div className="flex justify-end gap-2 border-t border-stone-200 p-3">
+              <button type="button" onClick={() => setUndoOpen(false)} className="rounded-lg border border-stone-300 px-3 py-1.5 text-xs font-bold text-stone-700 hover:bg-stone-50">Fechar</button>
+              <button
+                type="button"
+                onClick={handleUndoSettlements}
+                disabled={undoBusy || undoSel.length === 0}
+                className="flex items-center gap-1.5 rounded-lg bg-red-700 px-4 py-1.5 text-xs font-black text-white hover:bg-red-800 disabled:opacity-50"
+              >
+                {undoBusy && <Loader2 className="h-4 w-4 animate-spin" />}
+                Estornar marcadas ({undoSel.length})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Barra de Filtros */}
       <div className="rounded-2xl bg-white p-4 shadow-sm border border-stone-200 space-y-3">
@@ -1655,7 +1796,7 @@ export default function OrdersPage() {
                         type="checkbox" 
                         checked={isAllSelected} 
                         onChange={toggleSelectAll} 
-                        title="Selecionar todos os pedidos filtrados"
+                        title="Selecionar os pedidos desta página"
                         className="rounded border-stone-300 text-amber-700 focus:ring-amber-500 cursor-pointer h-4 w-4" 
                       />
                     </th>
