@@ -202,7 +202,7 @@ export interface OrderMarginDTO {
 /** Documentos prontos para baixar direto da lista de pedidos (só gestão). */
 export interface OrderDocumentsDTO {
   /** Último boleto com PDF disponível (registrado ou pago). */
-  boleto: { id: string; status: 'registrado' | 'pago' } | null;
+  boleto: { id: string; status: 'registrado' | 'pago'; dueDate: string | null } | null;
   /** Última nota autorizada. */
   invoice: { id: string; number: number | null } | null;
   /** Link secreto do pedido para o cliente baixar boleto/NF/espelho (sem login). */
@@ -236,6 +236,8 @@ export interface OrderDTO {
   commissionPct: number | null;
   paymentStatus: 'pago' | 'pendente' | 'atrasado' | 'sem_conta';
   receivableId: string | null;
+  /** Vencimento do título a receber do pedido (AAAA-MM-DD). */
+  receivableDueDate: string | null;
   hasNegotiatedPrice: boolean;
   approvedByAdmin: boolean;
   notes: string | null;
@@ -314,7 +316,7 @@ export interface OrderRow {
     mobile: string | null;
   } | null;
   seller?: { name: string } | null;
-  transactions?: Array<{ id: string; status: string }>;
+  transactions?: Array<{ id: string; status: string; dueDate?: Date | string | null }>;
   deliveryAddress?: { label: string | null; address: string | null; number: string | null; complement: string | null; neighborhood: string | null; city: string | null; state: string | null; zipCode: string | null } | null;
   items?: Array<{
     id: string;
@@ -365,6 +367,7 @@ export function toOrderDTO(row: OrderRow, options: { withAddress?: boolean; with
     commissionPct: row.commissionPct === null || row.commissionPct === undefined ? null : num(row.commissionPct),
     paymentStatus: computePaymentStatus(row.transactions),
     receivableId: (row.transactions ?? [])[0]?.id ?? null,
+    receivableDueDate: dateOnly((row.transactions ?? [])[0]?.dueDate ?? null),
     hasNegotiatedPrice: Boolean(row.hasNegotiatedPrice),
     approvedByAdmin: row.approvedByAdmin === undefined || row.approvedByAdmin === null ? true : Boolean(row.approvedByAdmin),
     notes: row.notes,

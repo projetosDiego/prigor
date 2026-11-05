@@ -30,6 +30,7 @@ import {
 import OrderBillingModal from '@/components/admin/OrderBillingModal';
 import ReturnModal from '@/components/orders/ReturnModal';
 import { SellerMultiSelect } from '@/components/shared/SellerMultiSelect';
+import { MultiDatePicker } from '@/components/shared/MultiDatePicker';
 import { saveResponseAsFile } from '@/lib/download';
 import { responseErrorMessage } from '@/lib/errors';
 import { useToast } from '@/components/shared/Toast';
@@ -200,7 +201,9 @@ export default function OrdersPage() {
   const [excludedSellers, setExcludedSellers] = useState<string[]>([]);
   const [codigoVendedor, setCodigoVendedor] = useState('');
   const [pedidosVendedor, setPedidosVendedor] = useState<OrderDTO[]>([]);
-  const [deliveryDateFilter, setDeliveryDateFilter] = useState('');
+  const [deliveryDates, setDeliveryDates] = useState<string[]>([]);
+  const deliveryDateFilter = deliveryDates.length === 1 ? (deliveryDates[0] as string) : '';
+  const deliveryLabel = deliveryDates.map((d) => formatarData(d)).join(', ');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [filtroTexto, setFiltroTexto] = useState('');
@@ -1003,15 +1006,6 @@ export default function OrdersPage() {
     }
   };
 
-  const setDeliveryToday = () => {
-    setDeliveryDateFilter(new Date().toISOString().split('T')[0]);
-  };
-
-  const setDeliveryTomorrow = () => {
-    const tomorrow = addDaysISO(new Date().toISOString().split('T')[0], 1);
-    setDeliveryDateFilter(tomorrow);
-  };
-
   // Código do vendedor: acha o vendedor (código exato ou prefixo único) e mostra os últimos pedidos dele.
   const vendedorPorCodigo = useMemo(() => {
     const q = codigoVendedor.trim().toLowerCase();
@@ -1054,7 +1048,7 @@ export default function OrdersPage() {
   useEffect(() => {
     const termo = filtroTexto.trim().replace('#', '');
     const temBusca = termo.length >= 2;
-    if (!temBusca && !dateFrom && !dateTo && !deliveryDateFilter) {
+    if (!temBusca && !dateFrom && !dateTo && deliveryDates.length === 0) {
       setExtraPedidos([]);
       return;
     }
@@ -1066,9 +1060,10 @@ export default function OrdersPage() {
           if (temBusca) qs.set('search', termo);
           if (dateFrom) qs.set('from', dateFrom);
           if (dateTo) qs.set('to', dateTo);
-          if (deliveryDateFilter) {
-            qs.set('deliveryFrom', deliveryDateFilter);
-            qs.set('deliveryTo', deliveryDateFilter);
+          if (deliveryDates.length > 0) {
+            const ord = [...deliveryDates].sort();
+            qs.set('deliveryFrom', ord[0] as string);
+            qs.set('deliveryTo', ord[ord.length - 1] as string);
           }
           const res = await fetch(`/api/orders?${qs.toString()}`);
           if (!res.ok) return;
@@ -1083,7 +1078,7 @@ export default function OrdersPage() {
       cancel = true;
       clearTimeout(t);
     };
-  }, [filtroTexto, dateFrom, dateTo, deliveryDateFilter, pedidos]);
+  }, [filtroTexto, dateFrom, dateTo, deliveryDates, pedidos]);
 
   const pedidosTodos = useMemo(() => {
     if (extraPedidos.length === 0) return pedidos;
@@ -1105,7 +1100,7 @@ export default function OrdersPage() {
     const matchesTo = !dateTo || date <= dateTo;
 
     const deliveryDate = p.deliveryDate?.slice(0, 10) ?? '';
-    const matchesDelivery = !deliveryDateFilter || deliveryDate === deliveryDateFilter;
+    const matchesDelivery = deliveryDates.length === 0 || deliveryDates.includes(deliveryDate);
 
     let matchesTexto = true;
     if (filtroTexto.trim()) {
@@ -1128,7 +1123,7 @@ export default function OrdersPage() {
   const pedidosPagina = filteredPedidos.slice((paginaAtual - 1) * ORDERS_PER_PAGE, paginaAtual * ORDERS_PER_PAGE);
   useEffect(() => {
     setPagina(1);
-  }, [filtroTexto, statusFilter, dateFrom, dateTo, deliveryDateFilter, excludedSellers, codigoVendedor]);
+  }, [filtroTexto, statusFilter, dateFrom, dateTo, deliveryDates, excludedSellers, codigoVendedor]);
 
   const toggleSelectOrder = (id: string) => {
     setSelectedOrderIds((prev) =>
@@ -1242,7 +1237,7 @@ export default function OrdersPage() {
       const res = await fetch('/api/orders/checklist-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: selectedOrderIds, date: deliveryDateFilter || new Date().toISOString().slice(0, 10) }),
+        body: JSON.stringify({ ids: selectedOrderIds, date: deliveryDates.length > 0 ? [...deliveryDates].sort().join(',') : new Date().toISOString().slice(0, 10) }),
       });
       if (!res.ok) throw new Error(await responseErrorMessage(res, 'Erro ao gerar o PDF de conferência.'));
       const blob = await res.blob();
@@ -1361,6 +1356,222 @@ export default function OrdersPage() {
     }
   };
 
+  const hojeISO = (() => {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  })();
+  /** Vencimento do pedido: boleto registrado > título a receber > data do pedido. */
+  const vencimentoInfo = (ped: OrderDTO) => {
+    const boleto = ped.documents?.boleto;
+    const due = (boleto?.dueDate ?? ped.receivableDueDate ?? ped.dueDate ?? '').slice(0, 10) || null;
+    if (!due) return null;
+    const aberto = ped.status !== 'cancelado' && (ped.paymentStatus === 'pendente' || ped.paymentStatus === 'atrasado');
+    const overdue = aberto && due < hojeISO;
+    const days = overdue ? Math.round((Date.parse(`${hojeISO}T12:00:00`) - Date.parse(`${due}T12:00:00`)) / 86400000) : 0;
+    const boletoOverdue = aberto && boleto?.status === 'registrado' && !!boleto.dueDate && boleto.dueDate.slice(0, 10) < hojeISO;
+    return { due, overdue, days, boletoOverdue };
+  };
+
+  const renderEmAberto = (ped: OrderDTO) => {
+    return (() => {
+        const ab = emAberto[ped.customerId];
+        if (!ab) return null;
+        const others = ab.titles.filter((t) => t.orderId !== ped.id);
+        const total = others.reduce((sum, t) => sum + t.value, 0);
+        const late = others.filter((t) => t.overdue).reduce((sum, t) => sum + t.value, 0);
+        if (others.length === 0 && ab.credit <= 0) return null;
+        const money = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        return (
+          <div className="mt-1 space-y-0.5 text-[11px] font-semibold leading-tight">
+            {others.length > 0 && (
+              <div className={late > 0 ? 'text-red-700' : 'text-amber-700'}>
+                {late > 0 ? '⚠ ' : ''}Cliente já deve {money(total)} em {others.length} pedido{others.length > 1 ? 's' : ''} ({others.slice(0, 4).map((t) => `#${t.numero}`).join(', ')}{others.length > 4 ? '…' : ''})
+                {late > 0 ? ` · ${money(late)} vencido` : ''}
+              </div>
+            )}
+            {ab.credit > 0 && <div className="text-sky-700">Tem {money(ab.credit)} de crédito</div>}
+          </div>
+        );
+    })();
+  };
+
+  const renderStatus = (ped: OrderDTO) => (
+    <>
+      <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+        ped.status === 'faturado' ? 'bg-emerald-50 text-emerald-700' :
+        ped.status === 'entregue' ? 'bg-sky-50 text-sky-700' :
+        ped.status === 'em_producao' ? 'bg-amber-50 text-amber-700' :
+        ped.status === 'confirmado' ? 'bg-purple-50 text-purple-700' :
+        ped.status === 'cancelado' ? 'bg-red-50 text-red-700' : 'bg-stone-100 text-stone-600'
+      }`}>
+        {ped.status}
+      </span>
+      {ped.hasNegotiatedPrice && !ped.approvedByAdmin && (
+        <div className="mt-1">
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase bg-amber-100 text-amber-800 border border-amber-300">
+            Preço Negociado
+          </span>
+        </div>
+      )}
+      {ped.paymentStatus !== 'sem_conta' && (() => {
+        const v = vencimentoInfo(ped);
+        const vencido = v?.overdue ?? ped.paymentStatus === 'atrasado';
+        return (
+          <div className="mt-1 flex flex-wrap justify-center gap-1">
+            <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${ped.paymentStatus === 'pago' ? 'bg-emerald-100 text-emerald-700' : vencido ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>
+              {ped.paymentStatus === 'pago' ? 'Pago' : vencido ? (v?.days ? `Vencido há ${v.days}d` : 'Vencido') : 'A receber'}
+            </span>
+            {v?.boletoOverdue && (
+              <span className="inline-flex px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-red-600 text-white" title="O boleto registrado já passou do vencimento">
+                Boleto vencido
+              </span>
+            )}
+          </div>
+        );
+      })()}
+      {ped.status !== 'cancelado' &&
+        isBoletoPaymentMethod(ped.paymentMethod) &&
+        !ped.documents?.boleto &&
+        clientes.find((c) => c.id === ped.customerId)?.boletoAllowed === false && (
+          <div className="mt-1">
+            <span
+              className="inline-flex px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-amber-100 text-amber-900 border border-amber-300"
+              title="Cliente ainda não liberado para boleto. Gere o boleto no faturamento para aprovar (o cliente passa a ser liberado)."
+            >
+              Boleto a aprovar
+            </span>
+          </div>
+        )}
+      {(ped.documents?.boleto || ped.documents?.invoice) && (
+        <div className="mt-1.5 flex flex-wrap justify-center gap-1" onClick={(e) => e.stopPropagation()}>
+          {ped.documents.boleto && (
+            <a
+              href={`/api/boletos/${ped.documents.boleto.id}/pdf`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 transition-all"
+              title="Abrir o PDF do boleto para baixar, imprimir ou enviar"
+            >
+              <FileDown className="h-3 w-3" />
+              Boleto
+            </a>
+          )}
+          {ped.documents.invoice && (
+            <a
+              href={`/api/notas/${ped.documents.invoice.id}/danfe`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-all"
+              title="Abrir a nota fiscal (DANFE) para baixar, imprimir ou enviar"
+            >
+              <FileDown className="h-3 w-3" />
+              {ped.documents.invoice.number ? `NF ${ped.documents.invoice.number}` : 'NF'}
+            </a>
+          )}
+        </div>
+      )}
+    </>
+  );
+
+  const renderAcoes = (ped: OrderDTO, compact = false) => (
+    <div className={`flex flex-wrap gap-1 ${compact ? 'justify-start' : 'mx-auto max-w-[12rem] justify-center'}`}>
+      {ped.hasNegotiatedPrice && !ped.approvedByAdmin ? (
+        <button
+          onClick={() => handleAprovarPreco(ped.id)}
+          className="p-1.5 border border-amber-300 bg-amber-50 rounded-lg hover:bg-amber-100 text-amber-800 transition-all cursor-pointer"
+          title="Aprovar Preço Negociado e Liberar Impressão"
+        >
+          <CheckCircle2 className="h-4 w-4 text-amber-700" />
+        </button>
+      ) : ped.status === 'novo' && (
+        <button
+          onClick={() => handleQuickStatus(ped.id, 'confirmado', 'confirmado')}
+          className="p-1.5 border border-emerald-200 rounded-lg hover:bg-emerald-50 text-emerald-700 transition-all cursor-pointer"
+          title="Concluir (confirmar pedido)"
+        >
+          <CheckCircle2 className="h-4 w-4" />
+        </button>
+      )}
+      {(ped.status === 'confirmado' || ped.status === 'em_producao') && (
+        <button
+          onClick={() => handleQuickStatus(ped.id, 'entregue', 'entregue')}
+          className="p-1.5 border border-sky-200 rounded-lg hover:bg-sky-50 text-sky-700 transition-all cursor-pointer"
+          title="Marcar como entregue"
+        >
+          <Truck className="h-4 w-4" />
+        </button>
+      )}
+      {(ped.paymentStatus === 'pendente' || ped.paymentStatus === 'atrasado') && ped.receivableId && (
+        <button
+          onClick={() => handleMarcarPago(ped.receivableId!)}
+          className="p-1.5 border border-emerald-200 rounded-lg hover:bg-emerald-50 text-emerald-700 transition-all cursor-pointer"
+          title="Marcar como pago (baixa no financeiro)"
+        >
+          <DollarSign className="h-4 w-4" />
+        </button>
+      )}
+      <button
+        onClick={() => handleWhatsApp(ped)}
+        className="p-1.5 border border-stone-200 rounded-lg hover:bg-emerald-50 text-emerald-700 transition-all cursor-pointer"
+        title="Enviar por WhatsApp"
+      >
+        <MessageCircle className="h-4 w-4" />
+      </button>
+      <button
+        onClick={() => handleDuplicate(ped)}
+        className="p-1.5 border border-stone-200 rounded-lg hover:bg-stone-50 text-stone-500 transition-all cursor-pointer"
+        title="Duplicar pedido"
+      >
+        <Copy className="h-4 w-4" />
+      </button>
+      <button
+        onClick={() => handleOpenHistory(ped)}
+        className="p-1.5 border border-stone-200 rounded-lg hover:bg-indigo-50 text-indigo-600 transition-all cursor-pointer"
+        title="Histórico do pedido"
+      >
+        <History className="h-4 w-4" />
+      </button>
+      <button
+        onClick={() => setReturnOrder({ id: ped.id, numero: ped.numero })}
+        className="p-1.5 border border-stone-200 rounded-lg hover:bg-rose-50 text-rose-600 transition-all cursor-pointer"
+        title="Troca / devolução parcial"
+      >
+        <RotateCcw className="h-4 w-4" />
+      </button>
+      <button
+        onClick={() => setBillingOrder(ped)}
+        className="p-1.5 border border-stone-200 rounded-lg hover:bg-amber-50 text-amber-700 transition-all cursor-pointer"
+        title="Faturamento (boleto e nota fiscal)"
+      >
+        <Landmark className="h-4 w-4" />
+      </button>
+      <button 
+        onClick={() => handleOpenEditModal(ped)}
+        className="p-1.5 border border-stone-200 rounded-lg hover:bg-stone-50 text-stone-500 transition-all cursor-pointer"
+        title="Visualizar/Editar"
+      >
+        <Edit className="h-4 w-4" />
+      </button>
+      <button 
+        onClick={() => handleDownloadPdf(ped.id)}
+        className="p-1.5 border border-stone-200 rounded-lg hover:bg-amber-55 text-amber-750 transition-all cursor-pointer"
+        title="Baixar PDF"
+      >
+        <Printer className="h-4 w-4" />
+      </button>
+      {ped.status !== 'cancelado' && (
+        <button 
+          onClick={() => handleDelete(ped.id, ped.numero)}
+          className="p-1.5 border border-stone-200 rounded-lg hover:bg-red-50 text-red-700 transition-all cursor-pointer"
+          title="Cancelar Pedido"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* Cabeçalho */}
@@ -1372,7 +1583,7 @@ export default function OrdersPage() {
           </h2>
           <p className="text-xs text-stone-500 font-medium">Controle de faturamento, faturamento futuro e rotas de comissão</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setUndoOpen(true)}
@@ -1462,58 +1673,8 @@ export default function OrdersPage() {
       {/* Barra de Filtros */}
       <div className="rounded-2xl bg-white p-4 shadow-sm border border-stone-200 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
-          {/* Destaque Data de Entrega */}
-          <div className="sm:col-span-2 lg:col-span-3 bg-amber-50/70 p-2.5 rounded-xl border border-amber-200">
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[10px] text-amber-950 font-black uppercase tracking-wider flex items-center gap-1.5">
-                <Truck className="h-3.5 w-3.5 text-amber-700" />
-                Data de Entrega
-              </label>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={setDeliveryToday}
-                  className={`px-2 py-0.5 rounded text-[10px] font-black transition-all cursor-pointer ${
-                    deliveryDateFilter === new Date().toISOString().split('T')[0]
-                      ? 'bg-amber-700 text-white shadow-xs'
-                      : 'bg-white text-amber-900 hover:bg-amber-100 border border-amber-200'
-                  }`}
-                >
-                  Hoje
-                </button>
-                <button
-                  type="button"
-                  onClick={setDeliveryTomorrow}
-                  className={`px-2 py-0.5 rounded text-[10px] font-black transition-all cursor-pointer ${
-                    deliveryDateFilter === addDaysISO(new Date().toISOString().split('T')[0], 1)
-                      ? 'bg-amber-700 text-white shadow-xs'
-                      : 'bg-white text-amber-900 hover:bg-amber-100 border border-amber-200'
-                  }`}
-                >
-                  Amanhã
-                </button>
-                {deliveryDateFilter && (
-                  <button
-                    type="button"
-                    onClick={() => setDeliveryDateFilter('')}
-                    className="px-1 text-[11px] font-bold text-stone-400 hover:text-red-600 transition-colors cursor-pointer"
-                    title="Limpar data de entrega"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-            </div>
-            <div className="relative">
-              <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-amber-700" />
-              <input 
-                type="date"
-                value={deliveryDateFilter}
-                onChange={(e) => setDeliveryDateFilter(e.target.value)}
-                className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-amber-200 text-xs font-bold text-amber-950 focus:outline-none bg-white focus:ring-2 focus:ring-amber-500/20"
-              />
-            </div>
-          </div>
+          {/* Destaque Data de Entrega (uma ou várias datas) */}
+          <MultiDatePicker className="sm:col-span-2 lg:col-span-3" dates={deliveryDates} onChange={setDeliveryDates} />
 
           {/* Buscar Pedido / Cliente */}
           <div className="sm:col-span-2 lg:col-span-2">
@@ -1632,13 +1793,13 @@ export default function OrdersPage() {
           <FileText className="h-12 w-12 text-stone-300 mx-auto mb-3" />
           <p className="text-stone-500 text-sm font-semibold">Nenhum pedido encontrado</p>
           <p className="text-stone-400 text-xs mt-1">
-            {deliveryDateFilter 
-              ? `Não há pedidos agendados para entrega em ${formatarData(deliveryDateFilter)}.` 
+            {deliveryDates.length > 0
+              ? `Não há pedidos agendados para entrega em ${deliveryLabel}.` 
               : 'Clique em "Novo Pedido" para realizar uma venda.'}
           </p>
-          {deliveryDateFilter && (
+          {deliveryDates.length > 0 && (
             <button
-              onClick={() => setDeliveryDateFilter('')}
+              onClick={() => setDeliveryDates([])}
               className="mt-3 px-3 py-1.5 text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-all cursor-pointer"
             >
               Limpar filtro de data de entrega
@@ -1648,7 +1809,7 @@ export default function OrdersPage() {
       ) : (
         <div className="space-y-3">
           {/* Banner de Entregas do Dia (quando filtro de data de entrega estiver ativo) */}
-          {deliveryDateFilter && (
+          {deliveryDates.length > 0 && (
             <div className="p-4 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-2xl flex flex-wrap items-center justify-between gap-4 shadow-xs animate-fadeIn">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-amber-700 text-white flex items-center justify-center shadow-xs">
@@ -1657,7 +1818,7 @@ export default function OrdersPage() {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-black uppercase tracking-wider text-amber-900">
-                      Entregas para {formatarData(deliveryDateFilter)}
+                      Entregas para {deliveryLabel}
                     </span>
                     {deliveryDateFilter === new Date().toISOString().split('T')[0] && (
                       <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase">
@@ -1716,7 +1877,7 @@ export default function OrdersPage() {
                   {selectedOrderIds.length === 1 ? '1 pedido selecionado' : `${selectedOrderIds.length} pedidos selecionados`}
                 </span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex w-full flex-wrap items-center gap-1.5 sm:w-auto sm:gap-2 [&>button]:px-2.5 [&>button]:text-[11px] sm:[&>button]:text-xs">
                 <button
                   type="button"
                   onClick={() => setSelectedOrderIds([])}
@@ -1787,7 +1948,69 @@ export default function OrdersPage() {
           )}
 
           <div className="rounded-2xl bg-white shadow-sm border border-stone-200 overflow-hidden">
-            <div className="overflow-x-auto">
+            {/* Celular: um cartão por pedido */}
+            <div className="md:hidden divide-y divide-stone-100">
+              <label className="flex items-center gap-2 bg-stone-50 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-stone-500">
+                <input
+                  type="checkbox"
+                  checked={isAllSelected}
+                  onChange={toggleSelectAll}
+                  className="h-4 w-4 rounded border-stone-300 text-amber-700"
+                />
+                Marcar os pedidos desta página
+              </label>
+              {pedidosPagina.map((ped) => {
+                const v = vencimentoInfo(ped);
+                return (
+                  <div
+                    key={ped.id}
+                    onClick={() => handleOpenEditModal(ped)}
+                    className={`space-y-2 p-3 ${selectedOrderIds.includes(ped.id) ? 'bg-amber-50/60' : ''}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedOrderIds.includes(ped.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={() => toggleSelectOrder(ped.id)}
+                        className="mt-0.5 h-5 w-5 shrink-0 rounded border-stone-300 text-amber-700"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="font-black text-amber-900">#{ped.numero}</span>
+                          <span className="font-black text-stone-900">{ped.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                        </div>
+                        <div className="truncate text-sm font-bold text-stone-900">{ped.customerName}</div>
+                        <div className="text-[11px] font-medium text-stone-500">
+                          {ped.sellerName || 'Sem vendedor'} · Entrega {formatarData(ped.deliveryDate)}
+                        </div>
+                        <div className="text-[11px] font-semibold text-stone-600">
+                          {ped.paymentMethod || '—'}
+                          {v && (
+                            <span className={`ml-1 font-bold ${v.overdue ? 'text-red-600' : 'text-stone-500'}`}>
+                              · {ped.paymentStatus === 'pago' ? 'Venceu' : 'Vence'} {formatarData(v.due)}
+                            </span>
+                          )}
+                        </div>
+                        {ped.margin && ped.status !== 'cancelado' && (
+                          <div className={`text-[10px] font-bold ${ped.margin.profitPct < 0.15 ? 'text-red-600' : 'text-emerald-600'}`}>
+                            lucro {ped.margin.profit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} ({(ped.margin.profitPct * 100).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}%)
+                          </div>
+                        )}
+                        {renderEmAberto(ped)}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1 pl-8" onClick={(e) => e.stopPropagation()}>
+                      {renderStatus(ped)}
+                    </div>
+                    <div className="pl-8" onClick={(e) => e.stopPropagation()}>
+                      {renderAcoes(ped, true)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left text-xs min-w-[780px]">
                 <thead>
                   <tr className="border-b border-stone-200 bg-stone-50 text-stone-400 font-bold uppercase tracking-wider">
@@ -1832,33 +2055,14 @@ export default function OrdersPage() {
                       </td>
                       <td className="py-4 px-5 text-stone-850 font-bold text-sm group-hover:text-amber-950 transition-colors">
                         <span className="hover:underline">{ped.customerName}</span>
-                        {(() => {
-                          const ab = emAberto[ped.customerId];
-                          if (!ab) return null;
-                          const others = ab.titles.filter((t) => t.orderId !== ped.id);
-                          const total = others.reduce((sum, t) => sum + t.value, 0);
-                          const late = others.filter((t) => t.overdue).reduce((sum, t) => sum + t.value, 0);
-                          if (others.length === 0 && ab.credit <= 0) return null;
-                          const money = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                          return (
-                            <div className="mt-1 space-y-0.5 text-[11px] font-semibold leading-tight">
-                              {others.length > 0 && (
-                                <div className={late > 0 ? 'text-red-700' : 'text-amber-700'}>
-                                  {late > 0 ? '⚠ ' : ''}Cliente já deve {money(total)} em {others.length} pedido{others.length > 1 ? 's' : ''} ({others.slice(0, 4).map((t) => `#${t.numero}`).join(', ')}{others.length > 4 ? '…' : ''})
-                                  {late > 0 ? ` · ${money(late)} vencido` : ''}
-                                </div>
-                              )}
-                              {ab.credit > 0 && <div className="text-sky-700">Tem {money(ab.credit)} de crédito</div>}
-                            </div>
-                          );
-                        })()}
+                        {renderEmAberto(ped)}
                       </td>
                       <td className="py-4 px-5 text-stone-500">{ped.sellerName || '—'}</td>
                       <td className="py-4 px-5 text-stone-400">{formatarData(ped.orderDate)}</td>
                       <td className="py-4 px-5">
                         {ped.deliveryDate ? (
                           <span className={`inline-flex items-center gap-1 text-xs ${
-                            deliveryDateFilter && ped.deliveryDate.slice(0, 10) === deliveryDateFilter
+                            deliveryDates.length > 0 && deliveryDates.includes(ped.deliveryDate.slice(0, 10))
                               ? 'bg-amber-100 text-amber-900 px-2 py-0.5 rounded-md font-black'
                               : 'text-stone-500 font-semibold'
                           }`}>
@@ -1870,6 +2074,15 @@ export default function OrdersPage() {
                       </td>
                       <td className="py-4 px-5 text-stone-600 text-xs font-semibold">
                         {ped.paymentMethod || <span className="text-stone-300 font-normal">—</span>}
+                        {(() => {
+                          const v = vencimentoInfo(ped);
+                          if (!v) return null;
+                          return (
+                            <div className={`mt-0.5 text-[10px] font-bold ${v.overdue ? 'text-red-600' : ped.paymentStatus === 'pago' ? 'text-stone-400' : 'text-stone-500'}`}>
+                              {ped.paymentStatus === 'pago' ? 'Venceu' : 'Vence'} {formatarData(v.due)}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="py-4 px-5 text-right font-black text-stone-850">
                         {ped.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
@@ -1883,167 +2096,10 @@ export default function OrdersPage() {
                         )}
                       </td>
                       <td className="py-4 px-5 text-center">
-                      <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                        ped.status === 'faturado' ? 'bg-emerald-50 text-emerald-700' :
-                        ped.status === 'entregue' ? 'bg-sky-50 text-sky-700' :
-                        ped.status === 'em_producao' ? 'bg-amber-50 text-amber-700' :
-                        ped.status === 'confirmado' ? 'bg-purple-50 text-purple-700' :
-                        ped.status === 'cancelado' ? 'bg-red-50 text-red-700' : 'bg-stone-100 text-stone-600'
-                      }`}>
-                        {ped.status}
-                      </span>
-                      {ped.hasNegotiatedPrice && !ped.approvedByAdmin && (
-                        <div className="mt-1">
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase bg-amber-100 text-amber-800 border border-amber-300">
-                            Preço Negociado
-                          </span>
-                        </div>
-                      )}
-                      {ped.paymentStatus !== 'sem_conta' && (
-                        <div className="mt-1">
-                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${ped.paymentStatus === 'pago' ? 'bg-emerald-100 text-emerald-700' : ped.paymentStatus === 'atrasado' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>
-                            {ped.paymentStatus === 'pago' ? 'Pago' : ped.paymentStatus === 'atrasado' ? 'Vencido' : 'A receber'}
-                          </span>
-                        </div>
-                      )}
-                      {ped.status !== 'cancelado' &&
-                        isBoletoPaymentMethod(ped.paymentMethod) &&
-                        !ped.documents?.boleto &&
-                        clientes.find((c) => c.id === ped.customerId)?.boletoAllowed === false && (
-                          <div className="mt-1">
-                            <span
-                              className="inline-flex px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-amber-100 text-amber-900 border border-amber-300"
-                              title="Cliente ainda não liberado para boleto. Gere o boleto no faturamento para aprovar (o cliente passa a ser liberado)."
-                            >
-                              Boleto a aprovar
-                            </span>
-                          </div>
-                        )}
-                      {(ped.documents?.boleto || ped.documents?.invoice) && (
-                        <div className="mt-1.5 flex flex-wrap justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-                          {ped.documents.boleto && (
-                            <a
-                              href={`/api/boletos/${ped.documents.boleto.id}/pdf`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 transition-all"
-                              title="Abrir o PDF do boleto para baixar, imprimir ou enviar"
-                            >
-                              <FileDown className="h-3 w-3" />
-                              Boleto
-                            </a>
-                          )}
-                          {ped.documents.invoice && (
-                            <a
-                              href={`/api/notas/${ped.documents.invoice.id}/danfe`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-all"
-                              title="Abrir a nota fiscal (DANFE) para baixar, imprimir ou enviar"
-                            >
-                              <FileDown className="h-3 w-3" />
-                              {ped.documents.invoice.number ? `NF ${ped.documents.invoice.number}` : 'NF'}
-                            </a>
-                          )}
-                        </div>
-                      )}
+                      {renderStatus(ped)}
                     </td>
-                    <td className="py-4 px-6 text-center" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-center gap-1.5">
-                        {ped.hasNegotiatedPrice && !ped.approvedByAdmin ? (
-                          <button
-                            onClick={() => handleAprovarPreco(ped.id)}
-                            className="p-1.5 border border-amber-300 bg-amber-50 rounded-lg hover:bg-amber-100 text-amber-800 transition-all cursor-pointer"
-                            title="Aprovar Preço Negociado e Liberar Impressão"
-                          >
-                            <CheckCircle2 className="h-4 w-4 text-amber-700" />
-                          </button>
-                        ) : ped.status === 'novo' && (
-                          <button
-                            onClick={() => handleQuickStatus(ped.id, 'confirmado', 'confirmado')}
-                            className="p-1.5 border border-emerald-200 rounded-lg hover:bg-emerald-50 text-emerald-700 transition-all cursor-pointer"
-                            title="Concluir (confirmar pedido)"
-                          >
-                            <CheckCircle2 className="h-4 w-4" />
-                          </button>
-                        )}
-                        {(ped.status === 'confirmado' || ped.status === 'em_producao') && (
-                          <button
-                            onClick={() => handleQuickStatus(ped.id, 'entregue', 'entregue')}
-                            className="p-1.5 border border-sky-200 rounded-lg hover:bg-sky-50 text-sky-700 transition-all cursor-pointer"
-                            title="Marcar como entregue"
-                          >
-                            <Truck className="h-4 w-4" />
-                          </button>
-                        )}
-                        {(ped.paymentStatus === 'pendente' || ped.paymentStatus === 'atrasado') && ped.receivableId && (
-                          <button
-                            onClick={() => handleMarcarPago(ped.receivableId!)}
-                            className="p-1.5 border border-emerald-200 rounded-lg hover:bg-emerald-50 text-emerald-700 transition-all cursor-pointer"
-                            title="Marcar como pago (baixa no financeiro)"
-                          >
-                            <DollarSign className="h-4 w-4" />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleWhatsApp(ped)}
-                          className="p-1.5 border border-stone-200 rounded-lg hover:bg-emerald-50 text-emerald-700 transition-all cursor-pointer"
-                          title="Enviar por WhatsApp"
-                        >
-                          <MessageCircle className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDuplicate(ped)}
-                          className="p-1.5 border border-stone-200 rounded-lg hover:bg-stone-50 text-stone-500 transition-all cursor-pointer"
-                          title="Duplicar pedido"
-                        >
-                          <Copy className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleOpenHistory(ped)}
-                          className="p-1.5 border border-stone-200 rounded-lg hover:bg-indigo-50 text-indigo-600 transition-all cursor-pointer"
-                          title="Histórico do pedido"
-                        >
-                          <History className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => setReturnOrder({ id: ped.id, numero: ped.numero })}
-                          className="p-1.5 border border-stone-200 rounded-lg hover:bg-rose-50 text-rose-600 transition-all cursor-pointer"
-                          title="Troca / devolução parcial"
-                        >
-                          <RotateCcw className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => setBillingOrder(ped)}
-                          className="p-1.5 border border-stone-200 rounded-lg hover:bg-amber-50 text-amber-700 transition-all cursor-pointer"
-                          title="Faturamento (boleto e nota fiscal)"
-                        >
-                          <Landmark className="h-4 w-4" />
-                        </button>
-                        <button 
-                          onClick={() => handleOpenEditModal(ped)}
-                          className="p-1.5 border border-stone-200 rounded-lg hover:bg-stone-50 text-stone-500 transition-all cursor-pointer"
-                          title="Visualizar/Editar"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </button>
-                        <button 
-                          onClick={() => handleDownloadPdf(ped.id)}
-                          className="p-1.5 border border-stone-200 rounded-lg hover:bg-amber-55 text-amber-750 transition-all cursor-pointer"
-                          title="Baixar PDF"
-                        >
-                          <Printer className="h-4 w-4" />
-                        </button>
-                        {ped.status !== 'cancelado' && (
-                          <button 
-                            onClick={() => handleDelete(ped.id, ped.numero)}
-                            className="p-1.5 border border-stone-200 rounded-lg hover:bg-red-50 text-red-700 transition-all cursor-pointer"
-                            title="Cancelar Pedido"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        )}
-                      </div>
+                    <td className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                      {renderAcoes(ped)}
                     </td>
                   </tr>
                 ))}

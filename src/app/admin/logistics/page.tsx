@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { responseErrorMessage } from '@/lib/errors';
 import { useToast } from '@/components/shared/Toast';
+import { MultiDatePicker } from '@/components/shared/MultiDatePicker';
 import { SellerMultiSelect } from '@/components/shared/SellerMultiSelect';
 import type { OrderDTO, Paginated } from '@/lib/api-types';
 
@@ -75,9 +76,14 @@ export default function LogisticsPage() {
 
   const [pedidos, setPedidos] = useState<OrderDTO[]>([]);
   const [pedidosPendentes, setPedidosPendentes] = useState<OrderDTO[]>([]);
-  const [selectedDate, setSelectedDate] = useState<string>(
-    new Date().toISOString().split('T')[0]
-  );
+  const [selectedDates, setSelectedDates] = useState<string[]>(() => {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return [`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`];
+  });
+  // Chave estável para guardar marcações locais (uma data = formato antigo).
+  const selectedDate = [...selectedDates].sort().join(',');
+  const selectedDateLabel = [...selectedDates].sort().map((d) => formatarData(d)).join(', ');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -191,9 +197,16 @@ export default function LogisticsPage() {
       setLoading(true);
       setError(null);
       
+      const ord = selectedDate.split(',').filter(Boolean);
+      if (ord.length === 0) {
+        setPedidos([]);
+        setPedidosPendentes([]);
+        setLoading(false);
+        return;
+      }
       const params = new URLSearchParams({
-        deliveryFrom: selectedDate,
-        deliveryTo: selectedDate,
+        deliveryFrom: ord[0] as string,
+        deliveryTo: ord[ord.length - 1] as string,
         pageSize: '200',
       });
 
@@ -201,8 +214,9 @@ export default function LogisticsPage() {
       if (!res.ok) throw new Error(await responseErrorMessage(res, 'Falha ao carregar a lista de pedidos.'));
 
       const json: Paginated<OrderDTO> = await res.json();
-      const daCarga = json.data.filter((p) => STATUS_DE_CARGA.includes(p.status));
-      const pendentes = json.data.filter((p) => p.status === 'novo');
+      const nasDatas = json.data.filter((p) => ord.includes((p.deliveryDate ?? '').slice(0, 10)));
+      const daCarga = nasDatas.filter((p) => STATUS_DE_CARGA.includes(p.status));
+      const pendentes = nasDatas.filter((p) => p.status === 'novo');
 
       setPedidos(daCarga);
       setPedidosPendentes(pendentes);
@@ -335,7 +349,7 @@ export default function LogisticsPage() {
   const handleCopyRouteToClipboard = () => {
     if (routeOrders.length === 0) return;
 
-    const header = `🚚 *ROTEIRO DE ENTREGA DOCES PRIGOR*\n*Data*: ${formatarData(selectedDate)}\n*Total Cargas*: ${routeOrders.length} pedidos\n\n📍 *Saída*: Fábrica Doces Prigor (Campo de São Cristóvão)\n\n`;
+    const header = `🚚 *ROTEIRO DE ENTREGA DOCES PRIGOR*\n*Data*: ${selectedDateLabel}\n*Total Cargas*: ${routeOrders.length} pedidos\n\n📍 *Saída*: Fábrica Doces Prigor (Campo de São Cristóvão)\n\n`;
 
     const text = routeOrders.map((p, idx) => {
       const endereco = enderecoDoPedido(p);
@@ -463,14 +477,7 @@ export default function LogisticsPage() {
             <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">
               Data de Entrega da Carga
             </label>
-            <div className="relative">
-              <input 
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="w-full rounded-lg border border-stone-200 text-xs px-3 py-2 bg-stone-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500 font-semibold text-stone-900"
-              />
-            </div>
+            <MultiDatePicker dates={selectedDates} onChange={setSelectedDates} label="Datas da carga" />
           </div>
 
           <div className="sm:col-span-1 md:col-span-2">
@@ -626,7 +633,7 @@ export default function LogisticsPage() {
 
               {pedidosFiltradosPorVendedor.length === 0 ? (
                 <div className="text-center py-12 text-stone-400 text-xs italic font-semibold">
-                  Nenhum pedido agendado para entrega em {formatarData(selectedDate)}{sellerFiltered ? ' para os vendedores selecionados' : ''}.
+                  Nenhum pedido agendado para entrega em {selectedDateLabel}{sellerFiltered ? ' para os vendedores selecionados' : ''}.
                 </div>
               ) : (
                 <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
@@ -1346,7 +1353,7 @@ export default function LogisticsPage() {
             </div>
             <div className="text-right">
               <span className="text-xs font-bold block text-stone-600">Data de Saída / Entrega:</span>
-              <span className="text-base font-black block text-black">{formatarData(selectedDate)}</span>
+              <span className="text-base font-black block text-black">{selectedDateLabel}</span>
             </div>
           </div>
 

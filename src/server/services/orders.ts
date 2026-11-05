@@ -13,7 +13,7 @@ import { prisma } from '../db';
 import { badRequest, conflict, notFound } from '../http/errors';
 import { isManagement, sellerScope, type SessionPayload } from '../auth/guard';
 import { syncOrderFinancials } from './financial-sync';
-import { paginated, toOrderDTO, type OrderDocumentsDTO, type OrderDTO, type OrderRow, type Paginated } from './serializers';
+import { dateOnly, paginated, toOrderDTO, type OrderDocumentsDTO, type OrderDTO, type OrderRow, type Paginated } from './serializers';
 import type { OrderCreateInput, OrderUpdateInput } from '../validation/sales';
 import type { Tx } from '../tx';
 import { logOrderEvent } from './order-history';
@@ -41,7 +41,7 @@ const ORDER_INCLUDE = {
     },
   },
   seller: { select: { name: true, commissionPct: true } },
-  transactions: { where: { type: 'receita' as const, category: 'Vendas' }, select: { id: true, status: true }, take: 1 },
+  transactions: { where: { type: 'receita' as const, category: 'Vendas' }, select: { id: true, status: true, dueDate: true }, take: 1 },
   deliveryAddress: { select: { label: true, address: true, number: true, complement: true, neighborhood: true, city: true, state: true, zipCode: true } },
   items: {
     include: { product: { select: { name: true, barCode: true, internalCode: true, sku: true, unit: true, cost: true } } },
@@ -130,7 +130,7 @@ async function orderDocuments(orderIds: string[]): Promise<Map<string, Omit<Orde
   const [boletos, invoices] = await Promise.all([
     prisma.boleto.findMany({
       where: { orderId: { in: orderIds }, status: { in: ['registrado', 'pago'] }, nossoNumero: { not: null } },
-      select: { id: true, orderId: true, status: true },
+      select: { id: true, orderId: true, status: true, dueDate: true },
       orderBy: { createdAt: 'desc' },
     }),
     prisma.invoice.findMany({
@@ -148,7 +148,7 @@ async function orderDocuments(orderIds: string[]): Promise<Map<string, Omit<Orde
   };
   for (const b of boletos) {
     const e = entry(b.orderId);
-    if (!e.boleto) e.boleto = { id: b.id, status: b.status as 'registrado' | 'pago' };
+    if (!e.boleto) e.boleto = { id: b.id, status: b.status as 'registrado' | 'pago', dueDate: dateOnly(b.dueDate) };
   }
   for (const inv of invoices) {
     const e = entry(inv.orderId);

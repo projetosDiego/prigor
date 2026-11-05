@@ -2,11 +2,11 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
+  RefreshCw,
   TrendingUp, 
   Loader2, 
   Printer, 
   Download, 
-  Calendar, 
   ChevronDown, 
   ChevronUp, 
   Users, 
@@ -16,6 +16,7 @@ import {
 import Link from 'next/link';
 
 import { errorMessage, apiErrorMessage } from '@/lib/errors';
+import type { SellerProjectionReport, SellerProjectionRow } from '@/server/services/seller-projection';
 
 interface OrderItemSummary {
   id: string;
@@ -55,7 +56,48 @@ interface Row {
   customers: CustomerSummary[];
 }
 
+function toLocalDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const brl0 = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+const pctTxt = (n: number | null) => (n === null ? '—' : `${n > 0 ? '+' : ''}${n.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`);
+
+/** Projeção do mês de um vendedor (mês corrente, independente do período do relatório). */
+function ProjectionPanel({ p, monthLabel, day, days }: { p: SellerProjectionRow; monthLabel: string; day: number; days: number }) {
+  const tone = p.goal > 0 ? (p.projectedPctGoal >= 100 ? 'text-emerald-700' : p.projectedPctGoal >= 80 ? 'text-amber-700' : 'text-red-600') : 'text-stone-900';
+  const Box = ({ label, value, sub, cls = 'text-stone-900' }: { label: string; value: string; sub?: string; cls?: string }) => (
+    <div className="rounded-lg border border-stone-200 bg-white p-3">
+      <div className="text-[10px] font-bold uppercase tracking-wide text-stone-500">{label}</div>
+      <div className={`mt-0.5 text-base font-black ${cls}`}>{value}</div>
+      {sub && <div className="text-[10px] text-stone-400">{sub}</div>}
+    </div>
+  );
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-stone-900">
+          <TrendingUp className="h-4 w-4 text-amber-700" /> Projeção de {monthLabel}
+        </h4>
+        <span className="text-[10px] font-medium text-stone-500">dia {day} de {days} · ritmo recente = últimos 14 dias</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        <Box label="Realizado no mês" value={brl0(p.realized)} sub={`${p.orders} pedido(s) · ticket ${brl0(p.averageTicket)}`} />
+        <Box label="Projeção do mês" value={brl0(p.projectionMonth)} sub={`ritmo ${brl0(p.paceMonth)}/dia · recente ${brl0(p.projectionRecent)}`} cls="text-amber-800" />
+        <Box
+          label="Meta × projeção"
+          value={p.goal > 0 ? `${p.projectedPctGoal.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}%` : 'sem meta'}
+          sub={p.goal > 0 ? (p.missing > 0 ? `meta ${brl0(p.goal)} · falta ${brl0(p.missing)} (${brl0(p.neededPerDay)}/dia)` : `meta ${brl0(p.goal)} · batida`) : 'defina a meta em Vendedores'}
+          cls={tone}
+        />
+        <Box label="vs mês anterior" value={pctTxt(p.projectedVsPrevPct)} sub={`mês ant. ${brl0(p.prevMonthRealized)}`} cls={p.projectedVsPrevPct !== null && p.projectedVsPrevPct < 0 ? 'text-red-600' : 'text-emerald-700'} />
+        <Box label="Comissão projetada" value={brl(p.commissionProjected)} sub={`já ${brl(p.commissionRealized)}`} cls="text-emerald-700" />
+        <Box label="A receber dos clientes" value={brl0(p.receivable.total)} sub={`${brl0(p.receivable.overdue)} atrasado · ${brl0(p.receivable.next30)} em 30d`} />
+      </div>
+    </div>
+  );
+}
 
 const STATUS_LABELS: Record<string, string> = {
   novo: 'Novo',
@@ -69,12 +111,14 @@ const STATUS_LABELS: Record<string, string> = {
 export default function SellerReportPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [period, setPeriod] = useState<{ from: string; to: string } | null>(null);
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
+  const [from, setFrom] = useState(() => toLocalDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
+  const [to, setTo] = useState(() => toLocalDate(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0)));
+  const [activePreset, setActivePreset] = useState<'today' | 'yesterday' | 'week' | 'month' | 'prevMonth' | 'custom'>('month');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedSellerId, setExpandedSellerId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [proj, setProj] = useState<SellerProjectionReport | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -98,6 +142,27 @@ export default function SellerReportPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Projeção do mês corrente (não depende do período escolhido acima).
+  useEffect(() => {
+    let cancel = false;
+    void (async () => {
+      try {
+        const res = await fetch('/api/reports/seller-projection');
+        const json = await res.json();
+        if (res.ok && !cancel) setProj((json.data ?? json) as SellerProjectionReport);
+      } catch {
+        /* a projeção é complementar: o relatório segue sem ela */
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, []);
+  const projBySeller = new Map((proj?.rows ?? []).map((r) => [r.sellerId, r]));
+  const projMonthLabel = proj
+    ? new Date(Number(proj.month.split('-')[0]), Number(proj.month.split('-')[1]) - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+    : '';
 
   const totOrders = rows.reduce((s, r) => s + r.orders, 0);
   const totRealized = rows.reduce((s, r) => s + r.realized, 0);
@@ -190,6 +255,31 @@ export default function SellerReportPage() {
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   };
 
+  const setPreset = (preset: 'today' | 'yesterday' | 'week' | 'month' | 'prevMonth') => {
+    setActivePreset(preset);
+    const d = new Date();
+    if (preset === 'today') {
+      setFrom(toLocalDate(d));
+      setTo(toLocalDate(d));
+    } else if (preset === 'yesterday') {
+      const y = new Date();
+      y.setDate(y.getDate() - 1);
+      setFrom(toLocalDate(y));
+      setTo(toLocalDate(y));
+    } else if (preset === 'week') {
+      const w = new Date();
+      w.setDate(w.getDate() - 6);
+      setFrom(toLocalDate(w));
+      setTo(toLocalDate(d));
+    } else if (preset === 'month') {
+      setFrom(toLocalDate(new Date(d.getFullYear(), d.getMonth(), 1)));
+      setTo(toLocalDate(new Date(d.getFullYear(), d.getMonth() + 1, 0)));
+    } else {
+      setFrom(toLocalDate(new Date(d.getFullYear(), d.getMonth() - 1, 1)));
+      setTo(toLocalDate(new Date(d.getFullYear(), d.getMonth(), 0)));
+    }
+  };
+
   const toggleExpand = (sellerId: string) => {
     setExpandedSellerId((prev) => (prev === sellerId ? null : sellerId));
   };
@@ -208,7 +298,7 @@ export default function SellerReportPage() {
             Acompanhe vendas, comissão direta, bônus de supervisão, adiantamentos e gere o PDF de fechamento de cada vendedor.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={() => downloadPdf()}
             disabled={downloadingId === '__all__'}
@@ -216,28 +306,66 @@ export default function SellerReportPage() {
           >
             <Printer className="h-4 w-4" /> {downloadingId === '__all__' ? 'Gerando PDF...' : 'Baixar PDF Geral'}
           </button>
-          <button onClick={exportCsv} className="flex items-center gap-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 text-xs font-bold cursor-pointer">
-            <Download className="h-4 w-4" /> Exportar Excel
+          <button onClick={exportCsv} className="flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-2 text-xs font-bold text-stone-700 hover:bg-stone-50 cursor-pointer">
+            <Download className="h-4 w-4 text-stone-500" /> Exportar CSV
+          </button>
+          <button onClick={() => window.print()} className="flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-2 text-xs font-bold text-stone-700 hover:bg-stone-50 cursor-pointer">
+            <Printer className="h-4 w-4 text-stone-500" /> Imprimir Relatório
           </button>
         </div>
       </div>
 
-      <div className="rounded-xl bg-white p-4 shadow-sm border border-stone-200 grid grid-cols-1 md:grid-cols-3 gap-4 items-end no-print">
-        <div>
-          <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">A partir de</label>
-          <div className="relative">
-            <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-stone-400" />
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full pl-9 pr-4 py-1.5 rounded-lg border border-stone-200 text-xs bg-stone-50/50" />
-          </div>
+      <div className="flex flex-wrap items-center gap-2 bg-white p-2 rounded-xl border border-stone-200 shadow-xs no-print">
+        {([
+          ['today', 'Hoje'],
+          ['yesterday', 'Ontem'],
+          ['week', 'Últimos 7 dias'],
+          ['month', 'Este Mês'],
+          ['prevMonth', 'Mês Anterior'],
+        ] as const).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setPreset(key)}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activePreset === key ? 'bg-amber-700 text-white shadow-xs' : 'text-stone-600 hover:bg-stone-100'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+        <div className="h-4 w-px bg-stone-200 mx-1 hidden sm:block" />
+        <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold text-stone-700">
+          <span>De:</span>
+          <input
+            type="date"
+            value={from}
+            onChange={(e) => {
+              setFrom(e.target.value);
+              setActivePreset('custom');
+            }}
+            className="rounded-lg border border-stone-200 bg-stone-50 px-2 py-1 text-xs font-bold text-stone-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-700"
+          />
+          <span>Até:</span>
+          <input
+            type="date"
+            value={to}
+            onChange={(e) => {
+              setTo(e.target.value);
+              setActivePreset('custom');
+            }}
+            className="rounded-lg border border-stone-200 bg-stone-50 px-2 py-1 text-xs font-bold text-stone-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-700"
+          />
         </div>
-        <div>
-          <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-1">Até</label>
-          <div className="relative">
-            <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-stone-400" />
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-full pl-9 pr-4 py-1.5 rounded-lg border border-stone-200 text-xs bg-stone-50/50" />
-          </div>
-        </div>
-        <button onClick={load} className="rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-bold text-xs py-2 cursor-pointer">Aplicar período</button>
+        <button
+          type="button"
+          onClick={load}
+          title="Atualizar dados"
+          disabled={loading}
+          className="p-1.5 rounded-lg text-stone-500 hover:bg-stone-100 hover:text-stone-800 transition-colors cursor-pointer"
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin text-amber-700' : ''}`} />
+        </button>
       </div>
 
       {/* Cards de Resumo Rápido */}
@@ -292,6 +420,7 @@ export default function SellerReportPage() {
                   <th className="py-3 px-4 text-right text-emerald-700">Ajuda de Custo</th>
                   <th className="py-3 px-4 text-right text-red-600">Adiantamentos</th>
                   <th className="py-3 px-4 text-right text-emerald-900 font-black">Líquido a Pagar</th>
+                  <th className="py-3 px-4 text-right text-amber-800">Projeção do mês</th>
                   <th className="py-3 px-4 text-right">Meta</th>
                   <th className="py-3 px-3 text-center">% Meta</th>
                   <th className="py-3 px-4 text-center no-print">Ações &amp; PDF</th>
@@ -299,7 +428,7 @@ export default function SellerReportPage() {
               </thead>
               <tbody className="divide-y divide-stone-100 font-semibold text-stone-700">
                 {rows.length === 0 ? (
-                  <tr><td colSpan={11} className="py-8 text-center text-stone-400">Nenhum vendedor ativo.</td></tr>
+                  <tr><td colSpan={12} className="py-8 text-center text-stone-400">Nenhum vendedor ativo.</td></tr>
                 ) : rows.map((r) => {
                   const isExpanded = expandedSellerId === r.sellerId;
                   const isGeneratingPdf = downloadingId === r.sellerId;
@@ -345,6 +474,22 @@ export default function SellerReportPage() {
                             {brl(r.netCommission)}
                           </span>
                         </td>
+                        <td className="py-3 px-4 text-right">
+                          {(() => {
+                            const pr = projBySeller.get(r.sellerId);
+                            if (!pr) return <span className="text-stone-300">—</span>;
+                            return (
+                              <>
+                                <span className="font-black text-amber-800">{brl0(pr.projectionMonth)}</span>
+                                {pr.goal > 0 && (
+                                  <span className={`block text-[10px] font-bold ${pr.projectedPctGoal >= 100 ? 'text-emerald-600' : pr.projectedPctGoal >= 80 ? 'text-amber-600' : 'text-red-500'}`}>
+                                    {pr.projectedPctGoal.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}% da meta
+                                  </span>
+                                )}
+                              </>
+                            );
+                          })()}
+                        </td>
                         <td className="py-3 px-4 text-right text-stone-500">{r.goal > 0 ? brl(r.goal) : '—'}</td>
                         <td className="py-3 px-3">
                           {r.goal > 0 ? (
@@ -381,7 +526,12 @@ export default function SellerReportPage() {
                       {/* Linha expansível com clientes e pedidos */}
                       {isExpanded && (
                         <tr className="bg-stone-50/60">
-                          <td colSpan={8} className="p-4 sm:px-8 sm:py-5 border-b border-stone-200">
+                          <td colSpan={12} className="p-4 sm:px-8 sm:py-5 border-b border-stone-200">
+                            {proj && projBySeller.get(r.sellerId) && (
+                              <div className="mb-4">
+                                <ProjectionPanel p={projBySeller.get(r.sellerId)!} monthLabel={projMonthLabel} day={proj.total.daysElapsed} days={proj.daysInMonth} />
+                              </div>
+                            )}
                             <div className="rounded-xl border border-stone-200 bg-white p-4 space-y-4 shadow-xs">
                               <div className="flex items-center justify-between border-b border-stone-100 pb-3">
                                 <div className="flex items-center gap-2">

@@ -306,16 +306,6 @@ export default function AdminLayoutClient({ children, session }: AdminLayoutClie
               <span>Unidades Vendidas</span>
             </Link>
             <Link 
-              href="/admin/reports/projection" 
-              onClick={() => setIsMobileMenuOpen(false)}
-              className={`flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                isActive('/admin/reports/projection') ? 'bg-amber-600 text-white shadow-xs' : 'hover:bg-stone-800 hover:text-white text-stone-300'
-              }`}
-            >
-              <TrendingUp className="h-4 w-4 text-amber-400" />
-              <span>Projeção por Vendedor</span>
-            </Link>
-            <Link 
               href="/admin/reports/returns" 
               onClick={() => setIsMobileMenuOpen(false)}
               className={`flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold transition-all ${

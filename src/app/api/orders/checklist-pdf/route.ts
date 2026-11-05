@@ -23,7 +23,7 @@ export const POST = route('pedidos.checklistPdfPost', async (request) => {
   }
 
   const { ids, date: dateParam } = parsed.data;
-  const deliveryDate = dateParam || new Date().toISOString().slice(0, 10);
+  const deliveryDate = (dateParam || new Date().toISOString().slice(0, 10)).replace(/[^0-9,-]/g, '');
 
   const orders: OrderDTO[] = [];
 
@@ -40,7 +40,7 @@ export const POST = route('pedidos.checklistPdfPost', async (request) => {
     }
   } else {
     // Busca pedidos agendados para a data
-    const [y, m, d] = deliveryDate.split('-').map(Number);
+    const [y, m, d] = (deliveryDate.split(',')[0] ?? '').split('-').map(Number);
     const start = new Date(Date.UTC(y, m - 1, d, 0, 0, 0));
     const end = new Date(Date.UTC(y, m - 1, d, 23, 59, 59));
 
@@ -71,7 +71,7 @@ export const POST = route('pedidos.checklistPdfPost', async (request) => {
     status: 200,
     headers: {
       'content-type': 'application/pdf',
-      'content-disposition': `inline; filename="romaneio-conferencia-${deliveryDate}.pdf"`,
+      'content-disposition': `inline; filename="romaneio-conferencia-${deliveryDate.split(',')[0]}.pdf"`,
       'cache-control': 'no-store',
     },
   });
@@ -111,7 +111,7 @@ export const GET = route('pedidos.checklistPdfGet', async (request) => {
     status: 200,
     headers: {
       'content-type': 'application/pdf',
-      'content-disposition': `inline; filename="romaneio-conferencia-${deliveryDate}.pdf"`,
+      'content-disposition': `inline; filename="romaneio-conferencia-${deliveryDate.split(',')[0]}.pdf"`,
       'cache-control': 'no-store',
     },
   });

@@ -87,6 +87,11 @@ function formatDate(value: string | null): string {
   return value;
 }
 
+/** Aceita uma data ou várias separadas por vírgula (romaneio de mais de um dia). */
+function formatDateList(value: string): string {
+  return value.split(',').map((d) => formatDate(d.trim())).join(', ');
+}
+
 function onlyDigits(v: string): string {
   return (v || '').replace(/\D/g, '');
 }
@@ -419,12 +424,47 @@ export async function renderOrderPdf(
   }
 
   // ── Assinaturas ───────────────────────────────────────────────────────────────
-  const signY = Math.max(w.y - 30, 90);
+  // A faixa inferior (y 40–126) é reservada ao canhoto de entrega.
+  const CANHOTO_TOP = 126;
+  const SIGN_MIN = CANHOTO_TOP + 26;
+  if (w.y - 30 < SIGN_MIN - 6) {
+    w.page = pdf.addPage(A4);
+    w.y = A4[1] - MARGIN;
+  }
+  const signY = Math.max(w.y - 30, SIGN_MIN);
   const half = (RIGHT - MARGIN) / 2;
   w.page.drawLine({ start: { x: MARGIN + 20, y: signY }, end: { x: MARGIN + half - 20, y: signY }, thickness: 0.6, color: INK });
   w.page.drawLine({ start: { x: MARGIN + half + 20, y: signY }, end: { x: RIGHT - 20, y: signY }, thickness: 0.6, color: INK });
   center(w.page, 'Assinatura do Comprador', MARGIN + half / 2, signY - 12, regular, 8, MUTED);
   center(w.page, 'Assinatura do Recebedor', MARGIN + half + half / 2, signY - 12, regular, 8, MUTED);
+
+  // ── Canhoto de entrega (destacável) ───────────────────────────────────────────
+  const cp = w.page;
+  const cutY = CANHOTO_TOP + 10;
+  cp.drawLine({ start: { x: MARGIN, y: cutY }, end: { x: RIGHT, y: cutY }, thickness: 0.6, color: MUTED, dashArray: [4, 3] });
+  center(cp, 'destaque aqui e guarde o canhoto', A4[0] / 2, cutY + 3, regular, 6, MUTED);
+  cp.drawRectangle({ x: MARGIN, y: 40, width: RIGHT - MARGIN, height: CANHOTO_TOP - 40, borderColor: RULE, borderWidth: 0.8 });
+  cp.drawText('CANHOTO DE ENTREGA', { x: MARGIN + 10, y: 112, size: 9, font: bold, color: ACCENT });
+  right(cp, `Pedido nº ${order.numero}`, RIGHT - 10, 112, bold, 9);
+  cp.drawText(fit(`Cliente: ${order.customerName ?? '—'}`, regular, 8, RIGHT - MARGIN - 150), { x: MARGIN + 10, y: 99, size: 8, font: regular, color: INK });
+  right(cp, `Total: ${formatBRL(order.total)}`, RIGHT - 10, 99, bold, 8);
+  cp.drawText('Declaro que recebi e conferi a mercadoria deste pedido.', { x: MARGIN + 10, y: 87, size: 7.5, font: regular, color: MUTED });
+  const box = (x: number, label: string) => {
+    cp.drawRectangle({ x, y: 75, width: 7, height: 7, borderColor: INK, borderWidth: 0.7 });
+    cp.drawText(label, { x: x + 11, y: 76, size: 7.5, font: regular, color: INK });
+  };
+  box(MARGIN + 10, 'Conferido, sem divergência');
+  box(MARGIN + 150, 'Conferido, com divergência');
+  const lineY = 58;
+  const segs: Array<[number, number, string]> = [
+    [MARGIN + 10, MARGIN + 95, 'Data'],
+    [MARGIN + 110, MARGIN + 270, 'Nome legível'],
+    [MARGIN + 285, RIGHT - 10, 'Assinatura do recebedor'],
+  ];
+  for (const [x1, x2, label] of segs) {
+    cp.drawLine({ start: { x: x1, y: lineY }, end: { x: x2, y: lineY }, thickness: 0.6, color: INK });
+    cp.drawText(label, { x: x1, y: lineY - 9, size: 6.5, font: regular, color: MUTED });
+  }
 
   // Rodapé
   w.page.drawText(
@@ -479,7 +519,7 @@ export async function renderChecklistPdf(
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const italic = await pdf.embedFont(StandardFonts.HelveticaOblique);
 
-  pdf.setTitle(`Romaneio e Checklist de Carga — ${formatDate(deliveryDate)}`);
+  pdf.setTitle(`Romaneio e Checklist de Carga — ${formatDateList(deliveryDate)}`);
   pdf.setProducer(company.name);
   pdf.setCreationDate(new Date());
 
@@ -587,7 +627,7 @@ export async function renderChecklistPdf(
         font: bold,
         color: MUTED,
       });
-      currentPage.drawText(formatDate(deliveryDate), {
+      currentPage.drawText(formatDateList(deliveryDate), {
         x: dateBoxX + 8,
         y: dateBoxY + 6,
         size: 11,
@@ -621,7 +661,7 @@ export async function renderChecklistPdf(
       curY = summaryY - summaryH;
     } else {
       const topY = A4[1] - C_MARGIN;
-      currentPage.drawText(`${sanitizeText(company.name).toUpperCase()} — ROMANEIO DE CARGA (${formatDate(deliveryDate)})`, {
+      currentPage.drawText(`${sanitizeText(company.name).toUpperCase()} — ROMANEIO DE CARGA (${formatDateList(deliveryDate)})`, {
         x: C_MARGIN,
         y: topY - 8,
         size: 8.5,
