@@ -288,7 +288,7 @@ export default function SellerReportPage() {
     <div className="space-y-6">
       <style>{`@media print { body * { visibility: hidden !important; } .report-print, .report-print * { visibility: visible !important; } .report-print { position: absolute; left: 0; top: 0; width: 100%; } .no-print { display: none !important; } }`}</style>
 
-      <div className="flex justify-between items-center no-print">
+      <div className="flex justify-between items-center no-print flex-wrap gap-y-2">
         <div>
           <h2 className="text-2xl font-black text-stone-900 tracking-tight flex items-center gap-2">
             <TrendingUp className="h-6 w-6 text-amber-700" />
@@ -393,7 +393,7 @@ export default function SellerReportPage() {
       </div>
 
       <div className="report-print rounded-2xl bg-white shadow-sm border border-stone-200 overflow-hidden">
-        <div className="p-4 border-b border-stone-100 flex justify-between items-center">
+        <div className="p-4 border-b border-stone-100 flex justify-between items-center flex-wrap gap-y-2">
           <div>
             <h3 className="text-sm font-black text-stone-900">Metas, comissões, supervisão e fechamento por vendedor</h3>
             {period && <p className="text-xs text-stone-500">Período: {period.from} a {period.to}</p>}
@@ -533,7 +533,7 @@ export default function SellerReportPage() {
                               </div>
                             )}
                             <div className="rounded-xl border border-stone-200 bg-white p-4 space-y-4 shadow-xs">
-                              <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+                              <div className="flex items-center justify-between border-b border-stone-100 pb-3 flex-wrap gap-y-2">
                                 <div className="flex items-center gap-2">
                                   <Users className="h-4 w-4 text-amber-700" />
                                   <h4 className="font-extrabold text-stone-900 text-xs uppercase tracking-wider">

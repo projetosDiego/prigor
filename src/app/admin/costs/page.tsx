@@ -475,7 +475,7 @@ export default function CostsPage() {
                 <Users className="h-4 w-4 text-stone-600" /> Equipe (Salários + Passagem)
               </div>
               <p className="mt-1 text-2xl font-black text-stone-900">{brl(costs?.totals.employeeNet ?? 0)}</p>
-              <div className="mt-1 flex items-center justify-between text-[11px] text-stone-500">
+              <div className="mt-1 flex items-center justify-between text-[11px] text-stone-500 flex-wrap gap-y-2">
                 <span>Bruto: {brl(costs?.totals.employeeGross ?? 0)}</span>
                 <span className="text-amber-700 font-bold">Vales: -{brl(costs?.totals.employeeAdvances ?? 0)}</span>
               </div>
@@ -486,7 +486,7 @@ export default function CostsPage() {
                 <Award className="h-4 w-4 text-amber-600" /> Vendedores (Comissão + Ajuda)
               </div>
               <p className="mt-1 text-2xl font-black text-stone-900">{brl(costs?.totals.sellerNet ?? 0)}</p>
-              <div className="mt-1 flex items-center justify-between text-[11px] text-stone-500">
+              <div className="mt-1 flex items-center justify-between text-[11px] text-stone-500 flex-wrap gap-y-2">
                 <span>Comissão: {brl(costs?.totals.sellerCommission ?? 0)}</span>
                 <span className="text-emerald-700 font-bold">Ajuda: +{brl(costs?.totals.sellerAllowance ?? 0)}</span>
                 <span className="text-amber-700 font-bold">Vales: -{brl(costs?.totals.sellerAdvances ?? 0)}</span>
@@ -514,7 +514,7 @@ export default function CostsPage() {
 
           {/* SEÇÃO 1: Funcionários do Mês */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-y-2">
               <h3 className="text-sm font-black text-stone-850 uppercase tracking-wider flex items-center gap-2">
                 <Users className="h-4 w-4 text-amber-700" />
                 Fechamento de Pagamentos — Funcionárias &amp; Equipe
@@ -621,7 +621,7 @@ export default function CostsPage() {
           {/* SEÇÃO FIXA: Custos fixos mensais (ajuda de custo dos vendedores) */}
           {(costs?.sellers ?? []).some((s) => s.allowance > 0) && (
             <div className="space-y-2 pt-2">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-y-2">
                 <h3 className="text-sm font-black text-stone-850 uppercase tracking-wider flex items-center gap-2">
                   <Wallet className="h-4 w-4 text-emerald-700" />
                   Custos Fixos Mensais — Ajuda de Custo
@@ -658,7 +658,7 @@ export default function CostsPage() {
 
           {/* SEÇÃO 2: Vendedores & Comissões do Mês */}
           <div className="space-y-2 pt-2">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-y-2">
               <h3 className="text-sm font-black text-stone-850 uppercase tracking-wider flex items-center gap-2">
                 <Award className="h-4 w-4 text-amber-700" />
                 Vendedores &amp; Comissões do Mês
@@ -734,7 +734,7 @@ export default function CostsPage() {
 
           {/* SEÇÃO 3: Adiantamentos / Vales Lançados no Mês */}
           <div className="space-y-2 pt-2">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-y-2">
               <h3 className="text-sm font-black text-stone-850 uppercase tracking-wider flex items-center gap-2">
                 <DollarSign className="h-4 w-4 text-amber-700" />
                 Adiantamentos / Vales do Mês ({MESES[month - 1]} / {year})
@@ -809,7 +809,7 @@ export default function CostsPage() {
 
           {/* SEÇÃO 4: Gestão do Cadastro de Funcionários Fixos */}
           <div className="space-y-2 pt-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-y-2">
               <div>
                 <h3 className="text-sm font-black text-stone-850 uppercase tracking-wider flex items-center gap-2">
                   <ShieldCheck className="h-4 w-4 text-amber-700" />
@@ -928,7 +928,7 @@ export default function CostsPage() {
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md border border-stone-200 shadow-xl max-h-[92vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100 flex-wrap gap-y-2">
               <h3 className="font-black text-stone-900 text-sm">
                 {editId ? 'Editar Funcionário Fixo' : 'Novo Funcionário Fixo (Recorrente)'}
               </h3>
@@ -1062,7 +1062,7 @@ export default function CostsPage() {
       {absEmp && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md border border-stone-200 shadow-xl max-h-[92vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100 flex-wrap gap-y-2">
               <div>
                 <h3 className="font-black text-stone-900 text-sm">Faltas — {absEmp.name}</h3>
                 <p className="text-[10px] text-stone-400 font-semibold uppercase">{MESES[month - 1]} / {year}</p>
@@ -1111,7 +1111,7 @@ export default function CostsPage() {
                   absList.map((a) => (
                     <div
                       key={a.id}
-                      className="flex items-center justify-between rounded-lg border border-stone-150 bg-stone-50/50 px-3 py-2"
+                      className="flex items-center justify-between rounded-lg border border-stone-150 bg-stone-50/50 px-3 py-2 flex-wrap gap-y-2"
                     >
                       <div className="text-xs">
                         <span className="font-bold text-stone-800">
@@ -1138,7 +1138,7 @@ export default function CostsPage() {
       {showAdvanceModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md border border-stone-200 shadow-xl max-h-[92vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100 flex-wrap gap-y-2">
               <div>
                 <h3 className="font-black text-stone-900 text-sm">Lançar Adiantamento / Vale</h3>
                 <p className="text-[10px] text-stone-400 font-semibold">

@@ -651,7 +651,7 @@ export default function AdminCustomersPage() {
   return (
     <div className="space-y-6">
       {/* Cabeçalho */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-y-2">
         <div>
           <h2 className="text-2xl font-black text-stone-900 tracking-tight flex items-center gap-2">
             <Users className="h-6 w-6 text-amber-700" />
@@ -991,7 +991,7 @@ export default function AdminCustomersPage() {
             
             {/* Template Help Box */}
             <div className="rounded-xl border border-stone-200 bg-stone-50 p-4 space-y-2">
-              <div className="flex items-center justify-between text-[10px] font-bold text-stone-500 uppercase">
+              <div className="flex items-center justify-between text-[10px] font-bold text-stone-500 uppercase flex-wrap gap-y-2">
                 <span>Estrutura do Template</span>
                 <span className="text-amber-700 font-extrabold cursor-help" onClick={() => setRawJsonData(templateJson)}>Copiar Modelo</span>
               </div>
@@ -1096,7 +1096,7 @@ export default function AdminCustomersPage() {
       {addrCustomer && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-lg max-h-[92vh] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100 shrink-0 bg-stone-50/50">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100 shrink-0 bg-stone-50/50 flex-wrap gap-y-2">
               <div>
                 <h3 className="font-extrabold text-stone-950 text-sm">Endereços de Entrega</h3>
                 <p className="text-[10px] text-stone-400 font-semibold mt-0.5">{addrCustomer.tradeName}</p>
@@ -1114,7 +1114,7 @@ export default function AdminCustomersPage() {
               ) : (
                 <div className="space-y-2">
                   {addrList.map((a) => (
-                    <div key={a.id} className="flex items-start justify-between gap-2 rounded-lg border border-stone-200 p-2.5">
+                    <div key={a.id} className="flex items-start justify-between gap-2 rounded-lg border border-stone-200 p-2.5 flex-wrap gap-y-2">
                       <div>
                         {a.label && <span className="font-bold text-stone-800 block">{a.label}</span>}
                         <span className="text-stone-600">{a.address}{a.number ? `, ${a.number}` : ''}{a.neighborhood ? ` — ${a.neighborhood}` : ''}</span>
@@ -1149,7 +1149,7 @@ export default function AdminCustomersPage() {
       {isCreateModalOpen && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-lg max-h-[92vh] overflow-hidden flex flex-col animate-scaleIn">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100 shrink-0 bg-stone-50/50">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100 shrink-0 bg-stone-50/50 flex-wrap gap-y-2">
               <div>
                 <h3 className="font-extrabold text-stone-950 text-sm">{editCustomerId ? 'Editar Cliente' : 'Cadastrar Novo Ponto de Revenda'}</h3>
                 <p className="text-[10px] text-stone-400 font-semibold uppercase mt-0.5">Homologação Individual de Clientes</p>
@@ -1167,7 +1167,7 @@ export default function AdminCustomersPage() {
               
               {/* Documento: CNPJ ou CPF */}
               <div className="bg-stone-50/50 border border-stone-200 p-3 rounded-xl space-y-2">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-y-2">
                   <span className="text-[9px] text-stone-400 font-bold uppercase block">Tipo de Documento</span>
                   <div className="flex gap-2">
                     <button
@@ -1362,7 +1362,7 @@ export default function AdminCustomersPage() {
 
               {/* Endereço & CEP */}
               <div className="border-t border-stone-100 pt-3 space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-y-2">
                   <span className="text-[10px] font-black text-amber-700 uppercase tracking-widest block">Endereço de Entrega</span>
                   <span className="text-[9px] text-stone-400 italic">Digite o CEP para preencher o endereço automaticamente</span>
                 </div>

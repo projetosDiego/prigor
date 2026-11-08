@@ -69,7 +69,7 @@ export default function ReturnsReportPage() {
           <ul className="divide-y divide-stone-100 text-sm">
             {data.byCustomer.length === 0 && <li className="p-4 text-stone-400">Nada neste mês.</li>}
             {data.byCustomer.map((x) => (
-              <li key={x.customerId} className="flex items-center justify-between px-4 py-2">
+              <li key={x.customerId} className="flex items-center justify-between px-4 py-2 flex-wrap gap-y-2">
                 <span className="font-semibold text-stone-800">{x.customerName}</span>
                 <span className="text-xs text-stone-500">{x.units} un · {x.count}× · {brl(x.lossValue)}</span>
               </li>
@@ -81,7 +81,7 @@ export default function ReturnsReportPage() {
           <ul className="divide-y divide-stone-100 text-sm">
             {data.byProduct.length === 0 && <li className="p-4 text-stone-400">Nada neste mês.</li>}
             {data.byProduct.map((x) => (
-              <li key={x.name} className="flex items-center justify-between px-4 py-2">
+              <li key={x.name} className="flex items-center justify-between px-4 py-2 flex-wrap gap-y-2">
                 <span className="font-semibold text-stone-800">{x.name}</span>
                 <span className="text-xs text-stone-500">{x.units} un · {x.count}×</span>
               </li>
@@ -93,7 +93,7 @@ export default function ReturnsReportPage() {
           <ul className="divide-y divide-stone-100 text-sm">
             {data.byReason.length === 0 && <li className="p-4 text-stone-400">Nada neste mês.</li>}
             {data.byReason.map((x) => (
-              <li key={x.reason} className="flex items-center justify-between px-4 py-2">
+              <li key={x.reason} className="flex items-center justify-between px-4 py-2 flex-wrap gap-y-2">
                 <span className="text-stone-800">{x.reason}</span>
                 <span className="text-xs font-bold text-stone-500">{x.count}</span>
               </li>

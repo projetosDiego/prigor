@@ -175,7 +175,7 @@ export default function CollectionsPage() {
 
       {syncResult && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start justify-between gap-3 flex-wrap gap-y-2">
             <div>
               <h2 className="text-sm font-black text-emerald-900">
                 {syncResult.paid.length > 0

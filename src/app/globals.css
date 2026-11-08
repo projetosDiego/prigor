@@ -14,3 +14,62 @@ body {
   background-color: var(--background);
   color: var(--foreground);
 }
+
+/* ── Celular: tabelas viram cartões (ver ResponsiveTables) ─────────────────── */
+@media screen and (max-width: 767px) {
+  table[data-rt] {
+    display: block;
+    width: 100%;
+    min-width: 0 !important;
+  }
+  table[data-rt] > thead {
+    display: none;
+  }
+  table[data-rt] > tbody,
+  table[data-rt] > tfoot {
+    display: block;
+  }
+  table[data-rt] > tbody > tr,
+  table[data-rt] > tfoot > tr {
+    display: block;
+    padding: 0.6rem 0.85rem;
+    border-bottom: 1px solid #e7e5e4;
+  }
+  table[data-rt] > tbody > tr > td,
+  table[data-rt] > tbody > tr > th,
+  table[data-rt] > tfoot > tr > td,
+  table[data-rt] > tfoot > tr > th {
+    display: block;
+    position: relative;
+    padding: 0.3rem 0 0.3rem 42% !important;
+    text-align: right !important;
+    border: 0 !important;
+    min-height: 1.4rem;
+    width: auto !important;
+    overflow-wrap: anywhere;
+  }
+  table[data-rt] > tbody > tr > td::before,
+  table[data-rt] > tfoot > tr > td::before {
+    content: attr(data-label);
+    position: absolute;
+    left: 0;
+    top: 0.35rem;
+    width: 38%;
+    text-align: left;
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #a8a29e;
+  }
+  table[data-rt] > tbody > tr > td[data-label=""],
+  table[data-rt] > tbody > tr > td.rt-span,
+  table[data-rt] > tfoot > tr > td.rt-span {
+    padding-left: 0 !important;
+    text-align: left !important;
+  }
+  table[data-rt] > tbody > tr > td[data-label=""]::before,
+  table[data-rt] > tbody > tr > td.rt-span::before {
+    display: none;
+  }
+}

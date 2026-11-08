@@ -616,7 +616,7 @@ export default function AdminLeadsPage() {
             </table>
           </div>
           
-          <div className="p-4 border-t border-stone-200 bg-stone-50 flex items-center justify-between text-xs text-stone-550 font-medium">
+          <div className="p-4 border-t border-stone-200 bg-stone-50 flex items-center justify-between text-xs text-stone-550 font-medium flex-wrap gap-y-2">
             <span>Listando {filteredLeads.length} leads</span>
             <span>Total no sistema: {leads.length}</span>
           </div>
@@ -668,7 +668,7 @@ export default function AdminLeadsPage() {
           <div className="bg-white h-full w-full max-w-md border-l border-stone-250 shadow-2xl p-6 overflow-y-auto space-y-6 animate-slideIn">
             
             {/* Header Drawer */}
-            <div className="flex items-center justify-between border-b border-stone-200 pb-4">
+            <div className="flex items-center justify-between border-b border-stone-200 pb-4 flex-wrap gap-y-2">
               <div>
                 <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Ficha do Lead</span>
                 <h3 className="text-base font-extrabold text-stone-900 truncate max-w-[280px]">{selectedLead.tradeName}</h3>
@@ -685,7 +685,7 @@ export default function AdminLeadsPage() {
             <div className="space-y-4 text-xs font-semibold text-stone-750">
               
               {/* Box do Score */}
-              <div className="rounded-xl border border-orange-200 bg-orange-50/50 p-4 flex items-center justify-between">
+              <div className="rounded-xl border border-orange-200 bg-orange-50/50 p-4 flex items-center justify-between flex-wrap gap-y-2">
                 <div>
                   <span className="text-[10px] text-orange-700 font-bold uppercase block leading-none">PRIGOR SCORE</span>
                   <span className="text-2xl font-black text-orange-950 block mt-1">🔥 {selectedLead.score} / 100</span>
@@ -722,7 +722,7 @@ export default function AdminLeadsPage() {
                 <span className="block text-[9px] text-stone-400 font-bold uppercase">Dados de Contato</span>
                 
                 {selectedLead.phone && (
-                  <div className="flex items-center justify-between p-2.5 rounded-lg border border-stone-150">
+                  <div className="flex items-center justify-between p-2.5 rounded-lg border border-stone-150 flex-wrap gap-y-2">
                     <span className="text-stone-500 font-medium">Telefone</span>
                     <a href={`tel:${selectedLead.phone}`} className="font-bold text-amber-800 hover:underline flex items-center gap-1">
                       <Phone className="h-4.5 w-4.5 text-stone-400" />
@@ -731,7 +731,7 @@ export default function AdminLeadsPage() {
                   </div>
                 )}
                 {selectedLead.mobile && (
-                  <div className="flex items-center justify-between p-2.5 rounded-lg border border-stone-150">
+                  <div className="flex items-center justify-between p-2.5 rounded-lg border border-stone-150 flex-wrap gap-y-2">
                     <span className="text-stone-500 font-medium">Celular/WhatsApp</span>
                     <a href={`https://api.whatsapp.com/send?phone=${selectedLead.mobile.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="font-bold text-emerald-800 hover:underline flex items-center gap-1">
                       💬 {selectedLead.mobile}
@@ -739,7 +739,7 @@ export default function AdminLeadsPage() {
                   </div>
                 )}
                 {selectedLead.email && (
-                  <div className="flex items-center justify-between p-2.5 rounded-lg border border-stone-150">
+                  <div className="flex items-center justify-between p-2.5 rounded-lg border border-stone-150 flex-wrap gap-y-2">
                     <span className="text-stone-500 font-medium">E-mail</span>
                     <a href={`mailto:${selectedLead.email}`} className="font-bold text-amber-800 hover:underline flex items-center gap-1 truncate max-w-[200px]">
                       <Mail className="h-4.5 w-4.5 text-stone-400" />
@@ -748,7 +748,7 @@ export default function AdminLeadsPage() {
                   </div>
                 )}
                 {selectedLead.cnpj && (
-                  <div className="flex items-center justify-between p-2.5 rounded-lg border border-stone-150">
+                  <div className="flex items-center justify-between p-2.5 rounded-lg border border-stone-150 flex-wrap gap-y-2">
                     <span className="text-stone-500 font-medium">CNPJ</span>
                     <span className="font-mono text-stone-700">{selectedLead.cnpj}</span>
                   </div>
@@ -758,7 +758,7 @@ export default function AdminLeadsPage() {
               {/* Atribuição de Vendedor */}
               <div className="space-y-2 pt-2 border-t border-stone-100">
                 <span className="block text-[9px] text-stone-400 font-bold uppercase">Território e Responsável</span>
-                <div className="flex justify-between items-center p-3 rounded-xl border border-stone-150 bg-stone-50/50">
+                <div className="flex justify-between items-center p-3 rounded-xl border border-stone-150 bg-stone-50/50 flex-wrap gap-y-2">
                   <div>
                     <span className="text-[10px] text-stone-500 block">Vendedor Vinculado</span>
                     <span className="font-bold text-stone-850 block mt-0.5">
@@ -800,31 +800,31 @@ export default function AdminLeadsPage() {
                   <span className="block text-[9px] text-stone-400 font-bold uppercase">Composição do Prigor Score</span>
                   
                   <div className="rounded-xl border border-stone-200 p-3.5 space-y-2 text-[10px] font-semibold">
-                    <div className="flex justify-between items-center text-stone-550 border-b border-stone-100 pb-1.5">
+                    <div className="flex justify-between items-center text-stone-550 border-b border-stone-100 pb-1.5 flex-wrap gap-y-2">
                       <span className="flex items-center gap-1"><Coffee className="h-3.5 w-3.5 text-stone-400" /> Categoria</span>
                       <span className="font-bold text-stone-800">{selectedLead.scoreBreakdown.category} pts</span>
                     </div>
-                    <div className="flex justify-between items-center text-stone-550 border-b border-stone-100 pb-1.5">
+                    <div className="flex justify-between items-center text-stone-550 border-b border-stone-100 pb-1.5 flex-wrap gap-y-2">
                       <span>🔄 Compatibilidade</span>
                       <span className="font-bold text-stone-800">{selectedLead.scoreBreakdown.compatibility} pts</span>
                     </div>
-                    <div className="flex justify-between items-center text-stone-550 border-b border-stone-100 pb-1.5">
+                    <div className="flex justify-between items-center text-stone-550 border-b border-stone-100 pb-1.5 flex-wrap gap-y-2">
                       <span>⭐ Potencial Google</span>
                       <span className="font-bold text-stone-800">{selectedLead.scoreBreakdown.commercial_potential} pts</span>
                     </div>
-                    <div className="flex justify-between items-center text-stone-550 border-b border-stone-100 pb-1.5">
+                    <div className="flex justify-between items-center text-stone-550 border-b border-stone-100 pb-1.5 flex-wrap gap-y-2">
                       <span>📍 Região</span>
                       <span className="font-bold text-stone-800">{selectedLead.scoreBreakdown.region} pts</span>
                     </div>
-                    <div className="flex justify-between items-center text-stone-550 border-b border-stone-100 pb-1.5">
+                    <div className="flex justify-between items-center text-stone-550 border-b border-stone-100 pb-1.5 flex-wrap gap-y-2">
                       <span>💻 Presença Digital</span>
                       <span className="font-bold text-stone-800">{selectedLead.scoreBreakdown.digital_presence} pts</span>
                     </div>
-                    <div className="flex justify-between items-center text-stone-550 border-b border-stone-100 pb-1.5">
+                    <div className="flex justify-between items-center text-stone-550 border-b border-stone-100 pb-1.5 flex-wrap gap-y-2">
                       <span>🏘️ Densidade Prigor</span>
                       <span className="font-bold text-stone-800">{selectedLead.scoreBreakdown.nearby_customers} pts</span>
                     </div>
-                    <div className="flex justify-between items-center text-stone-550 pt-0.5">
+                    <div className="flex justify-between items-center text-stone-550 pt-0.5 flex-wrap gap-y-2">
                       <span>📋 Qualidade dos Dados</span>
                       <span className="font-bold text-stone-800">{selectedLead.scoreBreakdown.data_quality} pts</span>
                     </div>
@@ -834,7 +834,7 @@ export default function AdminLeadsPage() {
             </div>
 
             {/* Botão de Excluir */}
-            <div className="pt-4 border-t border-stone-200 flex justify-between gap-3">
+            <div className="pt-4 border-t border-stone-200 flex justify-between gap-3 flex-wrap gap-y-2">
               <button
                 onClick={() => handleDelete(selectedLead.id)}
                 className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 text-red-800 px-4 py-2 text-xs font-bold transition-all cursor-pointer"

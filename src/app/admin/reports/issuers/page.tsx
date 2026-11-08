@@ -189,7 +189,7 @@ export default function IssuerReportPage() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <div className="flex items-baseline justify-between text-xs">
+                    <div className="flex items-baseline justify-between text-xs flex-wrap gap-y-2">
                       <span className="font-bold text-stone-700">Faturado em {data.year}</span>
                       <span className="text-stone-500">
                         <strong className="text-stone-900">{brl(i.year.orders)}</strong> de {brl(i.annualLimit)} ({i.year.pct.toLocaleString('pt-BR')}%)

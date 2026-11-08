@@ -86,7 +86,7 @@ function Modal({ title, onClose, children, wide }: { title: string; onClose: () 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-3 sm:p-6">
       <div className={`w-full ${wide ? 'max-w-5xl' : 'max-w-lg'} rounded-2xl bg-white shadow-xl`}>
-        <div className="flex items-center justify-between border-b border-stone-200 px-5 py-4">
+        <div className="flex items-center justify-between border-b border-stone-200 px-5 py-4 flex-wrap gap-y-2">
           <h3 className="text-base font-black text-stone-900">{title}</h3>
           <button onClick={onClose} className="rounded-lg p-1 text-stone-500 hover:bg-stone-100" aria-label="Fechar">
             <X className="h-5 w-5" />
@@ -418,7 +418,7 @@ function DashboardTab({ data, reload, onOpen, fav }: { data: PricingBundleDTO; r
             {favorites.map((s) => (
               <button key={s.id} onClick={() => onOpen(s)} className="rounded-lg border border-amber-200 bg-white p-3 text-left transition hover:shadow-sm">
                 <div className="truncate text-sm font-bold text-stone-900">{s.name}</div>
-                <div className="mt-1 flex items-baseline justify-between">
+                <div className="mt-1 flex items-baseline justify-between flex-wrap gap-y-2">
                   <span className="text-xs text-stone-500">{brl(s.effectivePrice)}</span>
                   <span className={`text-sm font-black ${s.channels.balcao.mcPct < data.settings.targetMarginPct / 100 ? 'text-amber-600' : 'text-emerald-600'}`}>{pct(s.channels.balcao.mcPct)}</span>
                 </div>
@@ -1117,7 +1117,7 @@ function SheetDrawer({
         role="dialog"
         aria-label={sheet ? `Ficha ${sheet.name}` : 'Nova ficha'}
       >
-        <div className="flex items-center justify-between border-b border-stone-200 px-5 py-4">
+        <div className="flex items-center justify-between border-b border-stone-200 px-5 py-4 flex-wrap gap-y-2">
           <div>
             <h3 className="text-lg font-black text-stone-900">{sheet ? sheet.name : 'Nova ficha técnica'}</h3>
             <p className="text-xs text-stone-500">
@@ -1175,7 +1175,7 @@ function SheetDrawer({
           </div>
 
           <div>
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-2 flex items-center justify-between flex-wrap gap-y-2">
               <h4 className="text-sm font-black text-stone-800">Ingredientes</h4>
               <button className="text-xs font-bold text-amber-700 hover:underline" onClick={() => setLines([...lines, { key: String(Date.now()), ref: '', quantity: '' }])}>
                 + Adicionar item
@@ -1392,7 +1392,7 @@ function SheetDrawer({
 
 function Row({ k, v, strong, accent, warn }: { k: string; v: string; strong?: boolean; accent?: boolean; warn?: boolean }) {
   return (
-    <div className="flex items-baseline justify-between gap-2 text-sm">
+    <div className="flex items-baseline justify-between gap-2 text-sm flex-wrap gap-y-2">
       <span className="text-stone-500">{k}</span>
       <span className={`${strong ? 'text-base font-black' : 'font-semibold'} ${accent ? 'text-amber-700' : warn ? 'text-red-600' : 'text-stone-900'}`}>{v}</span>
     </div>
@@ -1692,7 +1692,7 @@ function ResourcesTab({ data, reload, fav }: { data: PricingBundleDTO; reload: (
 
   return (
     <section className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-y-2">
         <p className="text-sm text-stone-500">Custo por minuto de uso, calculado dos parâmetros (kWh, gás, jornada). Use nas fichas com a quantidade em minutos.</p>
         <button className={btnPrimary} onClick={() => setEditing('new')}>
           <Plus className="h-4 w-4" /> Novo
@@ -1709,7 +1709,7 @@ function ResourcesTab({ data, reload, fav }: { data: PricingBundleDTO; reload: (
                 : `${brl(r.monthlySalary, 0)} + ${dec(r.chargesPct, 1)}% encargos`;
           return (
             <div key={r.id} onClick={() => setEditing(r)} className={`cursor-pointer rounded-xl border bg-white p-4 transition hover:shadow-sm ${r.active ? 'border-stone-200' : 'border-dashed opacity-60'}`}>
-              <div className="flex items-start justify-between gap-2">
+              <div className="flex items-start justify-between gap-2 flex-wrap gap-y-2">
                 <div className="flex items-center gap-2">
                   <Icon className="h-4 w-4 text-amber-600" />
                   <div>
@@ -1731,7 +1731,7 @@ function ResourcesTab({ data, reload, fav }: { data: PricingBundleDTO; reload: (
                   </button>
                 </div>
               </div>
-              <div className="mt-3 flex items-baseline justify-between">
+              <div className="mt-3 flex items-baseline justify-between flex-wrap gap-y-2">
                 <span className="text-xs text-stone-500">Custo por minuto</span>
                 <span className="text-lg font-black text-stone-900">{brl(r.unitCost, 4)}</span>
               </div>
@@ -1906,7 +1906,7 @@ function CostsTab({ data, reload, fav }: { data: PricingBundleDTO; reload: () =>
   return (
     <section className="grid gap-5 lg:grid-cols-2">
       <div className="space-y-3 rounded-xl border border-stone-200 bg-white p-5">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-y-2">
           <h2 className="flex items-center gap-2 font-black text-stone-900">
             <Package className="h-4 w-4 text-amber-600" /> Custos fixos mensais
           </h2>
@@ -1934,7 +1934,7 @@ function CostsTab({ data, reload, fav }: { data: PricingBundleDTO; reload: () =>
           ))}
           {data.fixedCosts.length === 0 && <li className="py-6 text-center text-sm text-stone-400">Nenhum custo fixo cadastrado.</li>}
         </ul>
-        <div className="flex items-center justify-between border-t border-stone-200 pt-3 text-sm font-black">
+        <div className="flex items-center justify-between border-t border-stone-200 pt-3 text-sm font-black flex-wrap gap-y-2">
           <span>Total mensal</span>
           <span>{brl(data.fixedTotal)}</span>
         </div>
@@ -1943,17 +1943,17 @@ function CostsTab({ data, reload, fav }: { data: PricingBundleDTO; reload: () =>
           <div className="mb-2 text-xs font-black uppercase tracking-wide text-stone-500">Rateio automático pela receita real</div>
           <div className="space-y-1">
             {data.revenue.months.map((m) => (
-              <div key={m.month} className="flex justify-between text-stone-600">
+              <div key={m.month} className="flex justify-between text-stone-600 flex-wrap gap-y-2">
                 <span>{m.month.split('-').reverse().join('/')}</span>
                 <span>{brl(m.total, 0)}</span>
               </div>
             ))}
           </div>
-          <div className="mt-2 flex justify-between border-t border-stone-200 pt-2 font-bold">
+          <div className="mt-2 flex justify-between border-t border-stone-200 pt-2 font-bold flex-wrap gap-y-2">
             <span>Receita usada ({data.revenue.source === 'manual' ? 'manual' : 'média'})</span>
             <span>{brl(data.revenue.used, 0)}</span>
           </div>
-          <div className="flex justify-between font-black text-amber-700">
+          <div className="flex justify-between font-black text-amber-700 flex-wrap gap-y-2">
             <span>Alíquota de custo fixo</span>
             <span>{data.fixedRatePct.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%</span>
           </div>

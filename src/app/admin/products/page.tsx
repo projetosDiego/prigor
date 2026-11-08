@@ -297,7 +297,7 @@ export default function ProductsPage() {
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* Cabeçalho */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-y-2">
         <div>
           <h2 className="text-2xl font-black text-stone-900 tracking-tight flex items-center gap-2">
             <Package className="h-6 w-6 text-amber-700" />
@@ -502,7 +502,7 @@ export default function ProductsPage() {
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl border border-stone-200 shadow-xl w-full max-w-2xl overflow-hidden my-8 animate-scaleIn">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-stone-100">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-stone-100 flex-wrap gap-y-2">
               <h3 className="font-extrabold text-stone-900 text-base">
                 {modalMode === 'create' ? 'Cadastrar Novo Produto' : 'Editar Produto'}
               </h3>
@@ -665,7 +665,7 @@ export default function ProductsPage() {
               </div>
 
               {/* Disponibilidade no Autoatendimento */}
-              <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 flex items-center justify-between gap-4">
+              <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 flex items-center justify-between gap-4 flex-wrap gap-y-2">
                 <div>
                   <h4 className="text-xs font-black text-amber-950 uppercase tracking-wider flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full bg-amber-500" />

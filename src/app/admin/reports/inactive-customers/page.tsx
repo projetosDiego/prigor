@@ -266,7 +266,7 @@ export default function InactiveCustomersReportPage() {
       {/* Cards de Métricas */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white rounded-2xl border border-stone-200 p-5 shadow-xs">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-y-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
               Revendas Inativas ({`>${days}d`})
             </span>
@@ -286,7 +286,7 @@ export default function InactiveCustomersReportPage() {
         </div>
 
         <div className="bg-white rounded-2xl border border-stone-200 p-5 shadow-xs">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-y-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
               Receita Histórica em Risco
             </span>
@@ -303,7 +303,7 @@ export default function InactiveCustomersReportPage() {
         </div>
 
         <div className="bg-white rounded-2xl border border-stone-200 p-5 shadow-xs">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-y-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
               Média por Último Pedido
             </span>

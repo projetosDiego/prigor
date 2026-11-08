@@ -218,7 +218,7 @@ export default function AdminDashboardPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Card Vendas de Ontem */}
             <div className="rounded-2xl bg-white border border-stone-200 p-4 shadow-xs space-y-1">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-y-2">
                 <span className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider">
                   Vendas de Ontem ({formatarData(erpData.yesterday?.date)})
                 </span>
@@ -229,7 +229,7 @@ export default function AdminDashboardPage() {
               <p className="text-2xl font-black text-stone-900 tracking-tight">
                 {formatBRL(erpData.yesterday?.revenue ?? 0)}
               </p>
-              <div className="flex items-center justify-between text-xs text-stone-500 pt-1">
+              <div className="flex items-center justify-between text-xs text-stone-500 pt-1 flex-wrap gap-y-2">
                 <span>{erpData.yesterday?.orders ?? 0} pedidos fechados</span>
                 <span>Ticket: {formatBRL(erpData.yesterday?.averageTicket ?? 0)}</span>
               </div>
@@ -237,7 +237,7 @@ export default function AdminDashboardPage() {
 
             {/* Card Vendas de Hoje */}
             <div className="rounded-2xl bg-white border border-stone-200 p-4 shadow-xs space-y-1">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-y-2">
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider">
                     Vendas de Hoje
@@ -251,7 +251,7 @@ export default function AdminDashboardPage() {
               <p className="text-2xl font-black text-emerald-900 tracking-tight">
                 {formatBRL(erpData.today?.revenue ?? 0)}
               </p>
-              <div className="flex items-center justify-between text-xs text-stone-500 pt-1">
+              <div className="flex items-center justify-between text-xs text-stone-500 pt-1 flex-wrap gap-y-2">
                 <span>{erpData.today?.orders ?? 0} pedidos hoje</span>
                 <Link
                   href={`/admin/reports/sales`}
@@ -264,7 +264,7 @@ export default function AdminDashboardPage() {
 
             {/* Card Faturamento Acumulado no Mês vs Meta */}
             <div className="rounded-2xl bg-white border border-stone-200 p-4 shadow-xs space-y-2">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-y-2">
                 <span className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider">
                   Faturamento do Mês
                 </span>
@@ -278,7 +278,7 @@ export default function AdminDashboardPage() {
               
               {/* Barra de Progresso da Meta */}
               <div className="space-y-1">
-                <div className="flex justify-between text-[10px] font-bold text-stone-500">
+                <div className="flex justify-between text-[10px] font-bold text-stone-500 flex-wrap gap-y-2">
                   <span>Meta: {formatBRL(erpData.monthProjection?.goal ?? 0)}</span>
                   <span className="text-amber-850">{(erpData.monthProjection?.percentGoal ?? 0).toFixed(1)}%</span>
                 </div>
@@ -293,7 +293,7 @@ export default function AdminDashboardPage() {
 
             {/* Card Projeção do Mês (Forecast) */}
             <div className="rounded-2xl bg-white border border-stone-200 p-4 shadow-xs space-y-1">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-y-2">
                 <span className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider">
                   Projeção do Mês (Forecast)
                 </span>
@@ -304,7 +304,7 @@ export default function AdminDashboardPage() {
               <p className="text-2xl font-black text-indigo-950 tracking-tight">
                 {formatBRL(erpData.monthProjection?.projection ?? 0)}
               </p>
-              <div className="flex items-center justify-between text-[11px] pt-1 font-semibold">
+              <div className="flex items-center justify-between text-[11px] pt-1 font-semibold flex-wrap gap-y-2">
                 <span className="text-stone-500">
                   Dia {erpData.monthProjection?.daysElapsed ?? 1} de {erpData.monthProjection?.totalDays ?? 30}
                 </span>
@@ -325,7 +325,7 @@ export default function AdminDashboardPage() {
             {/* Alerta Entregas Hoje */}
             <Link
               href="/admin/orders"
-              className="rounded-xl border border-amber-200 bg-amber-50/70 p-3.5 flex items-center justify-between hover:bg-amber-100/60 transition-all shadow-2xs group"
+              className="rounded-xl border border-amber-200 bg-amber-50/70 p-3.5 flex items-center justify-between hover:bg-amber-100/60 transition-all shadow-2xs group flex-wrap gap-y-2"
             >
               <div className="flex items-center gap-3">
                 <div className="rounded-lg bg-amber-200/70 p-2 text-amber-850">
@@ -344,7 +344,7 @@ export default function AdminDashboardPage() {
             {/* Alerta Clientes Sem Comprar */}
             <Link
               href="/admin/reports/inactive-customers"
-              className="rounded-xl border border-orange-200 bg-orange-50/70 p-3.5 flex items-center justify-between hover:bg-orange-100/60 transition-all shadow-2xs group"
+              className="rounded-xl border border-orange-200 bg-orange-50/70 p-3.5 flex items-center justify-between hover:bg-orange-100/60 transition-all shadow-2xs group flex-wrap gap-y-2"
             >
               <div className="flex items-center gap-3">
                 <div className="rounded-lg bg-orange-200/70 p-2 text-orange-850">
@@ -363,7 +363,7 @@ export default function AdminDashboardPage() {
             {/* Alerta Títulos Vencidos */}
             <Link
               href="/admin/financial"
-              className="rounded-xl border border-red-200 bg-red-50/70 p-3.5 flex items-center justify-between hover:bg-red-100/60 transition-all shadow-2xs group"
+              className="rounded-xl border border-red-200 bg-red-50/70 p-3.5 flex items-center justify-between hover:bg-red-100/60 transition-all shadow-2xs group flex-wrap gap-y-2"
             >
               <div className="flex items-center gap-3">
                 <div className="rounded-lg bg-red-200/70 p-2 text-red-850">
@@ -384,7 +384,7 @@ export default function AdminDashboardPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Ranking de Vendedores no Mês */}
             <div className="rounded-2xl bg-white border border-stone-200 p-5 shadow-xs space-y-4">
-              <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+              <div className="flex items-center justify-between border-b border-stone-100 pb-3 flex-wrap gap-y-2">
                 <div className="flex items-center gap-2">
                   <Award className="h-5 w-5 text-amber-700" />
                   <h3 className="text-sm font-extrabold text-stone-900">Desempenho da Equipe de Vendas</h3>
@@ -403,7 +403,7 @@ export default function AdminDashboardPage() {
                 <div className="space-y-3.5">
                   {erpData.sellersRanking.map((s, idx) => (
                     <div key={s.id} className="space-y-1.5 p-2 rounded-xl hover:bg-stone-50 transition-colors">
-                      <div className="flex justify-between items-center text-xs">
+                      <div className="flex justify-between items-center text-xs flex-wrap gap-y-2">
                         <span className="font-extrabold text-stone-900 flex items-center gap-2">
                           <span className={`h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-black ${
                             idx === 0 ? 'bg-amber-100 text-amber-800' : 'bg-stone-100 text-stone-600'
@@ -434,7 +434,7 @@ export default function AdminDashboardPage() {
 
             {/* Doces Mais Vendidos no Mês */}
             <div className="rounded-2xl bg-white border border-stone-200 p-5 shadow-xs space-y-4">
-              <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+              <div className="flex items-center justify-between border-b border-stone-100 pb-3 flex-wrap gap-y-2">
                 <div className="flex items-center gap-2">
                   <Package className="h-5 w-5 text-purple-700" />
                   <h3 className="text-sm font-extrabold text-stone-900">Doces Campeões de Venda (Mês)</h3>
@@ -472,7 +472,7 @@ export default function AdminDashboardPage() {
               ) : (
                 <div className="divide-y divide-stone-100">
                   {erpData.topProducts.map((p, idx) => (
-                    <div key={p.productId} className="py-2.5 flex justify-between items-center text-xs">
+                    <div key={p.productId} className="py-2.5 flex justify-between items-center text-xs flex-wrap gap-y-2">
                       <div className="flex items-center gap-2.5 truncate max-w-[240px]">
                         <span className="text-[11px] font-black text-stone-400">#{idx + 1}</span>
                         <span className="font-bold text-stone-850 truncate">{p.name}</span>
@@ -490,7 +490,7 @@ export default function AdminDashboardPage() {
 
           {/* ÚLTIMOS PEDIDOS EMITIDOS */}
           <div className="rounded-2xl bg-white border border-stone-200 p-5 shadow-xs space-y-4">
-            <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+            <div className="flex items-center justify-between border-b border-stone-100 pb-3 flex-wrap gap-y-2">
               <div className="flex items-center gap-2">
                 <ShoppingCart className="h-5 w-5 text-stone-700" />
                 <h3 className="text-sm font-extrabold text-stone-900">Últimos Pedidos Emitidos</h3>
@@ -581,7 +581,7 @@ export default function AdminDashboardPage() {
               <span className="text-[11px] text-stone-500 mt-1 block">A pagar a vendedores</span>
             </div>
           </div>
-          <div className="p-4 rounded-xl bg-white border border-stone-200 flex justify-between items-center">
+          <div className="p-4 rounded-xl bg-white border border-stone-200 flex justify-between items-center flex-wrap gap-y-2">
             <span className="text-xs text-stone-600 font-semibold">Deseja gerenciar lançamentos, DRE e caixa detalhado?</span>
             <Link href="/admin/financial" className="rounded-lg bg-amber-700 hover:bg-amber-800 text-white px-4 py-2 text-xs font-bold transition-all">
               Abrir Módulo Financeiro
@@ -610,7 +610,7 @@ export default function AdminDashboardPage() {
               <span className="text-[11px] text-red-600 mt-1 block">Requer reposição urgente</span>
             </div>
           </div>
-          <div className="p-4 rounded-xl bg-white border border-stone-200 flex justify-between items-center">
+          <div className="p-4 rounded-xl bg-white border border-stone-200 flex justify-between items-center flex-wrap gap-y-2">
             <span className="text-xs text-stone-600 font-semibold">Controle de fichas técnicas e movimentações:</span>
             <Link href="/admin/stock" className="rounded-lg bg-amber-700 hover:bg-amber-800 text-white px-4 py-2 text-xs font-bold transition-all">
               Abrir Controle de Estoque
@@ -623,7 +623,7 @@ export default function AdminDashboardPage() {
       {activeTab === 'crm' && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="rounded-xl bg-white p-5 shadow-xs border border-stone-200 flex items-center justify-between">
+            <div className="rounded-xl bg-white p-5 shadow-xs border border-stone-200 flex items-center justify-between flex-wrap gap-y-2">
               <div>
                 <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Leads Mapeados</span>
                 <span className="text-2xl font-black text-stone-800 mt-1 block">{crmData.summary.totalLeads}</span>
@@ -632,7 +632,7 @@ export default function AdminDashboardPage() {
                 <Flame className="h-5 w-5" />
               </div>
             </div>
-            <div className="rounded-xl bg-white p-5 shadow-xs border border-stone-200 flex items-center justify-between">
+            <div className="rounded-xl bg-white p-5 shadow-xs border border-stone-200 flex items-center justify-between flex-wrap gap-y-2">
               <div>
                 <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Clientes Cadastrados</span>
                 <span className="text-2xl font-black text-stone-800 mt-1 block">{erpData.customers.active}</span>
@@ -641,7 +641,7 @@ export default function AdminDashboardPage() {
                 <Users className="h-5 w-5" />
               </div>
             </div>
-            <div className="rounded-xl bg-white p-5 shadow-xs border border-stone-200 flex items-center justify-between">
+            <div className="rounded-xl bg-white p-5 shadow-xs border border-stone-200 flex items-center justify-between flex-wrap gap-y-2">
               <div>
                 <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Taxa de Conversão</span>
                 <span className="text-2xl font-black text-amber-800 mt-1 block">{crmData.summary.conversionRate}%</span>
@@ -650,7 +650,7 @@ export default function AdminDashboardPage() {
                 <TrendingUp className="h-5 w-5" />
               </div>
             </div>
-            <div className="rounded-xl bg-white p-5 shadow-xs border border-stone-200 flex items-center justify-between">
+            <div className="rounded-xl bg-white p-5 shadow-xs border border-stone-200 flex items-center justify-between flex-wrap gap-y-2">
               <div>
                 <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Tempo Médio Conversão</span>
                 <span className="text-2xl font-black text-stone-800 mt-1 block">{crmData.summary.avgConversionTimeDays} dias</span>
@@ -661,7 +661,7 @@ export default function AdminDashboardPage() {
             </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-white border border-stone-200 flex justify-between items-center">
+          <div className="p-4 rounded-xl bg-white border border-stone-200 flex justify-between items-center flex-wrap gap-y-2">
             <span className="text-xs text-stone-600 font-semibold">Deseja gerenciar a prospecção ativa de novos pontos?</span>
             <Link href="/admin/leads" className="rounded-lg bg-amber-700 hover:bg-amber-800 text-white px-4 py-2 text-xs font-bold transition-all">
               Abrir Funil de Leads

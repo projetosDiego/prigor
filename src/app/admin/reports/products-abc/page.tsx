@@ -277,7 +277,7 @@ export default function ProductsAbcReportPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Classe A */}
         <div className="bg-gradient-to-br from-emerald-50 to-white rounded-2xl border-2 border-emerald-200 p-5 shadow-xs relative overflow-hidden">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-y-2">
             <span className="text-[11px] font-black uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
               <Sparkles className="h-4 w-4 text-emerald-600" />
               Classe A • Campeões de Venda
@@ -286,7 +286,7 @@ export default function ProductsAbcReportPage() {
               ~80% da Receita
             </span>
           </div>
-          <div className="mt-3 flex items-baseline justify-between">
+          <div className="mt-3 flex items-baseline justify-between flex-wrap gap-y-2">
             <div>
               <div className="text-2xl font-black text-emerald-950">
                 {brl(data?.summary.classA.total ?? 0)}
@@ -303,7 +303,7 @@ export default function ProductsAbcReportPage() {
 
         {/* Classe B */}
         <div className="bg-gradient-to-br from-amber-50 to-white rounded-2xl border-2 border-amber-200 p-5 shadow-xs relative overflow-hidden">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-y-2">
             <span className="text-[11px] font-black uppercase tracking-wider text-amber-800 flex items-center gap-1.5">
               <Layers className="h-4 w-4 text-amber-600" />
               Classe B • Intermediários
@@ -312,7 +312,7 @@ export default function ProductsAbcReportPage() {
               ~15% da Receita
             </span>
           </div>
-          <div className="mt-3 flex items-baseline justify-between">
+          <div className="mt-3 flex items-baseline justify-between flex-wrap gap-y-2">
             <div>
               <div className="text-2xl font-black text-amber-950">
                 {brl(data?.summary.classB.total ?? 0)}
@@ -329,7 +329,7 @@ export default function ProductsAbcReportPage() {
 
         {/* Classe C */}
         <div className="bg-gradient-to-br from-stone-100 to-white rounded-2xl border-2 border-stone-200 p-5 shadow-xs relative overflow-hidden">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-y-2">
             <span className="text-[11px] font-black uppercase tracking-wider text-stone-700 flex items-center gap-1.5">
               <Package className="h-4 w-4 text-stone-500" />
               Classe C • Cauda Longa
@@ -338,7 +338,7 @@ export default function ProductsAbcReportPage() {
               ~5% da Receita
             </span>
           </div>
-          <div className="mt-3 flex items-baseline justify-between">
+          <div className="mt-3 flex items-baseline justify-between flex-wrap gap-y-2">
             <div>
               <div className="text-2xl font-black text-stone-900">
                 {brl(data?.summary.classC.total ?? 0)}

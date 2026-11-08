@@ -1,5 +1,6 @@
 'use client';
 
+import { ResponsiveTables } from '@/components/shared/ResponsiveTables';
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -520,7 +521,8 @@ export default function AdminLayoutClient({ children, session }: AdminLayoutClie
         </header>
 
         {/* Conteúdo com padding adaptativo (3.5 no celular, 8 no desktop) */}
-        <main className="p-3.5 sm:p-6 md:p-8 flex-1 print:p-0 print:m-0 print:overflow-visible">{children}</main>
+        <ResponsiveTables />
+        <main className="p-3.5 pb-24 sm:p-6 sm:pb-24 md:p-8 flex-1 print:p-0 print:m-0 print:overflow-visible">{children}</main>
 
         {/* Atalho fixo para lançar pedido novo (principalmente no celular) */}
         {pathname !== '/admin/orders' && (

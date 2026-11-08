@@ -414,7 +414,7 @@ export default function AdminDailySalesReportPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* 1. Faturamento Total */}
             <div className="rounded-2xl bg-white border border-stone-200 p-5 shadow-xs">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-y-2">
                 <span className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider">Faturamento Total</span>
                 <div className="rounded-lg bg-emerald-50 p-2 text-emerald-700 border border-emerald-100">
                   <DollarSign className="h-4 w-4" />
@@ -430,7 +430,7 @@ export default function AdminDailySalesReportPage() {
 
             {/* 2. Clientes Atendidos */}
             <div className="rounded-2xl bg-white border border-stone-200 p-5 shadow-xs">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-y-2">
                 <span className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider">Clientes Atendidos</span>
                 <div className="rounded-lg bg-sky-50 p-2 text-sky-700 border border-sky-100">
                   <Users className="h-4 w-4" />
@@ -446,7 +446,7 @@ export default function AdminDailySalesReportPage() {
 
             {/* 3. Ticket Médio */}
             <div className="rounded-2xl bg-white border border-stone-200 p-5 shadow-xs">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-y-2">
                 <span className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider">Ticket Médio</span>
                 <div className="rounded-lg bg-amber-50 p-2 text-amber-700 border border-amber-100">
                   <TrendingUp className="h-4 w-4" />
@@ -462,7 +462,7 @@ export default function AdminDailySalesReportPage() {
 
             {/* 4. Produto Campeão */}
             <div className="rounded-2xl bg-white border border-amber-300 bg-amber-50/40 p-5 shadow-xs">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-y-2">
                 <span className="text-[10px] font-black text-amber-900 uppercase tracking-wider flex items-center gap-1">
                   <Award className="h-4 w-4 text-amber-600" />
                   Produto Campeão
@@ -490,7 +490,7 @@ export default function AdminDailySalesReportPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Vendas por Vendedor no Dia */}
             <div className="rounded-2xl bg-white border border-stone-200 p-4 shadow-xs space-y-3">
-              <div className="flex items-center justify-between border-b border-stone-100 pb-2">
+              <div className="flex items-center justify-between border-b border-stone-100 pb-2 flex-wrap gap-y-2">
                 <h4 className="text-xs font-black uppercase text-stone-800 tracking-wider flex items-center gap-1.5">
                   <UserCheck className="h-4 w-4 text-amber-700" />
                   Vendas por Vendedor
@@ -506,7 +506,7 @@ export default function AdminDailySalesReportPage() {
                     const pct = data.summary.totalRevenue > 0 ? (s.total / data.summary.totalRevenue) * 100 : 0;
                     return (
                       <div key={idx} className="space-y-1">
-                        <div className="flex justify-between items-center text-xs">
+                        <div className="flex justify-between items-center text-xs flex-wrap gap-y-2">
                           <span className="font-bold text-stone-800 truncate max-w-[140px]">
                             {s.sellerName}
                           </span>
@@ -527,7 +527,7 @@ export default function AdminDailySalesReportPage() {
 
             {/* Formas de Pagamento */}
             <div className="rounded-2xl bg-white border border-stone-200 p-4 shadow-xs space-y-3">
-              <div className="flex items-center justify-between border-b border-stone-100 pb-2">
+              <div className="flex items-center justify-between border-b border-stone-100 pb-2 flex-wrap gap-y-2">
                 <h4 className="text-xs font-black uppercase text-stone-800 tracking-wider flex items-center gap-1.5">
                   <CreditCard className="h-4 w-4 text-emerald-700" />
                   Formas de Pagamento
@@ -543,7 +543,7 @@ export default function AdminDailySalesReportPage() {
                     const pct = data.summary.totalRevenue > 0 ? (pm.total / data.summary.totalRevenue) * 100 : 0;
                     return (
                       <div key={idx} className="space-y-1">
-                        <div className="flex justify-between items-center text-xs">
+                        <div className="flex justify-between items-center text-xs flex-wrap gap-y-2">
                           <span className="font-bold text-stone-800 truncate">{pm.method}</span>
                           <span className="font-extrabold text-stone-900">
                             {formatBRL(pm.total)}
@@ -562,7 +562,7 @@ export default function AdminDailySalesReportPage() {
 
             {/* Mais Vendidos no Dia */}
             <div className="rounded-2xl bg-white border border-stone-200 p-4 shadow-xs space-y-3">
-              <div className="flex items-center justify-between border-b border-stone-100 pb-2">
+              <div className="flex items-center justify-between border-b border-stone-100 pb-2 flex-wrap gap-y-2">
                 <h4 className="text-xs font-black uppercase text-stone-800 tracking-wider flex items-center gap-1.5">
                   <Award className="h-4 w-4 text-purple-700" />
                   Mais Vendidos do Dia
@@ -575,7 +575,7 @@ export default function AdminDailySalesReportPage() {
               ) : (
                 <div className="space-y-2">
                   {data.summary.topProducts.slice(0, 5).map((tp, idx) => (
-                    <div key={idx} className="flex justify-between items-center text-xs py-1 border-b border-stone-50 last:border-0">
+                    <div key={idx} className="flex justify-between items-center text-xs py-1 border-b border-stone-50 last:border-0 flex-wrap gap-y-2">
                       <span className="font-bold text-stone-800 truncate max-w-[160px]">
                         {idx + 1}. {tp.productName}
                       </span>
@@ -704,7 +704,7 @@ export default function AdminDailySalesReportPage() {
                             <tr className="bg-stone-50/80">
                               <td colSpan={8} className="py-3 px-6">
                                 <div className="rounded-xl bg-white border border-stone-200 p-3 space-y-2 shadow-2xs">
-                                  <div className="flex justify-between items-center text-xs border-b border-stone-100 pb-1.5">
+                                  <div className="flex justify-between items-center text-xs border-b border-stone-100 pb-1.5 flex-wrap gap-y-2">
                                     <span className="font-extrabold text-stone-800">
                                       Produtos no Pedido #{order.numero} ({order.items.length} itens):
                                     </span>
@@ -718,7 +718,7 @@ export default function AdminDailySalesReportPage() {
                                     {order.items.map((it) => (
                                       <div
                                         key={it.id}
-                                        className="rounded-lg bg-stone-50 p-2 border border-stone-150 flex justify-between items-center text-xs"
+                                        className="rounded-lg bg-stone-50 p-2 border border-stone-150 flex justify-between items-center text-xs flex-wrap gap-y-2"
                                       >
                                         <div className="truncate pr-2">
                                           <div className="font-bold text-stone-800 truncate">{it.productName}</div>

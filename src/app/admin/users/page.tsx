@@ -93,7 +93,7 @@ export default function AdminUsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center flex-wrap gap-y-2">
         <div>
           <h2 className="text-2xl font-black text-stone-900 tracking-tight flex items-center gap-2">
             <ShieldCheck className="h-6 w-6 text-amber-700" />
@@ -182,7 +182,7 @@ export default function AdminUsersPage() {
                   <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} className="block w-full rounded-lg border border-stone-300 bg-stone-50 p-2.5 text-stone-900 focus:bg-white" />
                 </div>
               </div>
-              <div className="flex items-center justify-between p-2 rounded-lg bg-stone-50 border border-stone-150">
+              <div className="flex items-center justify-between p-2 rounded-lg bg-stone-50 border border-stone-150 flex-wrap gap-y-2">
                 <span>Usuário ativo?</span>
                 <button type="button" onClick={() => setActive(!active)} className="text-stone-500 hover:text-amber-800 cursor-pointer">
                   {active ? <ToggleRight className="h-8 w-8 text-amber-700" /> : <ToggleLeft className="h-8 w-8 text-stone-400" />}

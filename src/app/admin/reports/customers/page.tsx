@@ -165,7 +165,7 @@ export default function CustomerReportPage() {
         </div>
 
         <div className="rounded-2xl bg-red-50 border border-red-200 p-4 shadow-xs">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-y-2">
             <span className="text-[10px] font-extrabold text-red-800 uppercase tracking-wider block">Clientes em Alerta</span>
             <AlertTriangle className="h-4 w-4 text-red-700" />
           </div>

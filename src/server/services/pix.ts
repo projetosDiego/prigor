@@ -11,7 +11,7 @@ import type { SessionPayload } from '../auth/guard';
 import { suggestForPix, type OpenTitle, type PixSuggestion } from '../domain/pix-match';
 import { parseStatement } from '../domain/pix-statement';
 import { integrationEnv, integrationStatus } from '../integrations/config';
-import { sicoobListPixReceived } from '../integrations/sicoob/pix';
+import { sicoobErrorDetail, sicoobListPixReceived } from '../integrations/sicoob/pix';
 import { SicoobApiError, SicoobNotConfiguredError } from '../integrations/sicoob/client';
 import { checkAllocations } from '../domain/pix-allocation';
 import { createCredit, settleAmount, writeOffBoletosOfSettledOrders } from './credits';
@@ -141,11 +141,11 @@ export async function fetchFromBank(days = 7) {
       lastError = err;
       let message = err instanceof Error ? err.message : String(err);
       if (err instanceof SicoobApiError) {
-        logger.warn('Pix: banco recusou a consulta', { status: err.status, empresa: sc.name });
+        logger.warn('Pix: banco recusou a consulta', { status: err.status, empresa: sc.name, detalhe: sicoobErrorDetail(err.body) });
         message =
           err.status === 401 || err.status === 403
             ? 'O Sicoob recusou a consulta de Pix. Habilite a API Pix (escopos cob.read e pix.read) no aplicativo do portal de desenvolvedores, ou importe o extrato.'
-            : `O Sicoob não respondeu a consulta de Pix (${err.status || 'sem conexão'}).`;
+            : `O Sicoob não respondeu a consulta de Pix (${err.status || 'sem conexão'})${sicoobErrorDetail(err.body) ? `: ${sicoobErrorDetail(err.body)}` : ''}.`;
       } else if (err instanceof SicoobNotConfiguredError) {
         message = err.message;
       }
