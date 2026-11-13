@@ -180,9 +180,39 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 
 ## 7. Backup
 
-O backup é criptografado, vai para a nuvem e tem restauração testável. O passo a passo
-completo está em **docs/BACKUP.md** (conta na nuvem, rclone, chave de criptografia, agendamento,
-teste mensal e restauração). Segurança geral do servidor: **docs/SEGURANCA.md**.
+O ActPost já tem o backup dele; este é o do Prigor, no mesmo formato.
+
+```bash
+crontab -e
+```
+
+Adicione (3h20, vinte minutos depois do ActPost, para os dois não disputarem
+disco ao mesmo tempo):
+
+```cron
+20 3 * * * cd /opt/prigor && ./backup.sh >> /opt/prigor/backups/backup.log 2>&1
+```
+
+Teste agora:
+
+```bash
+cd /opt/prigor && ./backup.sh && ls -lh backups/
+```
+
+Restaurar:
+
+```bash
+gunzip -c backups/prigor-AAAAMMDD-HHMMSS.sql.gz | \
+  docker exec -i actpost-postgres psql -U prigor -d prigor
+```
+
+**Leve os backups para fora da VPS.** Backup no mesmo disco do banco não
+protege contra perda do disco:
+
+```bash
+# da sua máquina, semanalmente
+rsync -avz SEU_USUARIO@IP_DA_VPS:/opt/prigor/backups/ ~/backups-prigor/
+```
 
 ## 8. Deploy automático (opcional)
 

@@ -9,7 +9,6 @@
 - Cabeçalhos de segurança: HTTPS forçado (HSTS), sem câmera, microfone e localização, o site não pode
   ser embutido em outro site, formulários só enviam para o próprio domínio.
 - Registro de ações sensíveis (login, baixa de pagamento, estorno, estorno em lote, cancelamento de pedido).
-- Backup diário criptografado com cópia na nuvem (ver `docs/BACKUP.md`).
 
 ## Ações suas (não dá para fazer só pelo código)
 
@@ -57,4 +56,4 @@ Acesso SSH só por chave (desligue a senha): em `/etc/ssh/sshd_config` deixe `Pa
 
 ### 5. Arquivo .env
 Contém as chaves do Sicoob, do banco e do e-mail. Na VPS: `chmod 600 /opt/prigor/.env`.
-Nunca envie o `.env` por WhatsApp ou e-mail. O backup guarda uma cópia criptografada.
+Nunca envie o `.env` por WhatsApp ou e-mail. Guarde uma cópia do `.env` em lugar seguro (gerenciador de senhas).
