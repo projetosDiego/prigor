@@ -15,7 +15,8 @@ function getTransporter() {
   const port = parseInt(process.env.SMTP_PORT || '465', 10);
   const secure = process.env.SMTP_SECURE === 'true' || port === 465;
   const user = process.env.SMTP_USER || 'contato@docesprigor.com.br';
-  const pass = process.env.SMTP_PASS || 'Doces@prigor0308';
+  // A senha vem SÓ do ambiente (.env da VPS). Nunca escreva senha no código.
+  const pass = process.env.SMTP_PASS;
 
   if (!user || !pass) {
     console.warn('[EMAIL] Configurações de SMTP_USER ou SMTP_PASS ausentes.');
@@ -27,8 +28,10 @@ function getTransporter() {
     port,
     secure,
     auth: { user, pass },
+    // Valida o certificado do servidor de e-mail. Só desligue (SMTP_TLS_INSECURE=true)
+    // se o provedor usar certificado inválido, e saiba que isso expõe a senha.
     tls: {
-      rejectUnauthorized: false,
+      rejectUnauthorized: process.env.SMTP_TLS_INSECURE !== 'true',
     },
   });
 }

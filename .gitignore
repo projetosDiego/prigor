@@ -33,3 +33,6 @@ npm-debug.log*
 *.pfx
 *.p12
 certificado/
+
+# chave de criptografia do backup
+.backup-key

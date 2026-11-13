@@ -1,3 +1,4 @@
+import { audit } from '@/server/services/audit';
 import { requireUser } from '@/server/auth/guard';
 import { ok, readJson, route } from '@/server/http/respond';
 import { orderUpdateSchema } from '@/server/validation/sales';
@@ -24,5 +25,7 @@ export const PUT = PATCH;
 export const DELETE = route<Context>('pedidos.cancelar', async (_request, { params }) => {
   const session = await requireUser();
   const { id } = await params;
-  return ok(await cancelOrder(session, id));
+  const result = await cancelOrder(session, id);
+  await audit(session, 'CANCELAR_PEDIDO', 'Order', id);
+  return ok(result);
 });

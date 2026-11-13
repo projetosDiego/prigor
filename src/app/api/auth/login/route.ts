@@ -28,6 +28,13 @@ export const POST = route('auth.login', async (request) => {
 
   const { email, password } = loginSchema.parse(await readJson(request));
 
+  // Além do limite por IP: limite por conta, contra força bruta vinda de vários IPs.
+  const accountLimit = hit(`login-user:${email.toLowerCase()}`, Math.max(config.LOGIN_RATE_LIMIT * 2, 10), config.LOGIN_RATE_WINDOW_SECONDS);
+  if (!accountLimit.allowed) {
+    logger.warn('login bloqueado: muitas tentativas na mesma conta', { ip });
+    throw rateLimited(`Muitas tentativas para esta conta. Tente novamente em ${accountLimit.retryAfterSeconds} segundos.`);
+  }
+
   const user = await prisma.user.findUnique({
     where: { email: email.toLowerCase() },
     include: { seller: { select: { id: true, active: true } } },
@@ -55,6 +62,7 @@ export const POST = route('auth.login', async (request) => {
   }
 
   reset(`login:${ip}`);
+  reset(`login-user:${email.toLowerCase()}`);
 
   const sellerId = user.seller?.active ? user.seller.id : null;
 

@@ -423,22 +423,15 @@ export async function renderOrderPdf(
     w.y -= LINE * 2;
   }
 
-  // ── Assinaturas ───────────────────────────────────────────────────────────────
-  // A faixa inferior (y 40–126) é reservada ao canhoto de entrega.
+  // ── Canhoto de entrega ────────────────────────────────────────────────────────
+  // A faixa inferior (y 40–126) é reservada ao canhoto, que já traz a assinatura
+  // de conferência do recebedor. Se o conteúdo chegou perto dela, abre outra página.
   const CANHOTO_TOP = 126;
-  const SIGN_MIN = CANHOTO_TOP + 26;
-  if (w.y - 30 < SIGN_MIN - 6) {
+  if (w.y < CANHOTO_TOP + 24) {
     w.page = pdf.addPage(A4);
     w.y = A4[1] - MARGIN;
   }
-  const signY = Math.max(w.y - 30, SIGN_MIN);
-  const half = (RIGHT - MARGIN) / 2;
-  w.page.drawLine({ start: { x: MARGIN + 20, y: signY }, end: { x: MARGIN + half - 20, y: signY }, thickness: 0.6, color: INK });
-  w.page.drawLine({ start: { x: MARGIN + half + 20, y: signY }, end: { x: RIGHT - 20, y: signY }, thickness: 0.6, color: INK });
-  center(w.page, 'Assinatura do Comprador', MARGIN + half / 2, signY - 12, regular, 8, MUTED);
-  center(w.page, 'Assinatura do Recebedor', MARGIN + half + half / 2, signY - 12, regular, 8, MUTED);
 
-  // ── Canhoto de entrega (destacável) ───────────────────────────────────────────
   const cp = w.page;
   const cutY = CANHOTO_TOP + 10;
   cp.drawLine({ start: { x: MARGIN, y: cutY }, end: { x: RIGHT, y: cutY }, thickness: 0.6, color: MUTED, dashArray: [4, 3] });
