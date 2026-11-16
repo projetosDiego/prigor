@@ -64,16 +64,20 @@ const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', curren
 const brl0 = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 const pctTxt = (n: number | null) => (n === null ? '—' : `${n > 0 ? '+' : ''}${n.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`);
 
-/** Projeção do mês de um vendedor (mês corrente, independente do período do relatório). */
-function ProjectionPanel({ p, monthLabel, day, days }: { p: SellerProjectionRow; monthLabel: string; day: number; days: number }) {
-  const tone = p.goal > 0 ? (p.projectedPctGoal >= 100 ? 'text-emerald-700' : p.projectedPctGoal >= 80 ? 'text-amber-700' : 'text-red-600') : 'text-stone-900';
-  const Box = ({ label, value, sub, cls = 'text-stone-900' }: { label: string; value: string; sub?: string; cls?: string }) => (
+/** Caixinha de indicador do painel de projeção. Fica fora do componente para não ser recriada a cada render. */
+function Box({ label, value, sub, cls = 'text-stone-900' }: { label: string; value: string; sub?: string; cls?: string }) {
+  return (
     <div className="rounded-lg border border-stone-200 bg-white p-3">
       <div className="text-[10px] font-bold uppercase tracking-wide text-stone-500">{label}</div>
       <div className={`mt-0.5 text-base font-black ${cls}`}>{value}</div>
       {sub && <div className="text-[10px] text-stone-400">{sub}</div>}
     </div>
   );
+}
+
+/** Projeção do mês de um vendedor (mês corrente, independente do período do relatório). */
+function ProjectionPanel({ p, monthLabel, day, days }: { p: SellerProjectionRow; monthLabel: string; day: number; days: number }) {
+  const tone = p.goal > 0 ? (p.projectedPctGoal >= 100 ? 'text-emerald-700' : p.projectedPctGoal >= 80 ? 'text-amber-700' : 'text-red-600') : 'text-stone-900';
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">

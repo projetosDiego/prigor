@@ -33,6 +33,22 @@ if [[ "$(stat -c%s "$out")" -lt 1000 ]]; then
   exit 1
 fi
 
+# Site oficial: o banco é um SQLite dentro do container (pedidos do site,
+# contatos de revenda, conteúdo). VACUUM INTO gera uma cópia íntegra mesmo com
+# o site em uso.
+if docker ps --format '{{.Names}}' | grep -qx prigor-site; then
+  site_out="$BACKUP_DIR/site-${DATE}.db.gz"
+  echo "→ Cópia do banco do site → $site_out"
+  if docker exec prigor-site node docker/backup.mjs \
+     && docker exec prigor-site cat /data/backup.db | gzip -9 > "$site_out"; then
+    docker exec prigor-site rm -f /data/backup.db || true
+  else
+    echo "AVISO: a cópia do banco do site falhou (o backup do sistema acima está íntegro)."
+  fi
+  ls -lh "$site_out"
+  find "$BACKUP_DIR" -name 'site-*.db.gz' -mtime +"$RETENTION_DAYS" -delete
+fi
+
 echo "→ Limpando backups com mais de ${RETENTION_DAYS} dias"
 find "$BACKUP_DIR" -name '*.sql.gz' -mtime +"$RETENTION_DAYS" -delete
 

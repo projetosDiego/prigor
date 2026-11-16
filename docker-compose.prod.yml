@@ -99,9 +99,11 @@ services:
       NODE_OPTIONS: --max-old-space-size=512
 
       # Roteamento e certificado automáticos (nginx-proxy + acme-companion)
-      VIRTUAL_HOST: ${APP_DOMAIN},www.${APP_DOMAIN}
+      # APP_HOSTS existe para quando o sistema mora em um subdomínio
+      # (app.docesprigor.com.br): aí não há "www." para pedir certificado.
+      VIRTUAL_HOST: ${APP_HOSTS:-${APP_DOMAIN},www.${APP_DOMAIN}}
       VIRTUAL_PORT: 3000
-      LETSENCRYPT_HOST: ${APP_DOMAIN},www.${APP_DOMAIN}
+      LETSENCRYPT_HOST: ${APP_HOSTS:-${APP_DOMAIN},www.${APP_DOMAIN}}
       LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
 
     # A VPS é KVM 1 (4GB) e já roda o Spring Boot do ActPost com 768MB de
@@ -118,3 +120,59 @@ services:
       options:
         max-size: '10m'
         max-file: '5'
+
+  # --------------------------------------------------------------------------
+  #  Site oficial (docesprigor.com.br) — código em ./site
+  #
+  #  Só sobe quando o perfil "site" está ativo; o deploy.sh ativa sozinho
+  #  quando SITE_DOMAIN existe no .env (quem grava é scripts/publicar-site.sh).
+  #  Banco SQLite e imagens enviadas pelo painel ficam no volume prigor-site-data.
+  #  Os pedidos do site chegam ao ERP pela rede interna do Docker, sem sair
+  #  para a internet.
+  # --------------------------------------------------------------------------
+  site:
+    profiles: ['site']
+    build:
+      context: ./site
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_SITE_URL: https://${SITE_DOMAIN:-docesprigor.com.br}
+        NEXT_PUBLIC_APP_URL: https://${APP_DOMAIN}
+    image: prigor/site:latest
+    container_name: prigor-site
+    restart: unless-stopped
+    expose:
+      - '3000'
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: file:/data/prigor.db
+      UPLOAD_DIR: /data/uploads
+      NEXT_PUBLIC_SITE_URL: https://${SITE_DOMAIN:-docesprigor.com.br}
+      NEXT_PUBLIC_APP_URL: https://${APP_DOMAIN}
+      ADMIN_EMAIL: ${SITE_ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${SITE_ADMIN_PASSWORD:-}
+      SESSION_SECRET: ${SITE_SESSION_SECRET:-}
+      ERP_ORDERS_URL: http://prigor-app:3000/api/public/site-orders
+      SITE_ORDERS_SECRET: ${SITE_ORDERS_SECRET:-}
+      NODE_OPTIONS: --max-old-space-size=384
+      VIRTUAL_HOST: ${SITE_DOMAIN:-docesprigor.com.br},www.${SITE_DOMAIN:-docesprigor.com.br}
+      VIRTUAL_PORT: 3000
+      LETSENCRYPT_HOST: ${SITE_DOMAIN:-docesprigor.com.br},www.${SITE_DOMAIN:-docesprigor.com.br}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
+    volumes:
+      - prigor-site-data:/data
+    mem_limit: 512m
+    mem_reservation: 128m
+    networks:
+      - proxy
+    depends_on:
+      - app
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+
+volumes:
+  prigor-site-data:
+    name: prigor-site-data

@@ -34,13 +34,29 @@ if ! docker ps --format '{{.Names}}' | grep -qx actpost-postgres; then
   exit 1
 fi
 
+# O site oficial (./site) entra no deploy quando já foi configurado na VPS
+# (scripts/publicar-site.sh grava SITE_DOMAIN no .env). Antes disso, o deploy
+# segue exatamente como sempre foi: só o sistema.
+com_site=false
+if grep -qE '^SITE_DOMAIN=.+' .env && [[ -f site/Dockerfile ]]; then
+  com_site=true
+  export COMPOSE_PROFILES=site
+fi
+
 echo -e "${y}Deploy do Doces Prigor OS${n}"
+$com_site && echo -e "${y}  + site oficial${n}"
 
 echo -e "${g}→ git pull${n}"
 git pull --ff-only
 
-echo -e "${g}→ build${n}"
-docker compose -f "$compose" --env-file .env build
+# Um build de cada vez: dois builds do Next em paralelo não cabem na memória
+# desta VPS junto com o ActPost.
+echo -e "${g}→ build do sistema${n}"
+docker compose -f "$compose" --env-file .env build app
+if $com_site; then
+  echo -e "${g}→ build do site${n}"
+  docker compose -f "$compose" --env-file .env build site
+fi
 
 echo -e "${g}→ up${n}"
 docker compose -f "$compose" --env-file .env up -d
@@ -52,22 +68,37 @@ docker image prune -f
 echo -e "${g}→ limpando build cache (mantendo 3GB)${n}"
 docker builder prune -f --keep-storage 3GB
 
-echo -e "${g}→ aguardando o healthcheck${n}"
-for i in $(seq 1 30); do
-  estado="$(docker inspect -f '{{.State.Health.Status}}' prigor-app 2>/dev/null || echo desconhecido)"
-  if [[ "$estado" == "healthy" ]]; then
-    echo -e "${g}Deploy concluído — aplicação saudável.${n}"
-    docker compose -f "$compose" ps
-    exit 0
-  fi
-  if [[ "$estado" == "unhealthy" ]]; then
-    echo -e "${r}Container subiu mas está unhealthy. Últimas linhas do log:${n}"
-    docker logs --tail 40 prigor-app
-    exit 1
-  fi
-  sleep 4
+# Espera o container ficar saudável. Devolve 0 (ok), 1 (unhealthy) ou 2 (tempo esgotado).
+aguardar() {
+  local nome="$1"
+  for i in $(seq 1 40); do
+    local estado
+    estado="$(docker inspect -f '{{.State.Health.Status}}' "$nome" 2>/dev/null || echo desconhecido)"
+    [[ "$estado" == "healthy" ]] && return 0
+    [[ "$estado" == "unhealthy" ]] && return 1
+    sleep 4
+  done
+  return 2
+}
+
+falhou=false
+servicos=(prigor-app)
+$com_site && servicos+=(prigor-site)
+
+for nome in "${servicos[@]}"; do
+  echo -e "${g}→ aguardando o healthcheck de ${nome}${n}"
+  resultado=0
+  aguardar "$nome" || resultado=$?
+  case "$resultado" in
+    0) echo -e "${g}${nome}: saudável.${n}" ;;
+    1) echo -e "${r}${nome} subiu mas está unhealthy. Últimas linhas do log:${n}"
+       docker logs --tail 40 "$nome"
+       falhou=true ;;
+    *) echo -e "${y}Tempo esgotado esperando ${nome}. Veja o log:  docker logs -f ${nome}${n}"
+       falhou=true ;;
+  esac
 done
 
-echo -e "${y}Tempo esgotado esperando o healthcheck. Veja o log:${n}"
-echo "   docker logs -f prigor-app"
 docker compose -f "$compose" ps
+if $falhou; then exit 1; fi
+echo -e "${g}Deploy concluído.${n}"

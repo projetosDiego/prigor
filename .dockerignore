@@ -12,3 +12,4 @@ docker-compose*.yml
 *.xlsx
 README*.md
 docs
+site

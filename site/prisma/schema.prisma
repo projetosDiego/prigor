@@ -1,0 +1,166 @@
+// Site oficial Doces Prigor.
+// SQLite para rodar sem infraestrutura; para PostgreSQL basta trocar o provider
+// e rodar `prisma migrate dev` de novo — o modelo não usa nada específico.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  category    String   @default("")
+  /// Frase curta usada nos cards
+  tagline     String   @default("")
+  description String   @default("")
+  /// Ex.: "7 × 5 cm". Vazio quando não informado.
+  size        String   @default("")
+  /// JSON: string[]
+  flavors     String   @default("[]")
+  /// Informações complementares (texto livre)
+  extraInfo   String   @default("")
+  image       String   @default("")
+  /// JSON: string[] — fotos adicionais
+  gallery     String   @default("[]")
+  imageAlt    String   @default("")
+  featured    Boolean  @default(false)
+  /// Aparece na página Quero Vender como produto para revenda
+  forResale   Boolean  @default(true)
+  active      Boolean  @default(true)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([active, order])
+}
+
+model PointOfSale {
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  name         String
+  address      String   @default("")
+  neighborhood String   @default("")
+  city         String   @default("")
+  state        String   @default("RJ")
+  zipCode      String   @default("")
+  phone        String   @default("")
+  whatsapp     String   @default("")
+  instagram    String   @default("")
+  hours        String   @default("")
+  mapUrl       String   @default("")
+  latitude     Float?
+  longitude    Float?
+  notes        String   @default("")
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([active, city])
+}
+
+model Lead {
+  id           String    @id @default(cuid())
+  name         String
+  company      String
+  whatsapp     String
+  city         String
+  neighborhood String    @default("")
+  businessType String
+  instagram    String    @default("")
+  howFound     String    @default("")
+  message      String    @default("")
+  /// Página/formulário de origem
+  source       String    @default("quero-vender")
+  utmSource    String    @default("")
+  utmMedium    String    @default("")
+  utmCampaign  String    @default("")
+  referrer     String    @default("")
+  /// NOVO | EM_CONTATO | NEGOCIACAO | CONVERTIDO | PERDIDO
+  status       String    @default("NOVO")
+  notes        String    @default("")
+  /// Preenchido quando o webhook de CRM confirma o envio
+  crmSyncedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([status, createdAt])
+}
+
+/// Conteúdo e configurações editáveis. Um registro por grupo, valor em JSON.
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+/// Eventos de conversão registrados pelo próprio site (independe de GA/Pixel).
+model Event {
+  id        String   @id @default(cuid())
+  type      String
+  label     String   @default("")
+  path      String   @default("")
+  meta      String   @default("{}")
+  createdAt DateTime @default(now())
+
+  @@index([type, createdAt])
+}
+
+/// Pedido feito pelo próprio site (ex.: cardápio de Natal). Valores em centavos.
+model ShopOrder {
+  id             String    @id @default(cuid())
+  /// Código mostrado ao cliente, ex.: NAT-0007
+  code           String    @unique
+  campaign       String    @default("natal2026")
+  /// AGUARDANDO_PAGAMENTO | SINAL_PAGO | PAGO | CANCELADO
+  status         String    @default("AGUARDANDO_PAGAMENTO")
+  /// PF (CPF) | PJ (CNPJ)
+  customerType   String
+  document       String
+  name           String
+  companyName    String    @default("")
+  phone          String
+  email          String    @default("")
+  /// ENTREGA | RETIRADA
+  fulfillment    String
+  pickupPoint    String    @default("")
+  zipCode        String    @default("")
+  street         String    @default("")
+  number         String    @default("")
+  complement     String    @default("")
+  neighborhood   String    @default("")
+  city           String    @default("")
+  state          String    @default("")
+  /// AAAA-MM-DD
+  deliveryDate   String
+  /// JSON: itens precificados no servidor
+  items          String
+  subtotalCents  Int
+  discountCents  Int
+  totalCents     Int
+  /// SINAL_50 | TOTAL
+  paymentPlan    String
+  /// PIX | CARTAO
+  paymentMethod  String
+  amountDueCents Int
+  notes          String    @default("")
+  adminNotes     String    @default("")
+  /// PENDENTE | ENVIADO | ERRO | DESLIGADO
+  erpStatus      String    @default("PENDENTE")
+  erpOrderNumber String    @default("")
+  erpError       String    @default("")
+  erpAttempts    Int       @default(0)
+  erpSentAt      DateTime?
+  utmSource      String    @default("")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([campaign, createdAt])
+  @@index([status])
+  @@index([erpStatus])
+}
