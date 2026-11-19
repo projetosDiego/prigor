@@ -4,6 +4,7 @@ import { calculateLeadScore, type ScoreWeights } from './scoring';
 import { PipelineStage, Prisma } from '@prisma/client';
 import { dec } from '@/server/domain/money';
 import { num } from '@/server/services/serializers';
+import { boundingBox, distanceKm, neighborhoodFromAddress } from '@/server/domain/geo';
 
 /**
  * O modo simulado precisa ser LIGADO DE PROPOSITO. Sem esta flag, qualquer
@@ -136,6 +137,165 @@ interface SystemSettingsRow {
 }
 
 /**
+ * Preço de tabela de UMA chamada de busca (Text Search), em US$.
+ *
+ * O FieldMask pede telefone, nota e nº de avaliações — campos do nível
+ * Enterprise da Places API (New): US$ 35 por mil, com 1.000 chamadas grátis
+ * por mês. Dentro da cota grátis a conta real é zero; este valor alimenta o
+ * controle de teto diário/mensal do sistema.
+ */
+export const PLACES_SEARCH_COST_USD = 0.035;
+
+const PLACES_FIELD_MASK =
+  'places.id,places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.rating,places.userRatingCount,places.websiteUri,places.location';
+
+/** Converte o retorno do Google no formato interno, com bairro já resolvido. */
+function toProspectedPlace(
+  p: GooglePlaceResult,
+  category: string,
+  neighborhoodName: string,
+  fallback: { latitude: number; longitude: number },
+): ProspectedPlace {
+  return {
+    googlePlaceId: p.id,
+    tradeName: p.displayName?.text || 'Estabelecimento Sem Nome',
+    address: p.formattedAddress || 'Endereço Indisponível',
+    neighborhood: neighborhoodName,
+    city: 'Rio de Janeiro',
+    state: 'RJ',
+    latitude: p.location?.latitude ?? fallback.latitude,
+    longitude: p.location?.longitude ?? fallback.longitude,
+    category,
+    phone: p.nationalPhoneNumber || undefined,
+    website: p.websiteUri || undefined,
+    googleRating: p.rating || undefined,
+    googleReviewsCount: p.userRatingCount || undefined,
+    hasPhotos: true,
+  };
+}
+
+/**
+ * Busca estabelecimentos DENTRO de um raio ao redor de um ponto (GPS do vendedor).
+ *
+ * Diferente de `searchGooglePlaces`, aqui o Google é restrito à área
+ * (`locationRestriction`), não só enviesado — "padaria" perto de mim não pode
+ * devolver padaria do outro lado da cidade. Não há modo simulado: no campo, um
+ * lead fictício mandaria o vendedor para um endereço que não existe.
+ */
+export async function searchGooglePlacesNearPoint(params: {
+  textQuery: string;
+  category: string;
+  latitude: number;
+  longitude: number;
+  radiusKm: number;
+  limit: number;
+}): Promise<{ places: ProspectedPlace[]; apiCostUsd: number }> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (!apiKey || apiKey.includes('MockKey')) {
+    throw new Error('GOOGLE_MAPS_API_KEY não configurada. A busca "perto de mim" precisa da chave real do Google.');
+  }
+
+  const center = { latitude: params.latitude, longitude: params.longitude };
+  const box = boundingBox(center, params.radiusKm);
+
+  const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': apiKey,
+      'X-Goog-FieldMask': PLACES_FIELD_MASK,
+    },
+    body: JSON.stringify({
+      textQuery: params.textQuery,
+      languageCode: 'pt-BR',
+      regionCode: 'BR',
+      maxResultCount: params.limit,
+      locationRestriction: { rectangle: box },
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Google Places API returned error status ${response.status}: ${errorText}`);
+  }
+
+  const data: GooglePlacesSearchResponse = await response.json();
+  const places = (data.places ?? [])
+    .map((p) => toProspectedPlace(p, params.category, neighborhoodFromAddress(p.formattedAddress) ?? 'Não identificado', center))
+    // O retângulo é maior que o círculo: corta os cantos para respeitar o raio.
+    .filter((p) => distanceKm(center, p) <= params.radiusKm);
+
+  return { places, apiCostUsd: PLACES_SEARCH_COST_USD };
+}
+
+/**
+ * Diz se o estabelecimento já existe na base, como cliente ou como lead.
+ * Mesmas regras do motor: Place ID, telefone, ou nome + endereço.
+ */
+export async function findExistingPlace(place: ProspectedPlace): Promise<'CUSTOMER' | 'LEAD' | null> {
+  const match = {
+    OR: [
+      { googlePlaceId: place.googlePlaceId },
+      place.phone ? { phone: place.phone } : { id: 'dummy' },
+      {
+        AND: [
+          { tradeName: { equals: place.tradeName, mode: 'insensitive' as const } },
+          { address: { equals: place.address, mode: 'insensitive' as const } },
+        ],
+      },
+    ],
+  };
+  if (await prisma.customer.findFirst({ where: match, select: { id: true } })) return 'CUSTOMER';
+  if (await prisma.lead.findFirst({ where: match, select: { id: true } })) return 'LEAD';
+  return null;
+}
+
+/** Trava de gasto: lança erro se o teto da API do Google já foi atingido. */
+export async function assertPlacesApiAvailable(): Promise<void> {
+  const settings: SystemSettingsRow | null = await prisma.systemSettings.findFirst();
+  if (settings?.apiPaused) {
+    throw new Error('O motor de prospecção está pausado temporariamente porque o limite financeiro da API do Google Maps foi atingido.');
+  }
+}
+
+/** Registra o consumo da chamada e pausa a API se estourar o teto diário ou mensal. */
+export async function registerPlacesApiCost(params: {
+  costUsd: number;
+  endpoint: string;
+  regionName: string | null;
+  runId: string | null;
+}): Promise<void> {
+  if (!(params.costUsd > 0)) return;
+  await prisma.apiUsage.create({
+    data: {
+      service: 'Google Places',
+      endpoint: params.endpoint,
+      callCount: 1,
+      estimatedCost: params.costUsd,
+      region: params.regionName,
+      executionId: params.runId,
+    },
+  });
+
+  const settings: SystemSettingsRow | null = await prisma.systemSettings.findFirst();
+  if (!settings) return;
+  const monthlyLimit = num(settings.monthlyCostLimit) || 150.0;
+  const dailyLimit = num(settings.dailyCostLimit) || 10.0;
+  // A coluna é Decimal(10,4); o acumulado é somado em Decimal e gravado
+  // como string com as mesmas 4 casas.
+  const novoDiario = dec(num(settings.currentDailyCost)).plus(dec(params.costUsd)).toDecimalPlaces(4);
+  const novoMensal = dec(num(settings.currentMonthlyCost)).plus(dec(params.costUsd)).toDecimalPlaces(4);
+  await prisma.systemSettings.update({
+    where: { id: settings.id },
+    data: {
+      currentDailyCost: novoDiario.toFixed(4),
+      currentMonthlyCost: novoMensal.toFixed(4),
+      apiPaused: novoMensal.gte(monthlyLimit) || novoDiario.gte(dailyLimit),
+    },
+  });
+}
+
+/**
  * Consulta a API do Google Places (New) ou gera mocks caso a chave de API não esteja configurada ou seja de desenvolvimento.
  */
 export async function searchGooglePlaces(
@@ -176,7 +336,7 @@ export async function searchGooglePlaces(
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': apiKey as string,
         // Otimização de custos via FieldMask (paga-se apenas pelos campos selecionados)
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.rating,places.userRatingCount,places.websiteUri,places.location',
+        'X-Goog-FieldMask': PLACES_FIELD_MASK,
       },
       body: JSON.stringify({
         textQuery: `${query} no bairro ${neighborhoodName}, Rio de Janeiro`,
@@ -198,27 +358,11 @@ export async function searchGooglePlaces(
     const data: GooglePlacesSearchResponse = await response.json();
     const googlePlaces = data.places ?? [];
 
-    const places: ProspectedPlace[] = googlePlaces.map((p: GooglePlaceResult) => {
-      return {
-        googlePlaceId: p.id,
-        tradeName: p.displayName?.text || 'Estabelecimento Sem Nome',
-        address: p.formattedAddress || 'Endereço Indisponível',
-        neighborhood: neighborhoodName,
-        city: 'Rio de Janeiro',
-        state: 'RJ',
-        latitude: p.location?.latitude || centerLat,
-        longitude: p.location?.longitude || centerLng,
-        category,
-        phone: p.nationalPhoneNumber || undefined,
-        website: p.websiteUri || undefined,
-        googleRating: p.rating || undefined,
-        googleReviewsCount: p.userRatingCount || undefined,
-        hasPhotos: true, // assume que tem foto se consultado pela API oficial
-      };
-    });
+    const places: ProspectedPlace[] = googlePlaces.map((p: GooglePlaceResult) =>
+      toProspectedPlace(p, category, neighborhoodName, { latitude: centerLat, longitude: centerLng }),
+    );
 
-    // Custo estimado: $0.032 por chamada do Text Search (ID + Basic + Contact fields)
-    const apiCostUsd = 0.032;
+    const apiCostUsd = PLACES_SEARCH_COST_USD;
 
     return {
       places,
@@ -265,18 +409,8 @@ export async function runProspectingEngine(params: {
 }> {
   const { neighborhoodId, category, manual, limit = 5 } = params;
 
-  // 1. Carregar configurações do sistema
-  const settings: SystemSettingsRow | null = await prisma.systemSettings.findFirst();
-  const monthlyLimit = num(settings?.monthlyCostLimit) || 150.0;
-  // O teto diário existia na configuração mas nunca era comparado com nada:
-  // só o mensal pausava a API. Agora os dois valem.
-  const dailyLimit = num(settings?.dailyCostLimit) || 10.0;
-  const isApiPaused = settings?.apiPaused || false;
-
-  // Se a API estiver travada por limite de gastos, abortar
-  if (isApiPaused) {
-    throw new Error('O motor de prospecção está pausado temporariamente porque o limite financeiro da API do Google Maps foi atingido.');
-  }
+  // 1. Trava de gasto (teto diário/mensal da API do Google)
+  await assertPlacesApiAvailable();
 
   // 2. Criar registro de execução da prospecção
   const run = await prisma.prospectingRun.create({
@@ -357,44 +491,13 @@ export async function runProspectingEngine(params: {
 
     // 5. Normalizar, Deduplicar e Inserir
     for (const place of searchResult.places) {
-      // Regra 1: Verificar se já é cliente Prigor (Place ID ou CNPJ)
-      const existingCustomer = await prisma.customer.findFirst({
-        where: {
-          OR: [
-            { googlePlaceId: place.googlePlaceId },
-            place.phone ? { phone: place.phone } : { id: 'dummy' },
-            {
-              AND: [
-                { tradeName: { equals: place.tradeName, mode: 'insensitive' } },
-                { address: { equals: place.address, mode: 'insensitive' } },
-              ],
-            },
-          ],
-        },
-      });
-
-      if (existingCustomer) {
+      // Regras 1 e 2: já é cliente Prigor ou já existe como lead?
+      const existing = await findExistingPlace(place);
+      if (existing === 'CUSTOMER') {
         existingCustCount++;
         continue;
       }
-
-      // Regra 2: Verificar se já existe como Lead no banco
-      const existingLead = await prisma.lead.findFirst({
-        where: {
-          OR: [
-            { googlePlaceId: place.googlePlaceId },
-            place.phone ? { phone: place.phone } : { id: 'dummy' },
-            {
-              AND: [
-                { tradeName: { equals: place.tradeName, mode: 'insensitive' } },
-                { address: { equals: place.address, mode: 'insensitive' } },
-              ],
-            },
-          ],
-        },
-      });
-
-      if (existingLead) {
+      if (existing === 'LEAD') {
         duplicatesCount++;
         continue;
       }
@@ -460,41 +563,13 @@ export async function runProspectingEngine(params: {
       newLeadsCount++;
     }
 
-    // 6. Atualizar custos de API globais e registrar ApiUsage se for API real
-    if (searchResult.apiCostUsd > 0) {
-      await prisma.apiUsage.create({
-        data: {
-          service: 'Google Places',
-          endpoint: 'Text Search',
-          callCount: 1,
-          estimatedCost: searchResult.apiCostUsd,
-          region: neighborhood.region?.name || null,
-          executionId: run.id,
-        },
-      });
-
-      // Atualizar o consumo de hoje/mês nas configurações globais
-      if (settings) {
-        // A coluna é Decimal(10,4); o acumulado é somado em Decimal e gravado
-        // como string com as mesmas 4 casas.
-        const novoDiario = dec(num(settings.currentDailyCost))
-          .plus(dec(searchResult.apiCostUsd))
-          .toDecimalPlaces(4);
-        const novoMensal = dec(num(settings.currentMonthlyCost))
-          .plus(dec(searchResult.apiCostUsd))
-          .toDecimalPlaces(4);
-
-        await prisma.systemSettings.update({
-          where: { id: settings.id },
-          data: {
-            currentDailyCost: novoDiario.toFixed(4),
-            currentMonthlyCost: novoMensal.toFixed(4),
-            // Pausa ao estourar o teto diário OU o mensal.
-            apiPaused: novoMensal.gte(monthlyLimit) || novoDiario.gte(dailyLimit),
-          },
-        });
-      }
-    }
+    // 6. Registrar consumo da API (e pausar se estourar o teto)
+    await registerPlacesApiCost({
+      costUsd: searchResult.apiCostUsd,
+      endpoint: 'Text Search',
+      regionName: neighborhood.region?.name || null,
+      runId: run.id,
+    });
 
     // 7. Salvar finalização da execução com sucesso
     await prisma.prospectingRun.update({

@@ -15,17 +15,35 @@ function Gallery({ item, slide, priority, corporate }: { item: NatalItem; slide?
   const photos = item.gallery.length > 0 ? item.gallery : [item.image];
   const scroller = useRef<HTMLDivElement>(null);
   const [index, setIndex] = useState(0);
+  // Só monta a foto atual + vizinhas. Com todas as fotos de todas as galerias
+  // chegando de uma vez (ex: ao rolar a página), o servidor ficava sobrecarregado
+  // gerando dezenas de imagens ao mesmo tempo — isso espalha os pedidos no tempo.
+  const [loaded, setLoaded] = useState<Set<number>>(() => new Set([0, 1]));
   const many = photos.length > 1;
+
+  const markLoaded = useCallback(
+    (i: number) => {
+      setLoaded((prev) => {
+        const wanted = [i - 1, i, i + 1].map((n) => (n + photos.length) % photos.length);
+        if (wanted.every((n) => prev.has(n))) return prev;
+        const next = new Set(prev);
+        wanted.forEach((n) => next.add(n));
+        return next;
+      });
+    },
+    [photos.length],
+  );
 
   const go = useCallback(
     (i: number) => {
       const el = scroller.current;
       if (!el) return;
       const next = (i + photos.length) % photos.length;
+      markLoaded(next);
       const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       el.scrollTo({ left: next * el.clientWidth, behavior: reduce ? 'auto' : 'smooth' });
     },
-    [photos.length],
+    [photos.length, markLoaded],
   );
 
   // Escolheu um recheio com foto própria: o carrossel vai até ela.
@@ -42,20 +60,23 @@ function Gallery({ item, slide, priority, corporate }: { item: NatalItem; slide?
           const el = e.currentTarget;
           const i = Math.round(el.scrollLeft / Math.max(1, el.clientWidth));
           if (i !== index) setIndex(i);
+          markLoaded(i);
         }}
       >
         {photos.map((src, i) => (
           <div key={src} className="relative h-full w-full shrink-0 snap-center snap-always" aria-hidden={i !== index || undefined}>
-            <Image
-              src={src}
-              alt={i === 0 ? item.imageAlt : `${item.name} — foto ${i + 1}`}
-              fill
-              sizes={SIZES}
-              className="object-cover"
-              priority={priority && i === 0}
-              loading={priority && i === 0 ? undefined : 'lazy'}
-              draggable={false}
-            />
+            {loaded.has(i) && (
+              <Image
+                src={src}
+                alt={i === 0 ? item.imageAlt : `${item.name} — foto ${i + 1}`}
+                fill
+                sizes={SIZES}
+                className="object-cover"
+                priority={priority && i === 0}
+                loading={priority && i === 0 ? undefined : 'lazy'}
+                draggable={false}
+              />
+            )}
           </div>
         ))}
       </div>

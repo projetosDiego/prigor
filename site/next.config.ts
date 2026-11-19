@@ -8,8 +8,10 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   poweredByHeader: false,
   images: {
-    formats: ['image/avif', 'image/webp'],
-    qualities: [60, 75, 85],
+    // Só WebP: AVIF é 5-20x mais lento pra gerar no processador e sobrecarrega
+    // o container (512MB) quando várias fotos novas chegam de uma vez.
+    formats: ['image/webp'],
+    qualities: [75],
     deviceSizes: [390, 640, 828, 1080, 1280, 1600, 1920],
     minimumCacheTTL: 2678400,
   },

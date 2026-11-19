@@ -451,6 +451,30 @@ export const nearbyQuerySchema = z.object({
   radius: z.coerce.number().min(0.1).max(100).optional(),
 });
 
+/** Categorias do "Perto de mim": chave interna → termo buscado no Google. */
+export const DISCOVER_CATEGORIES = {
+  padarias: 'padaria',
+  lanchonetes: 'lanchonete',
+  bares: 'bar e boteco',
+  cafeterias: 'cafeteria',
+  restaurantes: 'restaurante',
+  mercados: 'mercado e mercearia',
+  conveniencias: 'loja de conveniência',
+  acaiterias: 'açaiteria',
+} as const;
+
+export type DiscoverCategory = keyof typeof DISCOVER_CATEGORIES;
+
+export const discoverNearbySchema = z.object({
+  lat: requiredCoordinate('Latitude', 90),
+  lng: requiredCoordinate('Longitude', 180),
+  category: z.enum(Object.keys(DISCOVER_CATEGORIES) as [DiscoverCategory, ...DiscoverCategory[]], {
+    message: 'Categoria inválida.',
+  }),
+  /** Raio da busca em km — pequeno de propósito: é "a pé daqui". */
+  radius: z.coerce.number().min(0.2).max(3).default(1),
+});
+
 // ─── Importação em massa ────────────────────────────────────────────────────
 
 /** Teto de linhas por lote — mantém a transação curta e o payload previsível. */
