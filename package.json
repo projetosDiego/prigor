@@ -43,6 +43,7 @@
     "nodemailer": "^10.0.13",
     "pdf-lib": "^1.17.1",
     "prisma": "^6.19.3",
+    "qrcode-generator": "^2.0.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "xlsx": "^0.18.5",

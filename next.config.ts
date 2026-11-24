@@ -12,6 +12,11 @@ const nextConfig: NextConfig = {
 
   poweredByHeader: false,
 
+  // Só vale no `npm run dev`: deixa o celular na mesma rede Wi-Fi abrir o
+  // sistema pelo IP do PC (ex.: testar o Clube Prigor). Sem isso o Next
+  // bloqueia os scripts e os botões da página não funcionam.
+  allowedDevOrigins: ['192.168.*.*', '10.*.*.*', '172.*.*.*'],
+
   async headers() {
     return [
       {

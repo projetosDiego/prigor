@@ -318,6 +318,13 @@ model Customer {
   credits        CustomerCredit[]
   returns        OrderReturn[]
 
+  /// Código do QR Code do Clube Prigor no balcão deste ponto de revenda (null = ponto fora do Clube).
+  loyaltyCode        String?         @unique @map("codigo_clube")
+  loyaltySignups     LoyaltyMember[] @relation("LoyaltySignupPoint")
+  loyaltyRedemptions LoyaltyReward[] @relation("LoyaltyRedeemPoint")
+  loyaltyReserved    LoyaltyReward[] @relation("LoyaltyReservedPoint")
+  loyaltyStocks      LoyaltyPointStock[]
+
   /// CNPJ que fatura este cliente por padrão (NF e boleto); pode trocar no pedido.
   defaultIssuerId String? @map("empresa_padrao_id")
   defaultIssuer   Issuer? @relation("IssuerDefaultCustomers", fields: [defaultIssuerId], references: [id], onDelete: SetNull)
@@ -588,6 +595,7 @@ model Order {
   boletos        Boleto[]
   invoices       Invoice[]
   returns        OrderReturn[]
+  loyaltyBonuses LoyaltyReward[]
 
   /// CNPJ que faturou o pedido (definido na 1ª emissão de NF/boleto).
   issuerId String? @map("empresa_id")
@@ -1309,4 +1317,238 @@ model RecurringExpense {
   transactions FinancialTransaction[]
 
   @@map("despesas_recorrentes")
+}
+
+// ─── Clube Prigor (fidelização do cliente final) ────────────────────────────
+
+/// Consumidor final cadastrado no Clube Prigor (veio pelo QR Code de um ponto de revenda).
+model LoyaltyMember {
+  id               String    @id @default(uuid())
+  name             String    @map("nome")
+  /// Celular normalizado: só dígitos, com DDD, sem 55 (ex.: 21987654321).
+  phone            String    @unique @map("celular")
+  neighborhood     String?   @map("bairro")
+  /// Autorizou receber novidades pelo WhatsApp (LGPD).
+  marketingConsent Boolean   @default(false) @map("aceita_whatsapp")
+  consentAt        DateTime? @map("aceite_em")
+  /// Hash SHA-256 do token do cookie do aparelho do cliente.
+  sessionHash      String?   @unique @map("sessao_hash")
+  /// Hash bcrypt do PIN de 4 dígitos (login pelo celular).
+  pinHash          String?   @map("pin_hash")
+  /// Código que o cliente compartilha para indicar amigos.
+  referralCode     String?   @unique @map("codigo_indicacao")
+  referredById     String?   @map("indicado_por_id")
+  referredBy       LoyaltyMember?  @relation("LoyaltyReferral", fields: [referredById], references: [id], onDelete: SetNull)
+  referrals        LoyaltyMember[] @relation("LoyaltyReferral")
+  signupPointId    String?   @map("ponto_cadastro_id")
+  signupPoint      Customer? @relation("LoyaltySignupPoint", fields: [signupPointId], references: [id], onDelete: SetNull)
+  /// Marcado quando o número foi confirmado como WhatsApp de verdade.
+  whatsappConfirmedAt DateTime? @map("whatsapp_confirmado_em")
+  /// Celular confirmado por código SMS.
+  phoneVerifiedAt  DateTime? @map("celular_verificado_em")
+  createdAt        DateTime  @default(now()) @map("criado_em")
+  updatedAt        DateTime  @updatedAt @map("atualizado_em")
+
+  rewards     LoyaltyReward[]
+  points      LoyaltyPointEntry[]     @relation("LoyaltyPointOwner")
+  submissions LoyaltyTaskSubmission[]
+
+  @@index([signupPointId])
+  @@index([referredById])
+  @@index([createdAt])
+  @@map("clube_membros")
+}
+
+/// Catálogo de prêmios: sorteados no cadastro e/ou trocados por pontos.
+model LoyaltyPrize {
+  id            String   @id @default(uuid())
+  code          String   @unique @map("codigo")
+  title         String   @map("titulo")
+  description   String?  @map("descricao")
+  /// Brownies a repor ao ponto quando o prêmio é entregue (0 para brindes como caneta/bolsa).
+  bonusUnits    Decimal  @default(0) @map("unidades_bonus") @db.Decimal(12, 3)
+  /// Peso no sorteio do cadastro (0 = não sorteia). Chance = peso / soma dos pesos.
+  drawWeight    Int      @default(0) @map("peso_sorteio")
+  /// Custo em pontos para trocar (null = não aparece na troca).
+  pointsCost    Int?     @map("custo_pontos")
+  /// Unidades por ponto de revenda (null = sem limite). Estoque real pode ser ajustado por ponto.
+  stockPerPoint Int?     @map("estoque_por_ponto")
+  /// Mostrar "confira a disponibilidade no balcão antes de usar".
+  requiresCheck Boolean  @default(false) @map("conferir_balcao")
+  /// Dias para retirar depois de ganhar (null = sem prazo).
+  validDays     Int?     @map("validade_dias")
+  active        Boolean  @default(true) @map("ativo")
+  sortOrder     Int      @default(0) @map("ordem")
+  createdAt     DateTime @default(now()) @map("criado_em")
+  updatedAt     DateTime @updatedAt @map("atualizado_em")
+
+  rewards LoyaltyReward[]
+  stocks  LoyaltyPointStock[]
+
+  @@map("clube_premios")
+}
+
+/// Estoque de um brinde limitado num ponto (sobrepõe o padrão do prêmio).
+model LoyaltyPointStock {
+  id         String       @id @default(uuid())
+  customerId String       @map("cliente_id")
+  customer   Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  prizeId    String       @map("premio_id")
+  prize      LoyaltyPrize @relation(fields: [prizeId], references: [id], onDelete: Cascade)
+  quantity   Int          @map("quantidade")
+  updatedAt  DateTime     @updatedAt @map("atualizado_em")
+
+  @@unique([customerId, prizeId])
+  @@map("clube_estoque_ponto")
+}
+
+/// Cupom/prêmio do cliente. Resgatado pelo próprio cliente no ponto; vira bonificação a repor ao revendedor.
+model LoyaltyReward {
+  id            String        @id @default(uuid())
+  memberId      String        @map("membro_id")
+  member        LoyaltyMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  /// Código do prêmio (copiado do catálogo na hora em que foi ganho).
+  kind          String        @map("tipo")
+  title         String        @map("titulo")
+  prizeId       String?       @map("premio_id")
+  prize         LoyaltyPrize? @relation(fields: [prizeId], references: [id], onDelete: SetNull)
+  /// boas_vindas | pontos | manual | segunda_via
+  source        String        @default("boas_vindas") @map("origem")
+  /// Garante 1 prêmio de boas-vindas por cliente ("boas_vindas:<membro>"); null nos demais.
+  uniqueKey     String?       @unique @map("chave_unica")
+  /// Unidades a repor ao ponto quando o cupom é usado.
+  bonusUnits    Decimal       @map("unidades_bonus") @db.Decimal(12, 3)
+  requiresCheck Boolean       @default(false) @map("conferir_balcao")
+  /// Brinde com estoque: fica reservado e só pode ser retirado neste ponto.
+  reservedPointId String?     @map("ponto_reservado_id")
+  reservedPoint   Customer?   @relation("LoyaltyReservedPoint", fields: [reservedPointId], references: [id], onDelete: SetNull)
+  expiresAt     DateTime?     @map("valido_ate")
+  /// disponivel | usado | anulado
+  status        String        @default("disponivel") @map("status")
+  redeemedAt    DateTime?     @map("usado_em")
+  redeemPointId String?       @map("ponto_resgate_id")
+  redeemPoint   Customer?     @relation("LoyaltyRedeemPoint", fields: [redeemPointId], references: [id], onDelete: SetNull)
+  /// Quando a bonificação foi reposta ao ponto (null = pendente).
+  settledAt     DateTime?     @map("reposto_em")
+  settledOrderId String?      @map("pedido_reposicao_id")
+  settledOrder  Order?        @relation(fields: [settledOrderId], references: [id], onDelete: SetNull)
+  settledById   String?       @map("reposto_por")
+  /// Segunda via: aponta para o cupom original.
+  reissuedFromId String?      @map("segunda_via_de_id")
+  note          String?       @map("observacao")
+  createdAt     DateTime      @default(now()) @map("criado_em")
+
+  pointEntries LoyaltyPointEntry[]
+
+  @@index([memberId])
+  @@index([status])
+  @@index([prizeId, reservedPointId])
+  @@index([redeemPointId, settledAt])
+  @@index([redeemedAt])
+  @@map("clube_cupons")
+}
+
+/// Tarefa que dá pontos (seguir no Instagram, avaliar no Google, indicar amigo...).
+model LoyaltyTask {
+  id           String   @id @default(uuid())
+  code         String   @unique @map("codigo")
+  title        String   @map("titulo")
+  description  String?  @map("descricao")
+  points       Int      @map("pontos")
+  /// Link que o botão da tarefa abre (perfil do Instagram, avaliação do Google...).
+  actionUrl    String?  @map("link")
+  actionLabel  String?  @map("texto_botao")
+  /// print = cliente manda print e a Prigor analisa | indicacao = automático pela indicação
+  proof        String   @default("print") @map("comprovacao")
+  /// Dias até poder repetir (null = só uma vez).
+  cooldownDays Int?     @map("intervalo_dias")
+  active       Boolean  @default(true) @map("ativo")
+  sortOrder    Int      @default(0) @map("ordem")
+  createdAt    DateTime @default(now()) @map("criado_em")
+  updatedAt    DateTime @updatedAt @map("atualizado_em")
+
+  submissions LoyaltyTaskSubmission[]
+
+  @@map("clube_tarefas")
+}
+
+/// Print enviado pelo cliente para comprovar uma tarefa (análise em até 24h).
+model LoyaltyTaskSubmission {
+  id           String        @id @default(uuid())
+  memberId     String        @map("membro_id")
+  member       LoyaltyMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  taskId       String        @map("tarefa_id")
+  task         LoyaltyTask   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  /// pendente | aprovado | recusado
+  status       String        @default("pendente") @map("status")
+  proofImage   Bytes?        @map("imagem")
+  proofMime    String?       @map("imagem_tipo")
+  /// Texto do cliente (ex.: @ do Instagram, link do post).
+  memberNote   String?       @map("observacao_cliente")
+  reviewNote   String?       @map("observacao_analise")
+  /// Pontos creditados na aprovação.
+  points       Int           @default(0) @map("pontos")
+  reviewedAt   DateTime?     @map("analisado_em")
+  reviewedById String?       @map("analisado_por")
+  createdAt    DateTime      @default(now()) @map("criado_em")
+
+  pointEntry LoyaltyPointEntry?
+
+  @@index([status, createdAt])
+  @@index([memberId, taskId])
+  @@map("clube_envios")
+}
+
+/// Extrato de pontos (saldo = soma). Positivo ganha, negativo gasta.
+model LoyaltyPointEntry {
+  id           String        @id @default(uuid())
+  memberId     String        @map("membro_id")
+  member       LoyaltyMember @relation("LoyaltyPointOwner", fields: [memberId], references: [id], onDelete: Cascade)
+  delta        Int           @map("pontos")
+  /// tarefa | indicacao | troca | ajuste
+  reason       String        @map("motivo")
+  description  String?       @map("descricao")
+  submissionId String?       @unique @map("envio_id")
+  submission   LoyaltyTaskSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+  rewardId     String?       @map("cupom_id")
+  reward       LoyaltyReward? @relation(fields: [rewardId], references: [id], onDelete: SetNull)
+  /// Indicação: o amigo que gerou os pontos (1 crédito por amigo).
+  referredMemberId String?   @unique @map("indicado_id")
+  createdById  String?       @map("criado_por")
+  createdAt    DateTime      @default(now()) @map("criado_em")
+
+  @@index([memberId, createdAt])
+  @@map("clube_pontos")
+}
+
+/// Configurações do Clube (linha única, id = "default").
+model LoyaltySettings {
+  id            String   @id @default("default")
+  /// Exige código SMS no cadastro.
+  smsRequired   Boolean  @default(true) @map("exigir_sms")
+  /// Chave da API da SMSDev (a variável SMSDEV_API_KEY, se existir, tem prioridade).
+  smsApiKey     String?  @map("sms_chave")
+  /// Teto de SMS por dia (trava contra abuso e conta alta).
+  smsDailyLimit Int      @default(300) @map("sms_limite_diario")
+  updatedAt     DateTime @updatedAt @map("atualizado_em")
+
+  @@map("clube_config")
+}
+
+/// Código SMS enviado para confirmar o celular (cadastro) ou redefinir o PIN.
+model LoyaltyPhoneCode {
+  id        String    @id @default(uuid())
+  phone     String    @map("celular")
+  /// cadastro | pin
+  purpose   String    @map("finalidade")
+  codeHash  String    @map("codigo_hash")
+  attempts  Int       @default(0) @map("tentativas")
+  expiresAt DateTime  @map("expira_em")
+  usedAt    DateTime? @map("usado_em")
+  ip        String?   @map("ip")
+  createdAt DateTime  @default(now()) @map("criado_em")
+
+  @@index([phone, purpose, createdAt])
+  @@index([createdAt])
+  @@map("clube_codigos_sms")
 }
